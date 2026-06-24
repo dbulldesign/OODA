@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>OODA — plan, track, close out</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -36,9 +36,11 @@
     font-family:var(--display); color:var(--ink);
     background:var(--paper);
     -webkit-font-smoothing:antialiased; line-height:1.45;
-    padding:0 16px 80px;
+    padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) calc(80px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
     transition:background-color .3s ease,color .3s ease;
   }
+  a,button{-webkit-tap-highlight-color:transparent}
+  button{touch-action:manipulation}
   .wrap{max-width:760px;margin:0 auto}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
@@ -230,6 +232,33 @@
   @media (prefers-reduced-motion:no-preference){
     .confetti-bit{animation:fall var(--dur,1.4s) cubic-bezier(.2,.6,.4,1) forwards}
     @keyframes fall{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:.9;transform:translateY(108vh) rotate(var(--spin,540deg))}}
+  }
+  .toast{bottom:calc(22px + env(safe-area-inset-bottom))}
+
+  /* phones — give the title a full line, bigger touch targets, snug cards */
+  @media (max-width:520px){
+    header{padding:14px 0 12px}
+    h1{font-size:25px}
+    .phase span{padding:5px 9px}
+    .now{padding:14px;gap:12px}
+    .now .clock{font-size:22px}
+    .now .what{font-size:15px}
+    .arc-card{padding:13px 14px}
+    .task{padding:12px 11px;gap:8px}
+    .task .row1{flex-wrap:wrap;align-items:baseline}
+    .task .row1 .name{flex:1 1 100%}
+    .task .times{margin-top:1px;font-size:13px}
+    .task .dot{margin-top:7px}
+    .task button{width:34px;height:34px;border-radius:9px}
+    .task .icon{width:16px;height:16px}
+    .add{gap:7px}
+    .add input.name{min-width:100%;font-size:16px}
+    .add select,.add input.est{flex:1}
+    .add button{flex:1;padding:11px 18px}
+    .reflect{padding:14px}
+    .tools{font-size:13px;gap:8px}
+    dialog{width:94%}
+    .te-grid{grid-template-columns:1fr}
   }
 </style>
 <script>
