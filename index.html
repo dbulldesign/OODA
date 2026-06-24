@@ -997,8 +997,10 @@ async function saveTaskEditor(){
   toast(queued ? (navigator.onLine?'Saved & syncing to Todoist.':'Saved — will sync to Todoist when online.') : 'Saved.');
 }
 function lastSyncLabel(){
-  if(!state.todoist.lastSync)return tdConnected()?'Connected — not synced yet.':'';
-  return 'Last synced '+new Date(state.todoist.lastSync).toLocaleString(undefined,{hour:'numeric',minute:'2-digit',month:'short',day:'numeric'});
+  if(!tdConnected())return '';
+  const saved='Token saved on this device';
+  if(!state.todoist.lastSync)return saved+' — not synced yet.';
+  return saved+' · last synced '+new Date(state.todoist.lastSync).toLocaleString(undefined,{hour:'numeric',minute:'2-digit',month:'short',day:'numeric'});
 }
 function setTdStatus(msg,cls){
   const el=document.getElementById('tdStatus');
@@ -1008,7 +1010,7 @@ function openTdDialog(){
   document.getElementById('tdToken').value=state.todoist.token||'';
   document.getElementById('tdFilter').value=state.todoist.filter||DEFAULT_TODOIST.filter;
   document.getElementById('tdAuto').checked=!!state.todoist.autocomplete;
-  setTdStatus(lastSyncLabel(), state.todoist.lastSync?'ok':'');
+  setTdStatus(lastSyncLabel(), tdConnected()?'ok':'');
   document.getElementById('tdDialog').showModal();
 }
 async function saveTodoist(){
@@ -1050,7 +1052,7 @@ function syncStatusLabel(){
   const bits=[];
   if(sync.lastPull)bits.push('pulled '+new Date(sync.lastPull).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));
   if(sync.lastPush)bits.push('pushed '+new Date(sync.lastPush).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));
-  return bits.length?'Connected — '+bits.join(', ')+'.':'Connected.';
+  return 'Token saved on this device'+(bits.length?' · '+bits.join(', '):'')+'.';
 }
 async function ghFetch(path,opts={}){
   const res=await fetch('https://api.github.com'+path,{...opts,headers:{
@@ -1325,6 +1327,9 @@ window.addEventListener('offline',updateConnUI);
   updateConnUI();
   // register the service worker so the app loads offline
   if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('sw.js'); }catch(e){} }
+  // ask the browser to keep our stored data (incl. saved keys) durable — helps
+  // resist eviction on iOS / Safari and in installed PWAs
+  if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
 })();
 </script>
 </body>
