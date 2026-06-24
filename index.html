@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Daybook — plan, track, close out</title>
+<title>OODA — plan, track, close out</title>
 <style>
   :root{
     --paper:#EBE8E0; --surface:#F8F6F1; --surface-2:#F1EEE7;
@@ -21,13 +21,16 @@
   body{
     font-family:var(--display); color:var(--ink);
     background:var(--paper);
-    background-image:linear-gradient(var(--line) 1px,transparent 1px);
-    background-size:100% 28px;
     -webkit-font-smoothing:antialiased; line-height:1.45;
     padding:0 16px 80px;
   }
   .wrap{max-width:760px;margin:0 auto}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+  .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+  .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
+    border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer;font-family:var(--display);white-space:nowrap}
+  .sync-btn:hover{background:var(--surface-2);color:var(--ink)}
+  .sync-btn.syncing{opacity:.55;pointer-events:none}
   .date{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
   h1{font-size:30px;margin:2px 0 0;font-weight:650;letter-spacing:-.02em}
   .phase{display:flex;gap:4px;font-size:12px}
@@ -156,12 +159,15 @@
   <header>
     <div>
       <div class="date" id="dateLabel">—</div>
-      <h1>Daybook</h1>
+      <h1>OODA</h1>
     </div>
-    <div class="phase">
-      <span id="ph-plan">Plan</span>
-      <span id="ph-work">Work</span>
-      <span id="ph-reflect">Reflect</span>
+    <div class="head-right">
+      <div class="phase">
+        <span id="ph-plan">Plan</span>
+        <span id="ph-work">Work</span>
+        <span id="ph-reflect">Reflect</span>
+      </div>
+      <button class="sync-btn" id="syncBtn" style="display:none">⟳ Sync Todoist</button>
     </div>
   </header>
 
@@ -277,20 +283,28 @@ const TD_BASE='https://api.todoist.com/api/v1';
 let state={ channels:[], capacityHours:7, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
 let memFallback={}; let storeOk=true; let tick=null;
 
-/* ---------- storage layer (graceful fallback) ---------- */
+/* ---------- storage layer ----------
+   Prefers a host-provided window.storage; otherwise persists to
+   localStorage so data (and the Todoist token) survives reloads on a
+   plain web host. Falls back to memory only if both are unavailable. */
+const LS_PREFIX='ooda:';
 async function sget(k){
-  if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){ return memFallback[k]??null; } }
+  if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
+  try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
   return memFallback[k]??null;
 }
 async function sset(k,v){
-  memFallback[k]=v;
-  if(window.storage){ try{ await window.storage.set(k,v); storeOk=true; }catch(e){ storeOk=false; } }
-  else storeOk=false;
-  updateStoreState();
+  memFallback[k]=v; let ok=false;
+  if(window.storage){ try{ await window.storage.set(k,v); ok=true; }catch(e){} }
+  if(!ok){ try{ localStorage.setItem(LS_PREFIX+k,JSON.stringify(v)); ok=true; }catch(e){} }
+  storeOk=ok; updateStoreState();
 }
 async function slist(prefix){
-  if(window.storage){ try{ const r=await window.storage.list(prefix); return r?r.keys:[]; }catch(e){} }
-  return Object.keys(memFallback).filter(k=>k.startsWith(prefix));
+  if(window.storage){ try{ const r=await window.storage.list(prefix); if(r&&r.keys) return r.keys; }catch(e){} }
+  const out=new Set(Object.keys(memFallback).filter(k=>k.startsWith(prefix)));
+  try{ for(let i=0;i<localStorage.length;i++){ const lk=localStorage.key(i);
+    if(lk&&lk.startsWith(LS_PREFIX)){ const k=lk.slice(LS_PREFIX.length); if(k.startsWith(prefix)) out.add(k); } } }catch(e){}
+  return [...out];
 }
 function updateStoreState(){
   document.getElementById('storeState').textContent = storeOk ? 'Saved to this device' : 'In-memory only (won’t persist here)';
@@ -304,6 +318,10 @@ function chById(id){ return state.channels.find(c=>c.id===id)||state.channels[0]
 function clockFmt(ms){ const s=Math.floor(ms/1000); const h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;
   return h+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0'); }
 function minFmt(ms){ const m=Math.round(ms/60000); if(m<60)return m+'m'; return (m/60).toFixed(m%60?1:0)+'h'; }
+/* per-task elapsed as m:ss (or h:mm:ss past an hour) */
+function durFmt(ms){ const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
+  return (h>0? h+':'+String(m).padStart(2,'0') : ''+m)+':'+String(ss).padStart(2,'0'); }
+function ceilMinuteMs(ms){ return Math.ceil(ms/60000)*60000; }
 function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-t.startedAt : 0); }
 
 /* ---------- load ---------- */
@@ -345,7 +363,10 @@ async function toggleRun(id){
 async function toggleDone(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
   if(t.running){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null; }
-  t.done=!t.done; await saveDay(); render();
+  t.done=!t.done;
+  // round tracked time up to the next whole minute on completion
+  if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
+  await saveDay(); render();
   pushDoneToTodoist(t);
 }
 async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(t){ t.name=val.trim()||t.name; await saveDay(); render(); } }
@@ -369,7 +390,7 @@ function render(){
       '<span class="name" contenteditable="true" spellcheck="false">'+escapeHtml(t.name)+'</span>'+
       '<span class="times">'+(t.todoistId?'<span class="tdtag" title="Synced with Todoist">TD</span>':'')+
         (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
-        '<span class="act'+(over?' over':'')+'">'+minFmt(act)+'</span></span>'+
+        '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
       '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
       '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>';
     const nameEl=li.querySelector('.name');
@@ -450,7 +471,7 @@ function updateRunningRows(){
   state.tasks.forEach((t,i)=>{ if(t.running&&items[i]){ const act=liveActual(t);
     const over=t.estimateMin>0&&act>t.estimateMin*60000;
     const span=items[i].querySelector('.times .act');
-    if(span){ span.textContent=minFmt(act); span.classList.toggle('over',over); } } });
+    if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } });
 }
 function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -474,6 +495,14 @@ function updateTdLink(){
   const a=document.getElementById('todoistBtn');
   if(tdConnected()){ a.textContent='Todoist ✓'; a.classList.add('td-on'); }
   else { a.textContent='Todoist'; a.classList.remove('td-on'); }
+  const b=document.getElementById('syncBtn'); if(b) b.style.display=tdConnected()?'inline-block':'none';
+}
+async function doManualSync(){
+  if(!tdConnected()){ openTdDialog(); return; }
+  const b=document.getElementById('syncBtn');
+  b.classList.add('syncing'); b.textContent='Syncing…';
+  await syncTodoist(false);
+  b.classList.remove('syncing'); b.textContent='⟳ Sync Todoist';
 }
 async function tdFetch(path,opts={}){
   const tok=state.todoist.token; if(!tok) throw new Error('No Todoist token set');
@@ -654,6 +683,7 @@ document.getElementById('addChBtn').addEventListener('click',()=>{ chDraft.push(
 document.getElementById('exportCsv').addEventListener('click',exportCsv);
 document.getElementById('exportJson').addEventListener('click',exportJson);
 document.getElementById('todoistBtn').addEventListener('click',openTdDialog);
+document.getElementById('syncBtn').addEventListener('click',doManualSync);
 document.getElementById('tdSave').addEventListener('click',saveTodoist);
 document.getElementById('tdSync').addEventListener('click',async()=>{
   // persist whatever is in the fields first, then pull
