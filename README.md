@@ -32,7 +32,9 @@ footer shows which mode is active).
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
 - Responsive **mobile and desktop** layouts (the Day view goes two-column on wide
-  screens; phones get a single-column, touch-sized layout).
+  screens; phones get a single-column, touch-sized layout). A **Display** option
+  (tools row) adds a **fill-the-screen** wide mode and a **text/UI size** control
+  for big monitors.
 - **List / Day / Week views** and **day navigation** (‹ › and **Today** by the
   date). Pick any day to plan it.
   - **List**: sort by manual order, due date, project, channel, or name; filter

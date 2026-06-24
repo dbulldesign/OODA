@@ -42,6 +42,15 @@
   a,button{-webkit-tap-highlight-color:transparent}
   button{touch-action:manipulation}
   .wrap{max-width:760px;margin:0 auto}
+  html.wide .wrap{max-width:100%}
+  .disp-sizes{display:flex;gap:6px}
+  .disp-sizes button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
+    padding:6px 14px;cursor:pointer;font-family:var(--display);line-height:1}
+  .disp-sizes button:nth-child(1){font-size:13px}
+  .disp-sizes button:nth-child(2){font-size:15px}
+  .disp-sizes button:nth-child(3){font-size:17px}
+  .disp-sizes button:nth-child(4){font-size:19px}
+  .disp-sizes button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
@@ -368,10 +377,13 @@
   }
 </style>
 <script>
-  // set theme before first paint to avoid a flash
+  // set theme + display prefs before first paint to avoid a flash
   (function(){ try{ var s=localStorage.getItem('ooda:_theme');
     if(!s) s=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
-    document.documentElement.setAttribute('data-theme',s); }catch(e){} })();
+    document.documentElement.setAttribute('data-theme',s);
+    if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
+    var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
+  }catch(e){} })();
 </script>
 </head>
 <body>
@@ -468,7 +480,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
     <span id="storeState"></span>
   </div>
 
@@ -657,6 +669,24 @@
         <button class="primary" id="unlockBtn">Unlock</button>
       </span>
     </div>
+  </div>
+</dialog>
+
+<dialog id="dispDialog">
+  <div class="dlg-in">
+    <h3>Display</h3>
+    <label class="td-check"><input type="checkbox" id="dispWide"> Fill the screen (wide layout)</label>
+    <div class="td-field">
+      <label>Text &amp; UI size</label>
+      <div class="disp-sizes" id="dispSizes">
+        <button type="button" data-s="1">A</button>
+        <button type="button" data-s="1.1">A+</button>
+        <button type="button" data-s="1.25">A++</button>
+        <button type="button" data-s="1.4">A+++</button>
+      </div>
+    </div>
+    <p class="td-hint">Scales everything up — handy on a big monitor. Affects this device only.</p>
+    <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
   </div>
 </dialog>
 
@@ -2013,6 +2043,17 @@ function applyTheme(theme){
   document.documentElement.setAttribute('data-theme',theme);
   const b=document.getElementById('themeBtn'); if(b) b.textContent = theme==='dark'?'☀️':'🌙';
 }
+/* ---------- display: wide layout + UI scale ---------- */
+let dispWide=false, dispScale=1;
+function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; }catch(e){} }
+function applyDisplay(){
+  document.documentElement.classList.toggle('wide',dispWide);
+  document.documentElement.style.zoom = dispScale===1? '' : String(dispScale);
+}
+function markSizes(){ document.querySelectorAll('#dispSizes button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.s)===dispScale)); }
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; markSizes(); document.getElementById('dispDialog').showModal(); }
+function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
+function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
   const next = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
   // animate the swap: spin/scale the button and ripple the background
@@ -2064,6 +2105,10 @@ function celebrate(li){
 
 /* ---------- wire up ---------- */
 document.getElementById('themeBtn').addEventListener('click',toggleTheme);
+document.getElementById('dispBtn').addEventListener('click',openDispDialog);
+document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
+document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
+document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
@@ -2138,7 +2183,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week') setView(v); }catch(e){}
