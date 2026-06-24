@@ -45,8 +45,10 @@ footer shows which mode is active).
     move**, **drag the bottom edge to resize** (sets the estimate), and
     overlapping blocks lay out **side by side**. Blocks are coloured by channel
     with a live "now" line. The header shows a **scheduled-vs-capacity** bar and
-    adjustable **day start/end** hours. Scheduling also works from the editor's
-    **Schedule at** field.
+    adjustable **day start/end** hours. Turn on **Auto-arrange** to have new/moved
+    tasks push conflicting blocks down automatically, or hit **Tidy day** to pack
+    everything back-to-back. Scheduling also works from the editor's **Schedule
+    at** field.
   - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the

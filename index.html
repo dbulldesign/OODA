@@ -311,6 +311,10 @@
   .cal-cap-fill.over{background:var(--over)}
   .cal-range{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;white-space:nowrap}
   .cal-range input{border:1px solid var(--line-strong);border-radius:6px;padding:5px 6px;font-size:12.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
+  .cal-arrange{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .aa-toggle{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
+  .aa-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer;font-family:var(--display);white-space:nowrap}
+  .aa-btn:hover{background:var(--surface-2);color:var(--ink)}
   .cal-rz{position:absolute;left:0;right:0;bottom:0;height:11px;cursor:ns-resize;touch-action:none}
   .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
   .cal-block{touch-action:none}
@@ -435,6 +439,13 @@
     <div class="legend" id="legend"></div>
   </div>
 
+  <div class="add">
+    <input class="name" id="addName" placeholder="What needs doing?" autocomplete="off">
+    <select id="addChannel"></select>
+    <input class="est" id="addEst" type="number" min="0" step="0.25" placeholder="hrs" title="Estimate in hours — e.g. 1.5 = 1h 30m, 0.5 = 30m">
+    <button id="addBtn">Add</button>
+  </div>
+
   <div class="listctl">
     <div class="viewtabs">
       <button id="vbList" class="vtab on">List</button>
@@ -461,13 +472,6 @@
   <div class="cal" id="calView" style="display:none"></div>
   <div class="week" id="weekView" style="display:none"></div>
   <div class="empty" id="emptyState">No tasks yet. Add what you intend to do today — be a little ruthless.</div>
-
-  <div class="add">
-    <input class="name" id="addName" placeholder="What needs doing?" autocomplete="off">
-    <select id="addChannel"></select>
-    <input class="est" id="addEst" type="number" min="0" step="0.25" placeholder="hrs" title="Estimate in hours — e.g. 1.5 = 1h 30m, 0.5 = 30m">
-    <button id="addBtn">Add</button>
-  </div>
 
   <div class="reflect">
     <h2>Shutdown</h2>
@@ -713,7 +717,7 @@ const DEFAULT_CHANNELS=[
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,lastSync:null};
 const TD_BASE='https://api.todoist.com/api/v1';
 
-let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
+let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
 let memFallback={}; let storeOk=true; let tick=null;
 
 /* ---------- storage layer ----------
@@ -791,7 +795,7 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
   else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; }
@@ -806,7 +810,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -816,7 +820,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,todoist:td}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td}); schedulePush(); }
 async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
@@ -824,7 +828,7 @@ async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
   const name=nameEl.value.trim(); if(!name)return;
   const estMin=hoursToMin(estEl.value);
-  state.tasks.push({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null});
+  state.tasks.unshift({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null});
   nameEl.value=''; estEl.value=''; nameEl.focus();
   await saveDay(); render();
 }
@@ -1076,6 +1080,22 @@ function updateRunningRows(){
 /* ---------- day calendar view (schedule tasks on a timeline) ---------- */
 const SNAP=30;  // minutes — calendar snaps to half-hours
 function snap(m){ return Math.round(m/SNAP)*SNAP; }
+function blockDur(t){ return Math.max(t.estimateMin||30, SNAP); }
+function scheduledActive(){ return state.tasks.filter(t=>t.scheduledMin!=null && !t.done); }
+// push overlapping scheduled tasks down so nothing collides; keeps start times where possible
+function reflowCascade(){
+  const arr=scheduledActive().sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  let cursor=calStart();
+  arr.forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
+    s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
+}
+// pack everything back-to-back from the start of the day (manual "Tidy")
+function compactDay(){
+  const arr=scheduledActive().sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  let cursor=calStart();
+  arr.forEach(t=>{ t.scheduledMin=Math.min(cursor,calEnd()-SNAP); cursor=t.scheduledMin+blockDur(t); });
+}
+function maybeAutoArrange(){ if(state.autoArrange) reflowCascade(); }
 function renderDay(){
   const cal=document.getElementById('calView'); cal.innerHTML='';
   const START=calStart(), END=calEnd();
@@ -1088,10 +1108,14 @@ function renderDay(){
   head.innerHTML='<div class="cal-cap"><div class="cal-cap-row"><span><b>'+(schedMin/60).toFixed(1).replace(/\.0$/,'')+'h</b> scheduled · '+state.capacityHours+'h capacity</span>'+
       (schedMin>capMin?'<span class="warn">over by '+((schedMin-capMin)/60).toFixed(1).replace(/\.0$/,'')+'h</span>':'')+'</div>'+
       '<div class="cal-cap-bar"><div class="cal-cap-fill'+(schedMin>capMin?' over':'')+'" style="width:'+pct+'%"></div></div></div>'+
-    '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>';
+    '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>'+
+    '<div class="cal-arrange"><label class="aa-toggle"><input type="checkbox" id="aaToggle"'+(state.autoArrange?' checked':'')+'> Auto-arrange</label>'+
+      '<button id="tidyBtn" class="aa-btn">Tidy day</button></div>';
   cal.appendChild(head);
   head.querySelector('#dayStartInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayStartH=Math.floor(m/60); if(state.dayStartH>=state.dayEndH)state.dayStartH=state.dayEndH-1; saveConfig(); renderDay(); } });
   head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderDay(); } });
+  head.querySelector('#aaToggle').addEventListener('change',e=>{ state.autoArrange=e.target.checked; saveConfig(); if(state.autoArrange){ reflowCascade(); saveDay(); } renderDay(); toast(state.autoArrange?'Auto-arrange on — new tasks reflow the day.':'Auto-arrange off.'); });
+  head.querySelector('#tidyBtn').addEventListener('click',()=>{ compactDay(); saveDay(); renderDay(); toast('Day tidied — packed from '+hmFromMin(START)+'.'); });
   // unscheduled backlog
   const bl=document.createElement('div'); bl.className='cal-backlog';
   bl.innerHTML='<h4>Unscheduled</h4>';
@@ -1126,7 +1150,7 @@ function renderDay(){
     let mins=snap(START + (e.clientY-rect.top)/PXM);
     mins=Math.max(START,Math.min(END-SNAP,mins));
     if(calSel){ const t=state.tasks.find(x=>x.id===calSel);
-      if(t){ t.scheduledMin=mins; calSel=null; saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); } return; }
+      if(t){ t.scheduledMin=mins; calSel=null; maybeAutoArrange(); saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); } return; }
     quickAddAt(mins);   // tap empty slot → add a new task at that time
   });
   // lay overlapping blocks side-by-side in columns
@@ -1157,7 +1181,7 @@ function renderDay(){
 async function quickAddAt(mins){
   const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,
     done:false,running:false,startedAt:null,todoistId:null,scheduledMin:mins};
-  state.tasks.push(t); await saveDay(); render();
+  state.tasks.unshift(t); maybeAutoArrange(); await saveDay(); render();
   openTaskEditor(t.id);
   setTimeout(()=>{ const inp=document.getElementById('teTitle'); if(inp){ inp.focus(); inp.select(); } },60);
 }
@@ -1198,7 +1222,7 @@ function attachBlockDrag(b,t,START,END){
     if(!moved){ if(m==='move') openTaskEditor(t.id); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
-    saveDay(); render();
+    maybeAutoArrange(); saveDay(); render();
   }
   b.addEventListener('pointerdown',e=>{ if(e.target.classList.contains('cal-rz')) down(e,'resize'); else down(e,'move'); });
   b.addEventListener('pointermove',move);
@@ -1225,7 +1249,7 @@ function startChipDrag(e,t,chip){
     if(cv){ const r=cv.getBoundingClientRect();
       if(ev.clientX>=r.left&&ev.clientX<=r.right&&ev.clientY>=r.top&&ev.clientY<=r.bottom){
         let mins=snap(calStart()+(ev.clientY-r.top)/PXM); mins=Math.max(calStart(),Math.min(calEnd()-SNAP,mins));
-        t.scheduledMin=mins; calSel=null; saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); return;
+        t.scheduledMin=mins; calSel=null; maybeAutoArrange(); saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); return;
       }
     }
     renderDay();
@@ -1671,7 +1695,7 @@ async function saveTaskEditor(){
   const targetKey=document.getElementById('teDate').value? 'day:'+document.getElementById('teDate').value : dayKey();
   let movedDay=false;
   if(targetKey!==dayKey()){ movedDay=await moveTaskToDate(t.id,targetKey); }
-  if(!movedDay) await saveDay();
+  if(!movedDay){ maybeAutoArrange(); await saveDay(); }
   render();
   document.getElementById('taskDialog').close();
   toast(movedDay ? ('Moved to '+fmtDateRel(new Date(targetKey.slice(4)+'T12:00:00')))
