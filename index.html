@@ -179,6 +179,9 @@
   .td-field{margin-bottom:11px}
   .td-field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;letter-spacing:.02em}
   .td-field input{width:100%;border:1px solid var(--line-strong);border-radius:7px;padding:9px;font-size:13.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
+  .td-field select{width:100%;border:1px solid var(--line-strong);border-radius:7px;padding:9px;font-size:13.5px;background:var(--surface-2);color:var(--ink)}
+  .te-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  @media (max-width:460px){ .te-grid{grid-template-columns:1fr} }
   .td-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);margin:4px 0 12px;cursor:pointer}
   .td-status{font-size:12.5px;color:var(--ink-faint);min-height:17px;margin:2px 0 4px}
   .td-status.ok{color:#3F7A56}
@@ -252,7 +255,7 @@
   <div class="add">
     <input class="name" id="addName" placeholder="What needs doing?" autocomplete="off">
     <select id="addChannel"></select>
-    <input class="est" id="addEst" type="number" min="0" step="5" placeholder="min">
+    <input class="est" id="addEst" type="number" min="0" step="0.25" placeholder="hrs" title="Estimate in hours — e.g. 1.5 = 1h 30m, 0.5 = 30m">
     <button id="addBtn">Add</button>
   </div>
 
@@ -341,11 +344,55 @@
   </div>
 </dialog>
 
+<dialog id="taskDialog">
+  <div class="dlg-in">
+    <h3 id="taskDlgTitle">Edit task</h3>
+    <div class="td-field">
+      <label>Title</label>
+      <input id="teTitle" type="text" spellcheck="false">
+    </div>
+    <div class="te-grid">
+      <div class="td-field">
+        <label>Due (natural language)</label>
+        <input id="teDue" type="text" spellcheck="false" placeholder="tomorrow 9am · every Mon">
+      </div>
+      <div class="td-field">
+        <label>Priority</label>
+        <select id="tePrio">
+          <option value="1">None</option>
+          <option value="2">P3</option>
+          <option value="3">P2</option>
+          <option value="4">P1</option>
+        </select>
+      </div>
+      <div class="td-field">
+        <label>Estimate (hrs)</label>
+        <input id="teEst" type="number" min="0" step="0.25" placeholder="e.g. 1.5">
+      </div>
+      <div class="td-field">
+        <label>Project (Todoist)</label>
+        <select id="teProject"></select>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Labels (comma separated)</label>
+      <input id="teLabels" type="text" spellcheck="false" placeholder="errand, focus">
+    </div>
+    <label class="td-check" id="teSyncWrap"><input id="teSync" type="checkbox"> Also create this task in Todoist</label>
+    <div class="td-status" id="teStatus"></div>
+    <div class="dlg-actions">
+      <button id="teCancel">Cancel</button>
+      <button class="primary" id="teSave">Save</button>
+    </div>
+  </div>
+</dialog>
+
 <script>
 const PLAY='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
 const CHECK='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 const CHEV='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+const EDIT='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const expandedTasks=new Set();
 
 const DEFAULT_CHANNELS=[
@@ -400,6 +447,8 @@ function minFmt(ms){ const m=Math.round(ms/60000); if(m<60)return m+'m'; return 
 function durFmt(ms){ const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
   return (h>0? h+':'+String(m).padStart(2,'0') : ''+m)+':'+String(ss).padStart(2,'0'); }
 function ceilMinuteMs(ms){ return Math.ceil(ms/60000)*60000; }
+function hoursToMin(v){ const h=parseFloat(v); return isFinite(h)&&h>0? Math.round(h*60):0; }
+function minToHoursStr(min){ if(!min)return ''; const h=min/60; return (Math.round(h*100)/100).toString(); }
 function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-t.startedAt : 0); }
 
 /* ---------- load ---------- */
@@ -436,7 +485,7 @@ async function saveDay(){ await sset(todayKey(),{date:todayKey().slice(4),tasks:
 async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
   const name=nameEl.value.trim(); if(!name)return;
-  const estMin=parseInt(estEl.value)||0;
+  const estMin=hoursToMin(estEl.value);
   state.tasks.push({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null});
   nameEl.value=''; estEl.value=''; nameEl.focus();
   await saveDay(); render();
@@ -461,7 +510,12 @@ async function toggleDone(id){
     if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); } }
   pushDoneToTodoist(t);
 }
-async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(t){ t.name=val.trim()||t.name; await saveDay(); render(); } }
+async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(!t)return;
+  const nn=val.trim()||t.name; if(nn===t.name)return; t.name=nn;
+  if(t.todoistMeta)t.todoistMeta.rawContent=nn;
+  await saveDay(); render();
+  if(t.todoistId&&tdConnected()) tdUpdateTask(t.todoistId,{content:nn}).catch(e=>toast('Couldn’t rename in Todoist: '+e.message));
+}
 async function removeTask(id){
   const t=state.tasks.find(x=>x.id===id);
   if(t&&t.running)state.activeId=null;
@@ -490,6 +544,7 @@ function render(){
         taskMetaHtml(t)+
       '</div>'+
       (hasMeta?'<button class="expand" title="Details">'+CHEV+'</button>':'')+
+      '<button class="edit" title="Edit / send to Todoist">'+EDIT+'</button>'+
       '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
       '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
       (hasMeta?taskDetailsHtml(t):'');
@@ -498,6 +553,7 @@ function render(){
     nameEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
     li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
     li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
+    li.querySelector('.edit').addEventListener('click',()=>openTaskEditor(t.id));
     li.querySelector('.dot').addEventListener('dblclick',()=>removeTask(t.id));
     const exp=li.querySelector('.expand');
     if(exp) exp.addEventListener('click',()=>{ const open=li.classList.toggle('expanded');
@@ -716,8 +772,8 @@ async function syncTodoist(silent){
   if(!tdConnected()){ if(!silent)openTdDialog(); return; }
   if(!silent)setTdStatus('Syncing…','');
   try{
-    let projMap={},sectMap={};
-    try{ const projects=await tdGetAll('/projects?limit=200'); projects.forEach(p=>projMap[p.id]=p.name); }catch(e){ /* project names are nice-to-have */ }
+    let projMap={},sectMap={},projList=[];
+    try{ projList=await tdGetAll('/projects?limit=200'); projList.forEach(p=>projMap[p.id]=p.name); state.todoist.projects=projList.map(p=>({id:p.id,name:p.name})); }catch(e){ /* project names are nice-to-have */ }
     try{ const sections=await tdGetAll('/sections?limit=200'); sections.forEach(s=>sectMap[s.id]=s.name); }catch(e){ /* sections optional */ }
     const filter=encodeURIComponent(state.todoist.filter||'today');
     const tasks=await tdGetAll('/tasks/filter?query='+filter+'&limit=200');
@@ -751,6 +807,90 @@ function pushDoneToTodoist(t){
   if(!t||!t.todoistId||!tdConnected()||!state.todoist.autocomplete)return;
   const path='/tasks/'+t.todoistId+(t.done?'/close':'/reopen');
   tdFetch(path,{method:'POST'}).catch(e=>toast('Couldn’t update Todoist: '+e.message));
+}
+/* ---------- two-way writes ---------- */
+function tdProjects(){ return (state.todoist&&state.todoist.projects)||[]; }
+function tdProjName(id){ const p=tdProjects().find(p=>p.id===id); return p?p.name:''; }
+function tdCreateTask(payload){ return tdFetch('/tasks',{method:'POST',body:JSON.stringify(payload)}); }
+function tdUpdateTask(id,payload){ return tdFetch('/tasks/'+id,{method:'POST',body:JSON.stringify(payload)}); }
+function tdMoveTask(id,projectId){ return tdFetch('/tasks/'+id+'/move',{method:'POST',body:JSON.stringify({project_id:projectId})}); }
+function projMapFromState(){ const mp={}; tdProjects().forEach(p=>mp[p.id]=p.name); return mp; }
+function buildTaskPayload(f){
+  const p={content:f.title, priority:f.prio, labels:f.labels};
+  if(f.due) p.due_string=f.due;            // only touch due when provided ("no date" clears)
+  if(f.estMin>0){ p.duration=f.estMin; p.duration_unit='minute'; }
+  return p;
+}
+
+/* ---------- task editor (create / edit, two-way) ---------- */
+let editingTaskId=null;
+function setTeStatus(msg,cls){ const el=document.getElementById('teStatus'); el.textContent=msg||''; el.className='td-status'+(cls?' '+cls:''); }
+function buildTeProjects(sel){
+  const s=document.getElementById('teProject'); s.innerHTML='';
+  const none=document.createElement('option'); none.value=''; none.textContent='—'; s.appendChild(none);
+  tdProjects().forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===sel)o.selected=true; s.appendChild(o); });
+}
+function openTaskEditor(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t)return;
+  editingTaskId=id; const m=t.todoistMeta||{};
+  document.getElementById('teTitle').value=t.name||'';
+  document.getElementById('teDue').value=(m.due&&(m.due.string||m.due.date))||'';
+  document.getElementById('tePrio').value=String(m.priority||1);
+  document.getElementById('teEst').value=minToHoursStr(t.estimateMin);
+  document.getElementById('teLabels').value=(m.labels||[]).join(', ');
+  buildTeProjects(m.projectId||'');
+  const connected=tdConnected(), linked=!!t.todoistId;
+  document.getElementById('teProject').disabled=!connected;
+  document.getElementById('teSyncWrap').style.display=(!linked&&connected)?'flex':'none';
+  document.getElementById('teSync').checked=false;
+  document.getElementById('taskDlgTitle').textContent=linked?'Edit Todoist task':'Edit task';
+  setTeStatus(linked&&connected?'Changes save here and push to Todoist.'
+    :(!connected?'Connect Todoist to push due date, priority and labels.'
+    :'Saved locally. Tick the box to also create it in Todoist.'),'');
+  document.getElementById('taskDialog').showModal();
+}
+async function saveTaskEditor(){
+  const t=state.tasks.find(x=>x.id===editingTaskId);
+  if(!t){ document.getElementById('taskDialog').close(); return; }
+  const title=document.getElementById('teTitle').value.trim()||t.name;
+  const due=document.getElementById('teDue').value.trim();
+  const prio=parseInt(document.getElementById('tePrio').value)||1;
+  const estMin=hoursToMin(document.getElementById('teEst').value);
+  const labels=document.getElementById('teLabels').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const projectId=document.getElementById('teProject').value||'';
+  const wantCreate=document.getElementById('teSync').checked;
+  const connected=tdConnected(), linked=!!t.todoistId;
+  const hasAny = !!(due||prio>1||labels.length||projectId);
+
+  // apply locally
+  t.name=title; t.estimateMin=estMin;
+  if(linked||hasAny){
+    const m=t.todoistMeta||(t.todoistMeta={projectId:'',projectName:'',section:'',labels:[],priority:1,due:null,description:'',rawContent:'',url:'',commentCount:0});
+    m.priority=prio; m.labels=labels; m.rawContent=title;
+    m.due = due? {date:(m.due&&m.due.date)||'',datetime:(m.due&&m.due.datetime)||'',string:due,recurring:(m.due&&m.due.recurring)||false} : null;
+    if(projectId){ m.projectId=projectId; m.projectName=tdProjName(projectId); }
+    if(m.projectName) t.channelId=matchChannel(m.projectName);
+  }
+
+  try{
+    if(connected && linked){
+      setTeStatus('Saving to Todoist…','');
+      const res=await tdUpdateTask(t.todoistId,buildTaskPayload({title,due,prio,estMin,labels}));
+      if(projectId){ try{ await tdMoveTask(t.todoistId,projectId); }catch(e){} }
+      if(res) t.todoistMeta=buildTdMeta(res,projMapFromState(),{});
+    } else if(connected && wantCreate){
+      setTeStatus('Creating in Todoist…','');
+      const payload=buildTaskPayload({title,due,prio,estMin,labels}); if(projectId)payload.project_id=projectId;
+      const res=await tdCreateTask(payload);
+      if(res){ t.todoistId=res.id; t.todoistMeta=buildTdMeta(res,projMapFromState(),{}); }
+    }
+    await saveDay(); render();
+    document.getElementById('taskDialog').close();
+    toast((connected&&(linked||wantCreate))?'Saved & synced to Todoist.':'Saved.');
+  }catch(e){
+    await saveDay(); render();
+    setTeStatus('Todoist error — '+e.message+' (saved locally).','err');
+  }
 }
 function lastSyncLabel(){
   if(!state.todoist.lastSync)return tdConnected()?'Connected — not synced yet.':'';
@@ -1031,6 +1171,8 @@ document.getElementById('tdSync').addEventListener('click',async()=>{
   await syncTodoist(false);
 });
 document.getElementById('tdDisconnect').addEventListener('click',disconnectTodoist);
+document.getElementById('teCancel').addEventListener('click',()=>document.getElementById('taskDialog').close());
+document.getElementById('teSave').addEventListener('click',saveTaskEditor);
 document.getElementById('cloudBtn').addEventListener('click',openSyncDialog);
 document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
 document.getElementById('ghPush').addEventListener('click',async()=>{ readSyncFields(); await pushGist(false); });

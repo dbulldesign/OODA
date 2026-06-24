@@ -64,6 +64,11 @@ and is sent only to Todoist.
 - **Complete back** — when "Complete / reopen the task in Todoist…" is enabled,
   checking a synced task off here closes it in Todoist (and un-checking reopens
   it).
+- **Two-way edit / create** — the pencil button on any task opens an editor for
+  the title, **due date** (natural language, e.g. *tomorrow 9am*, *every Mon*),
+  **priority**, **labels**, **estimate**, and **project**. For a Todoist-linked
+  task, saving pushes those changes back to Todoist (renaming inline pushes too).
+  For a local task, tick *Also create this task in Todoist* to create it there.
 - OODA re-pulls automatically on load whenever a token is connected, and the
   **⟳ Sync Todoist** header button pulls on demand. Use **Disconnect** to remove
   the token and stop syncing.
@@ -92,9 +97,11 @@ travel; the GitHub token and the gist id stay local to each device.
 
 **Behaviour**
 
-- Changes auto-push (debounced) to the gist; the app pulls on load and when you
-  return to the tab (unless a timer is running). You can also **Push**/**Pull**
-  manually from the dialog.
+- **How often it syncs:** there's no polling clock. A **push** happens ~1.5s
+  after any change (the debounce coalesces rapid edits into one write). A
+  **pull** happens on page load and each time you return to the tab (skipped
+  while a timer is running). You can also **Push**/**Pull** on demand from the
+  dialog.
 - Conflict policy is **last-write-wins**, so avoid editing the same day on two
   devices at the exact same moment. For typical phone-then-laptop use it's
   seamless.
