@@ -128,6 +128,11 @@ with `&` (and) / `|` (or):
 Imported tasks land in today's list and map to the **channel** whose name
 matches their Todoist **project** (otherwise the first channel).
 
+That filter only drives the *automatic* pull. To grab **any** task on demand,
+open the Todoist dialog and click **Browse…**: leave the box blank to list
+**all** active tasks (or type any filter), then tick exactly the ones to import.
+Tasks are grouped by project and already-imported ones are shown as added.
+
 ## Offline
 
 OODA is offline-first and installable (it ships a service worker + web
