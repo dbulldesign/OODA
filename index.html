@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OODA — plan, track, close out</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#EBE8E0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="OODA">
 <style>
   :root{
     --paper:#EBE8E0; --surface:#F8F6F1; --surface-2:#F1EEE7;
@@ -187,6 +191,15 @@
   .td-status.ok{color:#3F7A56}
   .td-status.err{color:var(--over)}
   .tools a.cloud-on{color:#2E6B9E;font-weight:600}
+  .td-presets{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .td-presets button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
+    border-radius:14px;padding:4px 9px;font-size:11.5px;cursor:pointer;font-family:var(--display)}
+  .td-presets button:hover{background:var(--surface-2);color:var(--ink)}
+  .td-mini{margin:8px 0 0;font-size:11.5px;color:var(--ink-faint);line-height:1.5}
+  .td-mini code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 4px;border-radius:4px}
+  .td-mini a{color:#2E6B9E}
+  .sync-meta{font-size:11px;color:var(--ink-faint);text-align:right;white-space:nowrap}
+  .sync-meta.off{color:var(--over);font-weight:600}
   /* theme toggle */
   .theme-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
     border-radius:20px;width:30px;height:30px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
@@ -221,6 +234,7 @@
         <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
       </div>
       <button class="sync-btn" id="syncBtn" style="display:none">⟳ Sync Todoist</button>
+      <div class="sync-meta" id="syncMeta"></div>
     </div>
   </header>
 
@@ -306,6 +320,16 @@
     <div class="td-field">
       <label>Which tasks to pull (Todoist filter)</label>
       <input id="tdFilter" type="text" spellcheck="false" placeholder="(today | overdue)">
+      <div class="td-presets" id="tdPresets">
+        <button type="button" data-f="(today | overdue)">Today + overdue</button>
+        <button type="button" data-f="today">Today only</button>
+        <button type="button" data-f="7 days">Next 7 days</button>
+        <button type="button" data-f="@OODA">@OODA label</button>
+        <button type="button" data-f="#Work">#Work project</button>
+        <button type="button" data-f="(p1 | p2)">High priority</button>
+        <button type="button" data-f="no date">No date</button>
+      </div>
+      <p class="td-mini">Any <a href="https://todoist.com/help/articles/introduction-to-filters" target="_blank" rel="noopener">Todoist filter</a> works — combine with <code>&amp;</code> (and) / <code>|</code> (or). Examples: <code>today &amp; @errand</code>, <code>#Work &amp; p1</code>, <code>overdue | today</code>. Imported tasks map to the OODA channel whose name matches their Todoist project (else the first channel).</p>
     </div>
     <label class="td-check"><input id="tdAuto" type="checkbox"> Complete / reopen the task in Todoist when I check it off here</label>
     <div class="td-status" id="tdStatus"></div>
@@ -432,6 +456,7 @@ async function slist(prefix){
   return [...out];
 }
 function updateStoreState(){
+  if(typeof updateConnUI==='function'){ updateConnUI(); return; }
   document.getElementById('storeState').textContent = storeOk ? 'Saved to this device' : 'In-memory only (won’t persist here)';
 }
 
@@ -514,7 +539,7 @@ async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(!t
   const nn=val.trim()||t.name; if(nn===t.name)return; t.name=nn;
   if(t.todoistMeta)t.todoistMeta.rawContent=nn;
   await saveDay(); render();
-  if(t.todoistId&&tdConnected()) tdUpdateTask(t.todoistId,{content:nn}).catch(e=>toast('Couldn’t rename in Todoist: '+e.message));
+  if(t.todoistId&&tdConnected()) enqueueTd({kind:'update',taskLocalId:t.id,payload:{content:nn}});
 }
 async function removeTask(id){
   const t=state.tasks.find(x=>x.id===id);
@@ -710,14 +735,22 @@ function updateTdLink(){
   const a=document.getElementById('todoistBtn');
   if(tdConnected()){ a.textContent='Todoist ✓'; a.classList.add('td-on'); }
   else { a.textContent='Todoist'; a.classList.remove('td-on'); }
-  const b=document.getElementById('syncBtn'); if(b) b.style.display=tdConnected()?'inline-block':'none';
+  const b=document.getElementById('syncBtn'); if(b) b.style.display=(tdConnected()||syncOn())?'inline-block':'none';
 }
 async function doManualSync(){
-  if(!tdConnected()){ openTdDialog(); return; }
+  if(!tdConnected() && !syncOn()){ openTdDialog(); return; }
+  if(!navigator.onLine){ toast('Still offline — will sync automatically when back online.'); updateConnUI(); return; }
   const b=document.getElementById('syncBtn');
   b.classList.add('syncing'); b.textContent='Syncing…';
-  await syncTodoist(false);
-  b.classList.remove('syncing'); b.textContent='⟳ Sync Todoist';
+  try{
+    // if we have unsynced offline edits, push them up first so a pull can't clobber them
+    if(syncOn()){ if(dirtyOffline){ await pushGist(true); } else if(sync.gistId){ await pullGist(true); } }
+    await flushTodoist();                                // push queued Todoist writes
+    if(tdConnected()) await syncTodoist(true);           // pull Todoist tasks
+    if(syncOn()) await pushGist(true);                   // push merged state to cloud
+    toast('Synced.');
+  }catch(e){ toast('Sync issue: '+e.message); }
+  b.classList.remove('syncing'); updateConnUI();
 }
 async function tdFetch(path,opts={}){
   const tok=state.todoist.token; if(!tok) throw new Error('No Todoist token set');
@@ -770,8 +803,10 @@ function buildTdMeta(td,projMap,sectMap){
 }
 async function syncTodoist(silent){
   if(!tdConnected()){ if(!silent)openTdDialog(); return; }
+  if(!navigator.onLine){ if(!silent)toast('Offline — will sync when back online.'); updateConnUI(); return; }
   if(!silent)setTdStatus('Syncing…','');
   try{
+    await flushTodoist();   // push queued completions/edits before pulling
     let projMap={},sectMap={},projList=[];
     try{ projList=await tdGetAll('/projects?limit=200'); projList.forEach(p=>projMap[p.id]=p.name); state.todoist.projects=projList.map(p=>({id:p.id,name:p.name})); }catch(e){ /* project names are nice-to-have */ }
     try{ const sections=await tdGetAll('/sections?limit=200'); sections.forEach(s=>sectMap[s.id]=s.name); }catch(e){ /* sections optional */ }
@@ -794,7 +829,7 @@ async function syncTodoist(silent){
       }
     });
     state.todoist.lastSync=Date.now();
-    await saveConfig(); await saveDay(); render(); updateTdLink();
+    await saveConfig(); await saveDay(); render(); updateTdLink(); updateConnUI();
     const summary='Todoist: '+added+' added'+(updated?', '+updated+' updated':'')+(added+updated===0?' — nothing new':'');
     setTdStatus(lastSyncLabel(),'ok');
     if(!silent)toast(summary);
@@ -805,9 +840,69 @@ async function syncTodoist(silent){
 }
 function pushDoneToTodoist(t){
   if(!t||!t.todoistId||!tdConnected()||!state.todoist.autocomplete)return;
-  const path='/tasks/'+t.todoistId+(t.done?'/close':'/reopen');
-  tdFetch(path,{method:'POST'}).catch(e=>toast('Couldn’t update Todoist: '+e.message));
+  enqueueTd({kind:t.done?'close':'reopen',taskLocalId:t.id});
 }
+
+/* ---------- offline outbox: queue Todoist writes, flush when online ---------- */
+let tdOutbox=[]; let flushing=false;
+function loadOutbox(){ try{ const r=localStorage.getItem(LS_PREFIX+'_tdoutbox'); tdOutbox=r?JSON.parse(r):[]; }catch(e){ tdOutbox=[]; } }
+function saveOutbox(){ try{ localStorage.setItem(LS_PREFIX+'_tdoutbox',JSON.stringify(tdOutbox)); }catch(e){} }
+function enqueueTd(op){ tdOutbox.push({...op,ts:Date.now()}); saveOutbox(); updateConnUI(); flushTodoist(); }
+async function flushTodoist(){
+  if(flushing||!tdConnected()||!navigator.onLine||!tdOutbox.length) return;
+  flushing=true; let changed=false;
+  try{
+    while(tdOutbox.length){
+      const op=tdOutbox[0];
+      const t=state.tasks.find(x=>x.id===op.taskLocalId);
+      try{
+        if(op.kind==='create'){
+          if(t){ const res=await tdCreateTask(op.payload);
+            if(res){ t.todoistId=res.id; t.todoistMeta=buildTdMeta(res,projMapFromState(),{}); changed=true; } }
+        } else {
+          const id = t? t.todoistId : op.todoistId;
+          if(id){
+            if(op.kind==='close') await tdFetch('/tasks/'+id+'/close',{method:'POST'});
+            else if(op.kind==='reopen') await tdFetch('/tasks/'+id+'/reopen',{method:'POST'});
+            else if(op.kind==='update'){ const res=await tdUpdateTask(id,op.payload); if(t&&res){ t.todoistMeta=buildTdMeta(res,projMapFromState(),{}); changed=true; } }
+            else if(op.kind==='move') await tdMoveTask(id,op.projectId);
+          }
+        }
+        tdOutbox.shift(); saveOutbox();
+      }catch(e){
+        if(/token rejected/.test(e.message)){ toast('Todoist token rejected — fix it in the Todoist dialog.'); }
+        break; // network/transient or auth — stop and retry later
+      }
+    }
+  } finally {
+    flushing=false;
+    if(changed){ await saveDay(); render(); }
+    updateConnUI();
+  }
+}
+
+/* ---------- connectivity / last-synced UI ---------- */
+function fmtTime(ts){ return ts? new Date(ts).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) : ''; }
+function updateConnUI(){
+  const online=navigator.onLine, pending=tdOutbox.length;
+  const ss=document.getElementById('storeState');
+  if(ss){ const base = !storeOk ? 'In-memory only (won’t persist here)' : (online?'Saved to this device':'Offline — saved locally');
+    ss.textContent = base + (pending?(' · '+pending+' to sync'):''); }
+  const sm=document.getElementById('syncMeta');
+  if(sm){ const bits=[];
+    if(!online) bits.push('Offline');
+    if(state.todoist&&state.todoist.lastSync) bits.push('Todoist '+fmtTime(state.todoist.lastSync));
+    const cloud=Math.max((sync&&sync.lastPush)||0,(sync&&sync.lastPull)||0);
+    if(cloud) bits.push('Cloud '+fmtTime(cloud));
+    if(pending) bits.push(pending+' queued');
+    sm.textContent=bits.join(' · ');
+    sm.classList.toggle('off',!online);
+  }
+  const b=document.getElementById('syncBtn');
+  if(b){ b.style.display=(tdConnected()||syncOn())?'inline-block':'none';
+    if(!b.classList.contains('syncing')) b.textContent = online?'⟳ Sync now':'⟳ Offline — retry'; }
+}
+
 /* ---------- two-way writes ---------- */
 function tdProjects(){ return (state.todoist&&state.todoist.projects)||[]; }
 function tdProjName(id){ const p=tdProjects().find(p=>p.id===id); return p?p.name:''; }
@@ -872,25 +967,20 @@ async function saveTaskEditor(){
     if(m.projectName) t.channelId=matchChannel(m.projectName);
   }
 
-  try{
-    if(connected && linked){
-      setTeStatus('Saving to Todoist…','');
-      const res=await tdUpdateTask(t.todoistId,buildTaskPayload({title,due,prio,estMin,labels}));
-      if(projectId){ try{ await tdMoveTask(t.todoistId,projectId); }catch(e){} }
-      if(res) t.todoistMeta=buildTdMeta(res,projMapFromState(),{});
-    } else if(connected && wantCreate){
-      setTeStatus('Creating in Todoist…','');
-      const payload=buildTaskPayload({title,due,prio,estMin,labels}); if(projectId)payload.project_id=projectId;
-      const res=await tdCreateTask(payload);
-      if(res){ t.todoistId=res.id; t.todoistMeta=buildTdMeta(res,projMapFromState(),{}); }
-    }
-    await saveDay(); render();
-    document.getElementById('taskDialog').close();
-    toast((connected&&(linked||wantCreate))?'Saved & synced to Todoist.':'Saved.');
-  }catch(e){
-    await saveDay(); render();
-    setTeStatus('Todoist error — '+e.message+' (saved locally).','err');
+  // queue Todoist writes (flushed now if online, later if offline)
+  let queued=false;
+  if(connected && linked){
+    enqueueTd({kind:'update',taskLocalId:t.id,payload:buildTaskPayload({title,due,prio,estMin,labels})});
+    if(projectId) enqueueTd({kind:'move',taskLocalId:t.id,projectId});
+    queued=true;
+  } else if(connected && wantCreate){
+    const payload=buildTaskPayload({title,due,prio,estMin,labels}); if(projectId)payload.project_id=projectId;
+    enqueueTd({kind:'create',taskLocalId:t.id,payload});
+    queued=true;
   }
+  await saveDay(); render();
+  document.getElementById('taskDialog').close();
+  toast(queued ? (navigator.onLine?'Saved & syncing to Todoist.':'Saved — will sync to Todoist when online.') : 'Saved.');
 }
 function lastSyncLabel(){
   if(!state.todoist.lastSync)return tdConnected()?'Connected — not synced yet.':'';
@@ -928,15 +1018,17 @@ async function disconnectTodoist(){
    in the gist); the data — including your Todoist token — syncs across
    devices. Conflict policy is last-write-wins. */
 let sync={token:'',gistId:'',auto:true,lastPush:null,lastPull:null};
-let pushTimer=null, pulling=false;
+let pushTimer=null, pulling=false, dirtyOffline=false;
 const SYNC_FILE='ooda-data.json', SYNC_LOCAL='_sync';
 function syncOn(){ return !!sync.token; }
-function loadSync(){ try{ const raw=localStorage.getItem(LS_PREFIX+SYNC_LOCAL); if(raw) sync={...sync,...JSON.parse(raw)}; }catch(e){} }
+function setDirty(v){ dirtyOffline=v; try{ localStorage.setItem(LS_PREFIX+'_dirty',v?'1':'0'); }catch(e){} }
+function loadSync(){ try{ const raw=localStorage.getItem(LS_PREFIX+SYNC_LOCAL); if(raw) sync={...sync,...JSON.parse(raw)}; dirtyOffline=localStorage.getItem(LS_PREFIX+'_dirty')==='1'; }catch(e){} }
 function saveSync(){ try{ localStorage.setItem(LS_PREFIX+SYNC_LOCAL,JSON.stringify(sync)); }catch(e){} }
 function updateCloudLink(){
   const a=document.getElementById('cloudBtn'); if(!a)return;
   if(syncOn()){ a.textContent='Device sync ✓'; a.classList.add('cloud-on'); }
   else { a.textContent='Device sync'; a.classList.remove('cloud-on'); }
+  updateConnUI();
 }
 function setSyncStatus(msg,cls){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg; el.className='td-status'+(cls?' '+cls:''); } }
 function syncStatusLabel(){
@@ -964,9 +1056,12 @@ async function snapshot(){
   for(const k of keys){ const v=await sget(k); if(v!=null) obj[k]=v; }
   return obj;
 }
-function schedulePush(){ if(!syncOn()||!sync.auto||pulling)return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>pushGist(true),1500); }
+function schedulePush(){ if(!syncOn()||!sync.auto||pulling)return;
+  if(!navigator.onLine){ setDirty(true); return; }   // remember to push when back online
+  clearTimeout(pushTimer); pushTimer=setTimeout(()=>pushGist(true),1500); }
 async function pushGist(silent){
   if(!syncOn()){ if(!silent)toast('Add a GitHub token first.'); return; }
+  if(!navigator.onLine){ if(!silent)toast('Offline — will sync when back online.'); return; }
   try{
     const body={ files:{ [SYNC_FILE]:{ content: JSON.stringify({v:1,ts:Date.now(),data:await snapshot()}) } } };
     let g;
@@ -974,12 +1069,13 @@ async function pushGist(silent){
     else { body.description='OODA device-sync data'; body.public=false;
       g=await ghFetch('/gists',{method:'POST',body:JSON.stringify(body)});
       sync.gistId=g.id; const f=document.getElementById('ghGist'); if(f)f.value=g.id; }
-    sync.lastPush=Date.now(); saveSync(); setSyncStatus(syncStatusLabel(),'ok');
+    sync.lastPush=Date.now(); saveSync(); setDirty(false); setSyncStatus(syncStatusLabel(),'ok'); updateConnUI();
     if(!silent)toast('Pushed to cloud.');
   }catch(e){ setSyncStatus('Push failed — '+e.message,'err'); if(!silent)toast('Cloud push failed: '+e.message); }
 }
 async function pullGist(silent){
   if(!syncOn()||!sync.gistId){ if(!silent)toast('Nothing to pull yet — Push first or paste a Sync ID.'); return false; }
+  if(!navigator.onLine){ if(!silent)toast('Offline — can’t pull right now.'); return false; }
   try{
     pulling=true;
     const g=await ghFetch('/gists/'+sync.gistId);
@@ -991,7 +1087,7 @@ async function pullGist(silent){
     for(const k in data){ await sset(k,data[k]); }
     sync.lastPull=Date.now(); saveSync();
     await reloadState(); await loadHistory();
-    setSyncStatus(syncStatusLabel(),'ok');
+    setSyncStatus(syncStatusLabel(),'ok'); updateConnUI();
     if(!silent)toast('Pulled latest from cloud.');
     return true;
   }catch(e){ setSyncStatus('Pull failed — '+e.message,'err'); if(!silent)toast('Cloud pull failed: '+e.message); return false; }
@@ -1178,13 +1274,28 @@ document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
 document.getElementById('ghPush').addEventListener('click',async()=>{ readSyncFields(); await pushGist(false); });
 document.getElementById('ghPull').addEventListener('click',async()=>{ readSyncFields(); await pullGist(false); });
 document.getElementById('ghDisconnect').addEventListener('click',disconnectSync);
+// filter presets in the Todoist dialog
+document.getElementById('tdPresets').addEventListener('click',e=>{ const btn=e.target.closest('button[data-f]'); if(btn){ document.getElementById('tdFilter').value=btn.getAttribute('data-f'); } });
 // pick up changes made on another device when returning to the tab (skip while a timer is running)
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden && syncOn() && sync.auto && !state.tasks.some(t=>t.running)) pullGist(true); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && navigator.onLine && syncOn() && sync.auto && !state.tasks.some(t=>t.running)) pullGist(true); });
+// connectivity: flush queued work and refresh status when the network returns / drops
+window.addEventListener('online',async()=>{ updateConnUI();
+  await flushTodoist();
+  // push offline edits first (don't let a pull clobber them); otherwise pull others' changes
+  if(syncOn()){ if(dirtyOffline){ await pushGist(true); } else { await pullGist(true); } }
+  if(tdConnected()) await syncTodoist(true);
+  if(syncOn()) await pushGist(true);
+});
+window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadSync(); updateCloudLink();
-  await load();
-  // pull the latest snapshot from the cloud before anything else if connected
-  if(syncOn() && sync.gistId){ await pullGist(true); }
+(async()=>{ applyTheme(preferredTheme()); loadSync(); loadOutbox(); updateCloudLink();
+  await load(); updateConnUI();
+  // sync with the cloud on startup if connected & online — but push first if we have
+  // unsynced offline edits, so we never clobber them with an older remote snapshot
+  if(syncOn() && navigator.onLine){
+    if(dirtyOffline){ await pushGist(true); }
+    else if(sync.gistId){ await pullGist(true); }
+  }
   await loadHistory();
   const carry=await sget('carry');
   if(carry&&carry.length&&!state.tasks.length){
@@ -1192,8 +1303,11 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden && syncOn
       state.tasks.push({id:uid(),name:n,channelId:state.channels[0].id,estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:tdId}); });
     await sset('carry',[]); await saveDay(); render(); toast('Carried '+carry.length+' task(s) from before.');
   }
-  // pull today's Todoist tasks on open if connected
-  if(tdConnected()) syncTodoist(true);
+  // flush any queued offline changes, then pull today's Todoist tasks
+  if(navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
+  updateConnUI();
+  // register the service worker so the app loads offline
+  if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('sw.js'); }catch(e){} }
 })();
 </script>
 </body>
