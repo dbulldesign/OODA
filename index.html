@@ -272,7 +272,7 @@ const DEFAULT_CHANNELS=[
   {id:'comms',name:'Comms',color:'#B14A3C'}
 ];
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,lastSync:null};
-const TD_BASE='https://api.todoist.com/rest/v2';
+const TD_BASE='https://api.todoist.com/api/v1';
 
 let state={ channels:[], capacityHours:7, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
 let memFallback={}; let storeOk=true; let tick=null;
@@ -486,6 +486,18 @@ async function tdFetch(path,opts={}){
   if(!res.ok) throw new Error('Todoist API '+res.status);
   const txt=await res.text(); return txt?JSON.parse(txt):null;
 }
+// API v1 paginates as {results:[...],next_cursor}. Follow the cursor and flatten.
+async function tdGetAll(path){
+  let out=[],cursor=null,guard=0;
+  do{
+    const sep=path.includes('?')?'&':'?';
+    const data=await tdFetch(path+(cursor?sep+'cursor='+encodeURIComponent(cursor):''));
+    if(Array.isArray(data)){ out=out.concat(data); cursor=null; }            // tolerate a bare array
+    else if(data&&Array.isArray(data.results)){ out=out.concat(data.results); cursor=data.next_cursor||null; }
+    else cursor=null;
+  } while(cursor && ++guard<25);
+  return out;
+}
 function matchChannel(projectName){
   if(projectName){ const hit=state.channels.find(c=>c.name.toLowerCase()===projectName.toLowerCase()); if(hit)return hit.id; }
   return (state.channels[0]||{}).id;
@@ -502,9 +514,9 @@ async function syncTodoist(silent){
   if(!silent)setTdStatus('Syncing…','');
   try{
     let projMap={};
-    try{ const projects=await tdFetch('/projects'); (projects||[]).forEach(p=>projMap[p.id]=p.name); }catch(e){ /* project names are nice-to-have */ }
+    try{ const projects=await tdGetAll('/projects?limit=200'); projects.forEach(p=>projMap[p.id]=p.name); }catch(e){ /* project names are nice-to-have */ }
     const filter=encodeURIComponent(state.todoist.filter||'today');
-    const tasks=await tdFetch('/tasks?filter='+filter)||[];
+    const tasks=await tdGetAll('/tasks/filter?query='+filter+'&limit=200');
     let added=0,updated=0;
     tasks.forEach(td=>{
       const existing=state.tasks.find(t=>t.todoistId===td.id);
