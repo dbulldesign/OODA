@@ -152,6 +152,7 @@
   .td-status{font-size:12.5px;color:var(--ink-faint);min-height:17px;margin:2px 0 4px}
   .td-status.ok{color:#3F7A56}
   .td-status.err{color:var(--over)}
+  .tools a.cloud-on{color:#2E6B9E;font-weight:600}
 </style>
 </head>
 <body>
@@ -217,7 +218,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
     <span id="storeState"></span>
   </div>
 
@@ -260,6 +261,31 @@
       <span style="display:flex;gap:8px">
         <button id="tdSync">Sync now</button>
         <button class="primary" id="tdSave">Save</button>
+      </span>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="syncDialog">
+  <div class="dlg-in">
+    <h3>Sync across devices</h3>
+    <p class="td-hint">Keeps your tasks, times and reflections in sync between phone and laptop using a <b>private GitHub Gist</b> — free and reliable. Create a <b>GitHub personal access token</b> with the <b>gist</b> scope (github.com/settings/tokens), paste it below, and Save. The token stays on this device; only your OODA data goes to the gist.</p>
+    <div class="td-field">
+      <label>GitHub token (gist scope)</label>
+      <input id="ghToken" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_… or ghp_…">
+    </div>
+    <div class="td-field">
+      <label>Sync ID (gist id) — paste this on your other devices</label>
+      <input id="ghGist" type="text" spellcheck="false" placeholder="created automatically on first sync">
+    </div>
+    <label class="td-check"><input id="ghAuto" type="checkbox" checked> Auto-sync changes and pull on load</label>
+    <div class="td-status" id="syncStatus"></div>
+    <div class="dlg-actions">
+      <button class="danger" id="ghDisconnect">Disconnect</button>
+      <span style="display:flex;gap:8px">
+        <button id="ghPull">Pull</button>
+        <button id="ghPush">Push</button>
+        <button class="primary" id="ghSave">Save</button>
       </span>
     </div>
   </div>
@@ -339,8 +365,20 @@ async function load(){
   document.getElementById('reflectText').value=state.reflection;
   buildChannelSelect(); render(); startTick(); updateStoreState(); updateTdLink();
 }
-async function saveConfig(){ await sset('config',{channels:state.channels,capacityHours:state.capacityHours,todoist:state.todoist}); }
-async function saveDay(){ await sset(todayKey(),{date:todayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); }
+// re-read in-memory state from storage without re-saving (used after a cloud pull)
+async function reloadState(){
+  const cfg=await sget('config');
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  const day=await sget(todayKey());
+  state.tasks=day&&day.tasks?day.tasks:[];
+  state.reflection=day&&day.reflection?day.reflection:'';
+  const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
+  document.getElementById('capInput').value=state.capacityHours;
+  document.getElementById('reflectText').value=state.reflection;
+  buildChannelSelect(); render(); updateTdLink(); updateStoreState();
+}
+async function saveConfig(){ await sset('config',{channels:state.channels,capacityHours:state.capacityHours,todoist:state.todoist}); schedulePush(); }
+async function saveDay(){ await sset(todayKey(),{date:todayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
 async function addTask(){
@@ -481,12 +519,13 @@ async function closeDay(){
   state.tasks.forEach(t=>{ if(t.running){ t.actualMs+=Date.now()-t.startedAt; t.running=false; t.startedAt=null; } });
   state.activeId=null; state.reflection=document.getElementById('reflectText').value;
   await sset(todayKey(),{date:todayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:true});
+  schedulePush();
   render(); loadHistory(); toast('Day closed and saved to your record.');
 }
 async function rollover(){
   const carry=state.tasks.filter(t=>!t.done).map(t=>({name:t.name,todoistId:t.todoistId||null}));
   if(!carry.length){ toast('Nothing unfinished to carry.'); return; }
-  await sset('carry',carry); toast(carry.length+' task(s) queued for tomorrow.');
+  await sset('carry',carry); schedulePush(); toast(carry.length+' task(s) queued for tomorrow.');
 }
 
 /* ---------- Todoist sync ---------- */
@@ -605,6 +644,107 @@ async function disconnectTodoist(){
   toast('Todoist disconnected.');
 }
 
+/* ---------- device sync (private GitHub Gist) ----------
+   The whole OODA dataset (config, day:*, carry) is mirrored into one
+   private gist. The GitHub token + gist id stay device-local (never put
+   in the gist); the data — including your Todoist token — syncs across
+   devices. Conflict policy is last-write-wins. */
+let sync={token:'',gistId:'',auto:true,lastPush:null,lastPull:null};
+let pushTimer=null, pulling=false;
+const SYNC_FILE='ooda-data.json', SYNC_LOCAL='_sync';
+function syncOn(){ return !!sync.token; }
+function loadSync(){ try{ const raw=localStorage.getItem(LS_PREFIX+SYNC_LOCAL); if(raw) sync={...sync,...JSON.parse(raw)}; }catch(e){} }
+function saveSync(){ try{ localStorage.setItem(LS_PREFIX+SYNC_LOCAL,JSON.stringify(sync)); }catch(e){} }
+function updateCloudLink(){
+  const a=document.getElementById('cloudBtn'); if(!a)return;
+  if(syncOn()){ a.textContent='Device sync ✓'; a.classList.add('cloud-on'); }
+  else { a.textContent='Device sync'; a.classList.remove('cloud-on'); }
+}
+function setSyncStatus(msg,cls){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg; el.className='td-status'+(cls?' '+cls:''); } }
+function syncStatusLabel(){
+  if(!syncOn())return '';
+  const bits=[];
+  if(sync.lastPull)bits.push('pulled '+new Date(sync.lastPull).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));
+  if(sync.lastPush)bits.push('pushed '+new Date(sync.lastPush).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}));
+  return bits.length?'Connected — '+bits.join(', ')+'.':'Connected.';
+}
+async function ghFetch(path,opts={}){
+  const res=await fetch('https://api.github.com'+path,{...opts,headers:{
+    'Authorization':'Bearer '+sync.token,
+    'Accept':'application/vnd.github+json',
+    'Content-Type':'application/json',
+    ...(opts.headers||{})
+  }});
+  if(res.status===401||res.status===403) throw new Error('token rejected (needs gist scope)');
+  if(!res.ok) throw new Error('GitHub '+res.status);
+  return res.status===204?null:await res.json();
+}
+async function snapshot(){
+  const keys=new Set(['config','carry']);
+  (await slist('day:')).forEach(k=>keys.add(k));
+  const obj={};
+  for(const k of keys){ const v=await sget(k); if(v!=null) obj[k]=v; }
+  return obj;
+}
+function schedulePush(){ if(!syncOn()||!sync.auto||pulling)return; clearTimeout(pushTimer); pushTimer=setTimeout(()=>pushGist(true),1500); }
+async function pushGist(silent){
+  if(!syncOn()){ if(!silent)toast('Add a GitHub token first.'); return; }
+  try{
+    const body={ files:{ [SYNC_FILE]:{ content: JSON.stringify({v:1,ts:Date.now(),data:await snapshot()}) } } };
+    let g;
+    if(sync.gistId){ g=await ghFetch('/gists/'+sync.gistId,{method:'PATCH',body:JSON.stringify(body)}); }
+    else { body.description='OODA device-sync data'; body.public=false;
+      g=await ghFetch('/gists',{method:'POST',body:JSON.stringify(body)});
+      sync.gistId=g.id; const f=document.getElementById('ghGist'); if(f)f.value=g.id; }
+    sync.lastPush=Date.now(); saveSync(); setSyncStatus(syncStatusLabel(),'ok');
+    if(!silent)toast('Pushed to cloud.');
+  }catch(e){ setSyncStatus('Push failed — '+e.message,'err'); if(!silent)toast('Cloud push failed: '+e.message); }
+}
+async function pullGist(silent){
+  if(!syncOn()||!sync.gistId){ if(!silent)toast('Nothing to pull yet — Push first or paste a Sync ID.'); return false; }
+  try{
+    pulling=true;
+    const g=await ghFetch('/gists/'+sync.gistId);
+    const f=g.files&&g.files[SYNC_FILE];
+    if(!f){ if(!silent)toast('No OODA data in that gist yet.'); return false; }
+    let content=f.content;
+    if(f.truncated&&f.raw_url){ const r=await fetch(f.raw_url); content=await r.text(); }
+    const parsed=JSON.parse(content), data=parsed.data||parsed;
+    for(const k in data){ await sset(k,data[k]); }
+    sync.lastPull=Date.now(); saveSync();
+    await reloadState(); await loadHistory();
+    setSyncStatus(syncStatusLabel(),'ok');
+    if(!silent)toast('Pulled latest from cloud.');
+    return true;
+  }catch(e){ setSyncStatus('Pull failed — '+e.message,'err'); if(!silent)toast('Cloud pull failed: '+e.message); return false; }
+  finally{ pulling=false; }
+}
+function openSyncDialog(){
+  document.getElementById('ghToken').value=sync.token||'';
+  document.getElementById('ghGist').value=sync.gistId||'';
+  document.getElementById('ghAuto').checked=!!sync.auto;
+  setSyncStatus(syncStatusLabel(), syncOn()?'ok':'');
+  document.getElementById('syncDialog').showModal();
+}
+function readSyncFields(){
+  sync.token=document.getElementById('ghToken').value.trim();
+  sync.gistId=document.getElementById('ghGist').value.trim();
+  sync.auto=document.getElementById('ghAuto').checked;
+  saveSync(); updateCloudLink();
+}
+async function saveSyncSettings(){
+  readSyncFields();
+  toast(syncOn()?'Device sync saved.':'Device sync disconnected.');
+  document.getElementById('syncDialog').close();
+  if(syncOn()){ if(sync.gistId) await pullGist(false); else await pushGist(false); }
+}
+async function disconnectSync(){
+  sync={token:'',gistId:'',auto:true,lastPush:null,lastPull:null};
+  saveSync(); updateCloudLink();
+  document.getElementById('syncDialog').close();
+  toast('Device sync disconnected.');
+}
+
 /* ---------- channels editor ---------- */
 function buildChannelSelect(){
   const sel=document.getElementById('addChannel'); sel.innerHTML='';
@@ -694,8 +834,19 @@ document.getElementById('tdSync').addEventListener('click',async()=>{
   await syncTodoist(false);
 });
 document.getElementById('tdDisconnect').addEventListener('click',disconnectTodoist);
+document.getElementById('cloudBtn').addEventListener('click',openSyncDialog);
+document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
+document.getElementById('ghPush').addEventListener('click',async()=>{ readSyncFields(); await pushGist(false); });
+document.getElementById('ghPull').addEventListener('click',async()=>{ readSyncFields(); await pullGist(false); });
+document.getElementById('ghDisconnect').addEventListener('click',disconnectSync);
+// pick up changes made on another device when returning to the tab (skip while a timer is running)
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && syncOn() && sync.auto && !state.tasks.some(t=>t.running)) pullGist(true); });
 
-(async()=>{ await load(); await loadHistory();
+(async()=>{ loadSync(); updateCloudLink();
+  await load();
+  // pull the latest snapshot from the cloud before anything else if connected
+  if(syncOn() && sync.gistId){ await pullGist(true); }
+  await loadHistory();
   const carry=await sget('carry');
   if(carry&&carry.length&&!state.tasks.length){
     carry.forEach(c=>{ const n=typeof c==='string'?c:c.name; const tdId=typeof c==='string'?null:(c.todoistId||null);

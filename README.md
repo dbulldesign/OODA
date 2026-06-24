@@ -63,3 +63,31 @@ and is sent only to Todoist.
 > requests, which it does (`Access-Control-Allow-Origin: *` for authenticated
 > requests). The older `rest/v2` endpoints were retired by Todoist in early
 > 2026; this app uses the current unified `api/v1` endpoints.
+
+## Sync across devices (mobile ↔ desktop)
+
+Because the app is backend-free, cross-device sync works by mirroring your whole
+OODA dataset into a **private GitHub Gist** — free and reliable, no extra
+hosting. Your tasks, tracked time, reflections, channels, and Todoist token all
+travel; the GitHub token and the gist id stay local to each device.
+
+**Setup**
+
+1. Create a GitHub **personal access token** with the **`gist`** scope at
+   [github.com/settings/tokens](https://github.com/settings/tokens) (classic
+   token → check *gist*; or a fine-grained token with Gists read/write).
+2. Click **Device sync** in the tools row, paste the token, and **Save**. On
+   first sync a private gist is created and its **Sync ID** is shown.
+3. On your other device, open **Device sync**, paste the **same token** (or any
+   token on the same GitHub account) **and the Sync ID**, then **Pull**.
+
+**Behaviour**
+
+- Changes auto-push (debounced) to the gist; the app pulls on load and when you
+  return to the tab (unless a timer is running). You can also **Push**/**Pull**
+  manually from the dialog.
+- Conflict policy is **last-write-wins**, so avoid editing the same day on two
+  devices at the exact same moment. For typical phone-then-laptop use it's
+  seamless.
+- The gist is **private**, but treat it like any synced data — anyone with the
+  token and id could read it. Use **Disconnect** to stop syncing on a device.
