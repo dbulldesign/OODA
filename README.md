@@ -27,6 +27,10 @@ footer shows which mode is active).
   over-estimate warnings.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
+- **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
+  reveal; remembers your choice and defaults to your system preference.
+- A **confetti + pop** celebration when you complete a task (and an extra burst
+  when the whole day is done). Respects `prefers-reduced-motion`.
 
 ## Todoist sync
 
@@ -52,6 +56,11 @@ and is sent only to Todoist.
   task's *duration* (when set) becomes the estimate, and its *project* maps to a
   channel of the same name when one exists (otherwise the first channel).
   Synced tasks are marked with a `TD` tag and are de-duplicated on re-sync.
+- **Task details** — each synced task shows chips for its **project / section**,
+  **due date** (red when overdue), **priority** (P1–P3), and **@labels**. Click
+  the chevron to expand and see the **description**, any **links** (from the
+  title or description), the full due string, comment count, and an **Open in
+  Todoist** link.
 - **Complete back** — when "Complete / reopen the task in Todoist…" is enabled,
   checking a synced task off here closes it in Todoist (and un-checking reopens
   it).

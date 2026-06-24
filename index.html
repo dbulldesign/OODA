@@ -16,6 +16,14 @@
     --display:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   }
+  :root[data-theme="dark"]{
+    --paper:#15191B; --surface:#1E2426; --surface-2:#262D30;
+    --ink:#E7E4DC; --ink-soft:#A4ABAB; --ink-faint:#717979;
+    --line:#2E3639; --line-strong:#3C4548;
+    --now:#D98A3D; --now-soft:#3A2C18; --now-deep:#E0A05B;
+    --over:#D2604F; --over-soft:#3A211C;
+    --todoist:#F06A5C;
+  }
   *{box-sizing:border-box}
   html,body{margin:0}
   body{
@@ -23,6 +31,7 @@
     background:var(--paper);
     -webkit-font-smoothing:antialiased; line-height:1.45;
     padding:0 16px 80px;
+    transition:background-color .3s ease,color .3s ease;
   }
   .wrap{max-width:760px;margin:0 auto}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
@@ -33,7 +42,7 @@
   .sync-btn.syncing{opacity:.55;pointer-events:none}
   .date{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
   h1{font-size:30px;margin:2px 0 0;font-weight:650;letter-spacing:-.02em}
-  .phase{display:flex;gap:4px;font-size:12px}
+  .phase{display:flex;align-items:center;gap:4px;font-size:12px}
   .phase span{padding:5px 11px;border:1px solid var(--line-strong);border-radius:20px;color:var(--ink-faint);letter-spacing:.03em}
   .phase span.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
 
@@ -76,11 +85,13 @@
 
   /* task list */
   .tasks{list-style:none;padding:0;margin:0}
-  .task{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--line);
+  .task{display:flex;align-items:flex-start;gap:11px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);
     border-radius:var(--radius);padding:11px 13px;margin-bottom:8px;transition:border-color .2s,opacity .2s}
   .task.running{border-color:var(--now);box-shadow:inset 3px 0 0 var(--now)}
   .task.done{opacity:.5}
-  .task .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto}
+  .task .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;margin-top:5px}
+  .task .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+  .task .row1{display:flex;align-items:center;gap:11px}
   .task .name{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
   .task.done .name{text-decoration:line-through}
   .task .times{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center}
@@ -88,6 +99,24 @@
   .task .times .act.over{color:var(--over)}
   .tdtag{font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--todoist);
     border:1px solid var(--todoist);border-radius:4px;padding:1px 3px;margin-right:6px;line-height:1}
+  /* todoist metadata chips */
+  .meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .chip{font-size:11px;line-height:1;padding:3px 7px;border-radius:11px;border:1px solid var(--line-strong);
+    color:var(--ink-soft);background:var(--surface-2);white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
+  .chip.proj{color:var(--ink);font-weight:500}
+  .chip.due.over{color:var(--over);border-color:var(--over)}
+  .chip.label::before{content:'@';opacity:.55}
+  .chip.prio{font-weight:700;border-color:transparent;color:#fff}
+  .chip.prio.p1{background:#B14233}.chip.prio.p2{background:#C2752A}.chip.prio.p3{background:#2E6B9E}
+  .tdetails{flex-basis:100%;width:100%;margin:8px 0 1px;padding:10px 12px;border-top:1px dashed var(--line);
+    font-size:13px;color:var(--ink-soft);display:none}
+  .task.expanded .tdetails{display:block}
+  .tdetails a{color:#2E6B9E;text-underline-offset:2px}
+  .tdetails .d-desc{white-space:pre-wrap;margin-bottom:8px;color:var(--ink)}
+  .tdetails .d-row{margin:3px 0}
+  .tdetails b{color:var(--ink);font-weight:600}
+  .task .expand{color:var(--ink-faint);transition:transform .2s}
+  .task.expanded .expand{transform:rotate(180deg)}
   .task button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);
     width:30px;height:30px;border-radius:7px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;padding:0}
   .task button:hover{background:var(--paper)}
@@ -96,6 +125,8 @@
   @media (prefers-reduced-motion:no-preference){
     .task .check.done{animation:pop .35s ease}
     @keyframes pop{0%{transform:scale(.6)}55%{transform:scale(1.18)}100%{transform:scale(1)}}
+    .task.celebrate{animation:celebrate .6s ease}
+    @keyframes celebrate{0%{transform:scale(1)}30%{transform:scale(1.015);box-shadow:0 6px 22px rgba(63,122,86,.28)}100%{transform:scale(1)}}
   }
   .icon{width:14px;height:14px;display:block}
 
@@ -153,7 +184,24 @@
   .td-status.ok{color:#3F7A56}
   .td-status.err{color:var(--over)}
   .tools a.cloud-on{color:#2E6B9E;font-weight:600}
+  /* theme toggle */
+  .theme-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
+    border-radius:20px;width:30px;height:30px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
+  .theme-btn:hover{background:var(--surface-2);color:var(--ink)}
+  /* confetti */
+  #confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
+  .confetti-bit{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;will-change:transform,opacity;opacity:0}
+  @media (prefers-reduced-motion:no-preference){
+    .confetti-bit{animation:fall var(--dur,1.4s) cubic-bezier(.2,.6,.4,1) forwards}
+    @keyframes fall{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:.9;transform:translateY(108vh) rotate(var(--spin,540deg))}}
+  }
 </style>
+<script>
+  // set theme before first paint to avoid a flash
+  (function(){ try{ var s=localStorage.getItem('ooda:_theme');
+    if(!s) s=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+    document.documentElement.setAttribute('data-theme',s); }catch(e){} })();
+</script>
 </head>
 <body>
 <div class="wrap">
@@ -167,6 +215,7 @@
         <span id="ph-plan">Plan</span>
         <span id="ph-work">Work</span>
         <span id="ph-reflect">Reflect</span>
+        <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
       </div>
       <button class="sync-btn" id="syncBtn" style="display:none">⟳ Sync Todoist</button>
     </div>
@@ -229,6 +278,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="confetti" aria-hidden="true"></div>
 
 <dialog id="chDialog">
   <div class="dlg-in">
@@ -295,6 +345,8 @@
 const PLAY='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
 const CHECK='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+const CHEV='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+const expandedTasks=new Set();
 
 const DEFAULT_CHANNELS=[
   {id:'field',name:'Field',color:'#3F7A56'},
@@ -405,6 +457,8 @@ async function toggleDone(id){
   // round tracked time up to the next whole minute on completion
   if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
   await saveDay(); render();
+  if(t.done){ const idx=state.tasks.indexOf(t); const li=document.getElementById('taskList').children[idx]; celebrate(li);
+    if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); } }
   pushDoneToTodoist(t);
 }
 async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(t){ t.name=val.trim()||t.name; await saveDay(); render(); } }
@@ -421,22 +475,33 @@ function render(){
   state.tasks.forEach(t=>{
     const ch=chById(t.channelId); const act=liveActual(t);
     const over=t.estimateMin>0 && act>t.estimateMin*60000;
+    const hasMeta=!!t.todoistMeta;
     const li=document.createElement('li');
-    li.className='task'+(t.running?' running':'')+(t.done?' done':'');
+    li.className='task'+(t.running?' running':'')+(t.done?' done':'')+(expandedTasks.has(t.id)?' expanded':'');
     li.innerHTML=
       '<span class="dot" style="background:'+ch.color+'"></span>'+
-      '<span class="name" contenteditable="true" spellcheck="false">'+escapeHtml(t.name)+'</span>'+
-      '<span class="times">'+(t.todoistId?'<span class="tdtag" title="Synced with Todoist">TD</span>':'')+
-        (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
-        '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
+      '<div class="body">'+
+        '<div class="row1">'+
+          '<span class="name" contenteditable="true" spellcheck="false">'+escapeHtml(t.name)+'</span>'+
+          '<span class="times">'+(t.todoistId?'<span class="tdtag" title="Synced with Todoist">TD</span>':'')+
+            (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
+            '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
+        '</div>'+
+        taskMetaHtml(t)+
+      '</div>'+
+      (hasMeta?'<button class="expand" title="Details">'+CHEV+'</button>':'')+
       '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
-      '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>';
+      '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
+      (hasMeta?taskDetailsHtml(t):'');
     const nameEl=li.querySelector('.name');
     nameEl.addEventListener('blur',()=>renameTask(t.id,nameEl.textContent));
     nameEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
     li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
     li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
     li.querySelector('.dot').addEventListener('dblclick',()=>removeTask(t.id));
+    const exp=li.querySelector('.expand');
+    if(exp) exp.addEventListener('click',()=>{ const open=li.classList.toggle('expanded');
+      if(open)expandedTasks.add(t.id); else expandedTasks.delete(t.id); });
     list.appendChild(li);
   });
   renderArc(); renderNow(); renderPhase();
@@ -511,7 +576,62 @@ function updateRunningRows(){
     const span=items[i].querySelector('.times .act');
     if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } });
 }
-function escapeHtml(s){ return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- Todoist metadata: chips, details, links ---------- */
+function isOverdue(due){
+  if(!due) return false;
+  const end = due.datetime ? new Date(due.datetime) : (due.date? new Date(due.date+'T23:59:59') : null);
+  return end ? end.getTime() < Date.now() : false;
+}
+function fmtDue(due){
+  if(!due || (!due.date && !due.datetime)) return null;
+  let label='';
+  const d = new Date(due.datetime || (due.date+'T00:00:00'));
+  if(!isNaN(d)){ label=d.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+    if(due.datetime) label+=' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  else label=due.string||due.date||'';
+  return { label, over:isOverdue(due), recurring:!!due.recurring, raw:due.string||'' };
+}
+function prioLabel(p){ return p===4?'P1':p===3?'P2':p===2?'P3':''; }
+function extractLinks(text){
+  const out=[], used=new Set(); if(!text) return out;
+  let m; const md=/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+  while((m=md.exec(text))){ out.push({label:m[1],url:m[2]}); used.add(m[2]); }
+  let b; const bare=/(https?:\/\/[^\s)<>"']+)/g;
+  while((b=bare.exec(text))){ if(!used.has(b[1])&&!out.some(o=>o.url===b[1])) out.push({label:b[1],url:b[1]}); }
+  return out;
+}
+function linkify(text){
+  let s=escapeHtml(text);
+  s=s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s=s.replace(/(^|[\s])(https?:\/\/[^\s<)]+)/g,'$1<a href="$2" target="_blank" rel="noopener">$2</a>');
+  return s;
+}
+function taskMetaHtml(t){
+  const m=t.todoistMeta; if(!m) return '';
+  const chips=[];
+  if(m.projectName) chips.push('<span class="chip proj">'+escapeHtml(m.projectName)+(m.section?(' / '+escapeHtml(m.section)):'')+'</span>');
+  const due=fmtDue(m.due);
+  if(due) chips.push('<span class="chip due'+(due.over&&!t.done?' over':'')+'">'+escapeHtml(due.label)+(due.recurring?' ↻':'')+'</span>');
+  const pl=prioLabel(m.priority); if(pl) chips.push('<span class="chip prio '+pl.toLowerCase()+'">'+pl+'</span>');
+  (m.labels||[]).forEach(l=>chips.push('<span class="chip label">'+escapeHtml(l)+'</span>'));
+  return chips.length? '<div class="meta">'+chips.join('')+'</div>' : '';
+}
+function taskDetailsHtml(t){
+  const m=t.todoistMeta; if(!m) return '';
+  const parts=[];
+  if(m.description) parts.push('<div class="d-desc">'+linkify(m.description)+'</div>');
+  const links=extractLinks((m.rawContent||'')+'\n'+(m.description||''));
+  if(links.length) parts.push('<div class="d-row"><b>Links:</b> '+links.map(l=>'<a href="'+escapeHtml(l.url)+'" target="_blank" rel="noopener">'+escapeHtml(l.label)+'</a>').join(' · ')+'</div>');
+  const due=fmtDue(m.due);
+  if(due&&due.raw) parts.push('<div class="d-row"><b>Due:</b> '+escapeHtml(due.raw)+(due.recurring?' (recurring)':'')+(due.over&&!t.done?' — overdue':'')+'</div>');
+  if(m.projectName) parts.push('<div class="d-row"><b>Project:</b> '+escapeHtml(m.projectName)+(m.section?(' / '+escapeHtml(m.section)):'')+'</div>');
+  if(m.labels&&m.labels.length) parts.push('<div class="d-row"><b>Labels:</b> '+m.labels.map(escapeHtml).join(', ')+'</div>');
+  if(m.commentCount) parts.push('<div class="d-row">'+m.commentCount+' comment'+(m.commentCount>1?'s':'')+' in Todoist</div>');
+  if(m.url) parts.push('<div class="d-row"><a href="'+escapeHtml(m.url)+'" target="_blank" rel="noopener">Open in Todoist ↗</a></div>');
+  return '<div class="tdetails">'+parts.join('')+'</div>';
+}
 
 /* ---------- reflect / close / rollover ---------- */
 async function saveReflection(){ state.reflection=document.getElementById('reflectText').value; await saveDay(); }
@@ -577,25 +697,43 @@ function tdEstimate(td){
   }
   return 0;
 }
+function buildTdMeta(td,projMap,sectMap){
+  let due=null;
+  if(td.due){ const dateStr=td.due.date||'';
+    due={ date:dateStr.slice(0,10), datetime:td.due.datetime||(dateStr.includes('T')?dateStr:''),
+      string:td.due.string||'', recurring:!!td.due.is_recurring }; }
+  return {
+    projectId:td.project_id||'', projectName:projMap[td.project_id]||'',
+    section: sectMap&&td.section_id?(sectMap[td.section_id]||''):'',
+    labels:Array.isArray(td.labels)?td.labels.slice():[],
+    priority:td.priority||1, due,
+    description:td.description||'', rawContent:td.content||'',
+    url:td.url||('https://app.todoist.com/app/task/'+td.id),
+    commentCount:td.comment_count||td.note_count||0
+  };
+}
 async function syncTodoist(silent){
   if(!tdConnected()){ if(!silent)openTdDialog(); return; }
   if(!silent)setTdStatus('Syncing…','');
   try{
-    let projMap={};
+    let projMap={},sectMap={};
     try{ const projects=await tdGetAll('/projects?limit=200'); projects.forEach(p=>projMap[p.id]=p.name); }catch(e){ /* project names are nice-to-have */ }
+    try{ const sections=await tdGetAll('/sections?limit=200'); sections.forEach(s=>sectMap[s.id]=s.name); }catch(e){ /* sections optional */ }
     const filter=encodeURIComponent(state.todoist.filter||'today');
     const tasks=await tdGetAll('/tasks/filter?query='+filter+'&limit=200');
     let added=0,updated=0;
     tasks.forEach(td=>{
       const existing=state.tasks.find(t=>t.todoistId===td.id);
       const est=tdEstimate(td);
+      const meta=buildTdMeta(td,projMap,sectMap);
       if(existing){
         existing.name=td.content;
         if(est&&!existing.estimateMin)existing.estimateMin=est;
+        existing.todoistMeta=meta;
         updated++;
       } else {
-        state.tasks.push({id:uid(),name:td.content,channelId:matchChannel(projMap[td.project_id]),
-          estimateMin:est,actualMs:0,done:false,running:false,startedAt:null,todoistId:td.id});
+        state.tasks.push({id:uid(),name:td.content,channelId:matchChannel(meta.projectName),
+          estimateMin:est,actualMs:0,done:false,running:false,startedAt:null,todoistId:td.id,todoistMeta:meta});
         added++;
       }
     });
@@ -808,7 +946,66 @@ let toastT=null;
 function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2600); }
 
+/* ---------- theme (light / dark) ---------- */
+function preferredTheme(){
+  try{ const saved=localStorage.getItem(LS_PREFIX+'_theme'); if(saved) return saved; }catch(e){}
+  return (window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+}
+function applyTheme(theme){
+  document.documentElement.setAttribute('data-theme',theme);
+  const b=document.getElementById('themeBtn'); if(b) b.textContent = theme==='dark'?'☀️':'🌙';
+}
+function toggleTheme(){
+  const next = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+  // animate the swap: spin/scale the button and ripple the background
+  const b=document.getElementById('themeBtn');
+  if(b && !matchMedia('(prefers-reduced-motion: reduce)').matches){
+    b.animate([{transform:'rotate(0) scale(1)'},{transform:'rotate(180deg) scale(.6)'},{transform:'rotate(360deg) scale(1)'}],{duration:450,easing:'ease'});
+    themeRipple(b, next);
+  }
+  applyTheme(next);
+  try{ localStorage.setItem(LS_PREFIX+'_theme',next); }catch(e){}
+}
+// circular reveal of the incoming theme from the toggle button
+function themeRipple(btn,next){
+  const r=btn.getBoundingClientRect();
+  const x=r.left+r.width/2, y=r.top+r.height/2;
+  const far=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y));
+  const ov=document.createElement('div');
+  const bg = next==='dark' ? '#15191B' : '#EBE8E0';
+  ov.style.cssText='position:fixed;inset:0;z-index:9998;pointer-events:none;background:'+bg+';clip-path:circle(0px at '+x+'px '+y+'px)';
+  document.body.appendChild(ov);
+  ov.animate([{clipPath:'circle(0px at '+x+'px '+y+'px)'},{clipPath:'circle('+far+'px at '+x+'px '+y+'px)'}],{duration:480,easing:'ease-in-out'})
+    .onfinish=()=>ov.remove();
+}
+
+/* ---------- celebration (confetti + pop) ---------- */
+const CONFETTI_COLORS=['#3F7A56','#C2752A','#2E6B9E','#B14233','#5B4B9E','#E0A05B'];
+function celebrate(li){
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  if(li){ li.classList.remove('celebrate'); void li.offsetWidth; li.classList.add('celebrate'); }
+  const host=document.getElementById('confetti'); if(!host) return;
+  let originX=innerWidth/2, originY=innerHeight*0.35;
+  if(li){ const r=li.getBoundingClientRect(); originX=r.left+Math.min(40,r.width/2); originY=r.top+r.height/2; }
+  const N=26;
+  for(let i=0;i<N;i++){
+    const bit=document.createElement('div'); bit.className='confetti-bit';
+    const c=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
+    bit.style.background=c;
+    bit.style.left=originX+'px'; bit.style.top=originY+'px';
+    const dx=(Math.random()*2-1)*180, dur=1+Math.random()*0.9, spin=(Math.random()*2-1)*720;
+    bit.style.setProperty('--dur',dur+'s'); bit.style.setProperty('--spin',spin+'deg');
+    if(Math.random()<0.5) bit.style.borderRadius='50%';
+    host.appendChild(bit);
+    bit.animate([
+      {transform:'translate(0,0) rotate(0)',opacity:1},
+      {transform:'translate('+dx+'px,'+(innerHeight*0.9)+'px) rotate('+spin+'deg)',opacity:0.95}
+    ],{duration:dur*1000,easing:'cubic-bezier(.2,.6,.4,1)',fill:'forwards'}).onfinish=()=>bit.remove();
+  }
+}
+
 /* ---------- wire up ---------- */
+document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
@@ -842,7 +1039,7 @@ document.getElementById('ghDisconnect').addEventListener('click',disconnectSync)
 // pick up changes made on another device when returning to the tab (skip while a timer is running)
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden && syncOn() && sync.auto && !state.tasks.some(t=>t.running)) pullGist(true); });
 
-(async()=>{ loadSync(); updateCloudLink();
+(async()=>{ applyTheme(preferredTheme()); loadSync(); updateCloudLink();
   await load();
   // pull the latest snapshot from the cloud before anything else if connected
   if(syncOn() && sync.gistId){ await pullGist(true); }
