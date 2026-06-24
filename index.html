@@ -290,7 +290,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
     <span id="storeState"></span>
   </div>
 
@@ -417,6 +417,42 @@
   </div>
 </dialog>
 
+<dialog id="secDialog">
+  <div class="dlg-in">
+    <h3 id="secTitle">Protect your keys</h3>
+    <p class="td-hint" id="secHint"></p>
+    <div id="secSetup">
+      <div class="td-field"><label>Password</label><input id="secPass" type="password" autocomplete="new-password" spellcheck="false"></div>
+      <div class="td-field"><label>Confirm password</label><input id="secPass2" type="password" autocomplete="new-password" spellcheck="false"></div>
+    </div>
+    <div class="td-status" id="secStatus"></div>
+    <div class="dlg-actions">
+      <button id="secRemove" class="danger" style="display:none">Remove encryption</button>
+      <span style="display:flex;gap:8px">
+        <button id="secLock" style="display:none">Lock now</button>
+        <button id="secCancel">Close</button>
+        <button class="primary" id="secSave">Encrypt keys</button>
+      </span>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="unlockDialog">
+  <div class="dlg-in">
+    <h3>Unlock your keys</h3>
+    <p class="td-hint">Your Todoist and GitHub keys are encrypted on this device. Enter your password to unlock syncing — your tasks are available either way.</p>
+    <div class="td-field"><label>Password</label><input id="unlockPass" type="password" autocomplete="current-password" spellcheck="false"></div>
+    <div class="td-status" id="unlockStatus"></div>
+    <div class="dlg-actions">
+      <button id="unlockForget" class="danger">Forget keys</button>
+      <span style="display:flex;gap:8px">
+        <button id="unlockSkip">Later</button>
+        <button class="primary" id="unlockBtn">Unlock</button>
+      </span>
+    </div>
+  </div>
+</dialog>
+
 <script>
 const PLAY='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
@@ -509,7 +545,8 @@ async function reloadState(){
   document.getElementById('reflectText').value=state.reflection;
   buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
-async function saveConfig(){ await sset('config',{channels:state.channels,capacityHours:state.capacityHours,todoist:state.todoist}); schedulePush(); }
+async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,todoist:td}); schedulePush(); }
 async function saveDay(){ await sset(todayKey(),{date:todayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
@@ -744,6 +781,7 @@ function updateTdLink(){
   const b=document.getElementById('syncBtn'); if(b) b.style.display=(tdConnected()||syncOn())?'inline-block':'none';
 }
 async function doManualSync(){
+  if(locked()){ showUnlock(); return; }
   if(!tdConnected() && !syncOn()){ openTdDialog(); return; }
   if(!navigator.onLine){ toast('Still offline — will sync automatically when back online.'); updateConnUI(); return; }
   const b=document.getElementById('syncBtn');
@@ -902,6 +940,7 @@ function updateConnUI(){
   const smt=document.getElementById('syncMetaText'); const sm=document.getElementById('syncMeta');
   if(smt){
     if(busy){ smt.textContent='Syncing…'; }
+    else if(locked()){ smt.textContent='Keys locked'; }
     else { const bits=[];
       if(!online) bits.push('Offline');
       if(state.todoist&&state.todoist.lastSync) bits.push('Todoist '+fmtTime(state.todoist.lastSync));
@@ -910,11 +949,12 @@ function updateConnUI(){
       if(pending) bits.push(pending+' queued');
       smt.textContent=bits.join(' · ');
     }
-    if(sm) sm.classList.toggle('off',!online&&!busy);
+    if(sm) sm.classList.toggle('off',(!online&&!busy)||locked());
   }
   const b=document.getElementById('syncBtn');
-  if(b){ b.style.display=(tdConnected()||syncOn())?'inline-block':'none';
-    if(!b.classList.contains('syncing')) b.textContent = online?'⟳ Sync now':'⟳ Offline — retry'; }
+  if(b){ const show = locked() || tdConnected() || syncOn();
+    b.style.display=show?'inline-block':'none';
+    if(!b.classList.contains('syncing')) b.textContent = locked()?'🔒 Unlock' : (online?'⟳ Sync now':'⟳ Offline — retry'); }
 }
 
 /* ---------- two-way writes ---------- */
@@ -1007,6 +1047,7 @@ function setTdStatus(msg,cls){
   el.textContent=msg; el.className='td-status'+(cls?' '+cls:'');
 }
 function openTdDialog(){
+  if(locked()){ showUnlock(); return; }
   document.getElementById('tdToken').value=state.todoist.token||'';
   document.getElementById('tdFilter').value=state.todoist.filter||DEFAULT_TODOIST.filter;
   document.getElementById('tdAuto').checked=!!state.todoist.autocomplete;
@@ -1017,7 +1058,7 @@ async function saveTodoist(){
   state.todoist.token=document.getElementById('tdToken').value.trim();
   state.todoist.filter=document.getElementById('tdFilter').value.trim()||DEFAULT_TODOIST.filter;
   state.todoist.autocomplete=document.getElementById('tdAuto').checked;
-  await saveConfig(); updateTdLink();
+  await persistSecrets(); await saveConfig(); updateTdLink();
   toast(tdConnected()?'Todoist settings saved.':'Todoist disconnected.');
   document.getElementById('tdDialog').close();
 }
@@ -1039,7 +1080,7 @@ const SYNC_FILE='ooda-data.json', SYNC_LOCAL='_sync';
 function syncOn(){ return !!sync.token; }
 function setDirty(v){ dirtyOffline=v; try{ localStorage.setItem(LS_PREFIX+'_dirty',v?'1':'0'); }catch(e){} }
 function loadSync(){ try{ const raw=localStorage.getItem(LS_PREFIX+SYNC_LOCAL); if(raw) sync={...sync,...JSON.parse(raw)}; dirtyOffline=localStorage.getItem(LS_PREFIX+'_dirty')==='1'; }catch(e){} }
-function saveSync(){ try{ localStorage.setItem(LS_PREFIX+SYNC_LOCAL,JSON.stringify(sync)); }catch(e){} }
+function saveSync(){ try{ const s = secureOn()? {...sync,token:''} : sync; localStorage.setItem(LS_PREFIX+SYNC_LOCAL,JSON.stringify(s)); }catch(e){} }
 function updateCloudLink(){
   const a=document.getElementById('cloudBtn'); if(!a)return;
   if(syncOn()){ a.textContent='Device sync ✓'; a.classList.add('cloud-on'); }
@@ -1113,6 +1154,7 @@ async function pullGist(silent){
   finally{ pulling=false; endNet(); }
 }
 function openSyncDialog(){
+  if(locked()){ showUnlock(); return; }
   document.getElementById('ghToken').value=sync.token||'';
   document.getElementById('ghGist').value=sync.gistId||'';
   document.getElementById('ghAuto').checked=!!sync.auto;
@@ -1126,7 +1168,7 @@ function readSyncFields(){
   saveSync(); updateCloudLink();
 }
 async function saveSyncSettings(){
-  readSyncFields();
+  readSyncFields(); await persistSecrets();
   toast(syncOn()?'Device sync saved.':'Device sync disconnected.');
   document.getElementById('syncDialog').close();
   if(syncOn()){ if(sync.gistId) await pullGist(false); else await pushGist(false); }
@@ -1136,6 +1178,143 @@ async function disconnectSync(){
   saveSync(); updateCloudLink();
   document.getElementById('syncDialog').close();
   toast('Device sync disconnected.');
+}
+
+/* ---------- key encryption (optional password vault) ----------
+   When enabled, the Todoist + GitHub tokens are stored only as AES-GCM
+   ciphertext (key derived from a password via PBKDF2). They live in memory
+   only after you unlock, and are stripped from the plaintext config/_sync
+   and from the synced gist snapshot. */
+const VAULT_KEY='_vault';
+let vaultKey=null, vaultSalt=null, unlocked=false;
+function secureOn(){ try{ return localStorage.getItem(LS_PREFIX+VAULT_KEY)!=null; }catch(e){ return false; } }
+function cryptoOk(){ return !!(window.crypto && crypto.subtle); }
+function b64e(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64d(str){ return Uint8Array.from(atob(str),c=>c.charCodeAt(0)); }
+async function deriveKey(password,salt){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:150000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function writeVault(){
+  if(!vaultKey||!vaultSalt) return;
+  const data=JSON.stringify({td:state.todoist.token||'',gh:sync.token||''});
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},vaultKey,new TextEncoder().encode(data));
+  localStorage.setItem(LS_PREFIX+VAULT_KEY,JSON.stringify({v:1,salt:b64e(vaultSalt),iv:b64e(iv),ct:b64e(ct)}));
+}
+async function persistSecrets(){ if(secureOn()&&unlocked&&vaultKey) await writeVault(); }
+async function enableEncryption(password){
+  vaultSalt=crypto.getRandomValues(new Uint8Array(16));
+  vaultKey=await deriveKey(password,vaultSalt); unlocked=true;
+  await writeVault();
+  await saveConfig(); saveSync();   // re-save without plaintext tokens
+}
+async function changePassword(password){
+  vaultSalt=crypto.getRandomValues(new Uint8Array(16));
+  vaultKey=await deriveKey(password,vaultSalt);
+  await writeVault();
+}
+async function unlockVault(password){
+  const rec=JSON.parse(localStorage.getItem(LS_PREFIX+VAULT_KEY));
+  const salt=b64d(rec.salt);
+  const key=await deriveKey(password,salt);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(rec.iv)},key,b64d(rec.ct)); // throws on wrong password
+  const obj=JSON.parse(new TextDecoder().decode(pt));
+  vaultKey=key; vaultSalt=salt; unlocked=true;
+  state.todoist.token=obj.td||''; sync.token=obj.gh||'';
+}
+async function removeEncryption(){
+  localStorage.removeItem(LS_PREFIX+VAULT_KEY);
+  vaultKey=null; vaultSalt=null; unlocked=true;
+  await saveConfig(); saveSync();   // now stores plaintext again
+}
+function lockNow(){
+  state.todoist.token=''; sync.token=''; unlocked=false; vaultKey=null;
+  updateTdLink(); updateCloudLink(); updateConnUI();
+}
+function forgetKeys(){
+  localStorage.removeItem(LS_PREFIX+VAULT_KEY);
+  vaultKey=null; vaultSalt=null; unlocked=true;
+  state.todoist.token=''; sync.token='';
+  saveConfig(); saveSync(); updateTdLink(); updateCloudLink(); updateConnUI();
+}
+function locked(){ return secureOn() && !unlocked; }
+
+/* security dialog */
+function setSecStatus(m,c){ const el=document.getElementById('secStatus'); el.textContent=m||''; el.className='td-status'+(c?' '+c:''); }
+let secMode='setup';
+function openSecDialog(){
+  if(!cryptoOk()){ toast('Encryption needs a secure (https) context.'); return; }
+  if(locked()){ showUnlock(); return; }
+  const on=secureOn();
+  document.getElementById('secPass').value=''; document.getElementById('secPass2').value='';
+  const setup=document.getElementById('secSetup');
+  const removeBtn=document.getElementById('secRemove'), lockBtn=document.getElementById('secLock'), saveBtn=document.getElementById('secSave');
+  if(on){
+    secMode='manage';
+    document.getElementById('secTitle').textContent='Keys are protected';
+    document.getElementById('secHint').textContent='Your keys are encrypted on this device and currently unlocked. You can change the password, lock now, or remove encryption.';
+    setup.style.display='none'; removeBtn.style.display='inline-block'; lockBtn.style.display='inline-block';
+    saveBtn.textContent='Change password';
+  } else {
+    secMode='setup';
+    document.getElementById('secTitle').textContent='Protect your keys';
+    document.getElementById('secHint').textContent='Encrypt your Todoist and GitHub keys with a password. They’ll be stored only as ciphertext on this device and you’ll unlock them once per session. There’s no recovery — if you forget the password you’ll just re-enter your keys.';
+    setup.style.display='block'; removeBtn.style.display='none'; lockBtn.style.display='none';
+    saveBtn.textContent='Encrypt keys';
+  }
+  setSecStatus('');
+  document.getElementById('secDialog').showModal();
+}
+async function secSave(){
+  if(secMode==='manage'){
+    // change password — reveal fields on first click
+    const setup=document.getElementById('secSetup');
+    if(setup.style.display==='none'){ setup.style.display='block'; setSecStatus('Enter a new password, then Change password again.'); return; }
+  }
+  const p=document.getElementById('secPass').value, p2=document.getElementById('secPass2').value;
+  if(p.length<4){ setSecStatus('Use at least 4 characters.','err'); return; }
+  if(p!==p2){ setSecStatus('Passwords don’t match.','err'); return; }
+  try{
+    if(secureOn()&&unlocked) await changePassword(p); else await enableEncryption(p);
+    toast('Keys encrypted on this device.'); updateSecLink();
+    document.getElementById('secDialog').close();
+  }catch(e){ setSecStatus('Could not encrypt — '+e.message,'err'); }
+}
+async function secRemove(){
+  try{ await removeEncryption(); toast('Encryption removed — keys stored normally.'); updateSecLink(); document.getElementById('secDialog').close(); }
+  catch(e){ setSecStatus('Error: '+e.message,'err'); }
+}
+function updateSecLink(){
+  const a=document.getElementById('secBtn'); if(!a)return;
+  a.textContent = secureOn() ? (unlocked?'Keys 🔓':'Keys 🔒') : 'Lock keys';
+}
+
+/* unlock dialog */
+function showUnlock(){
+  if(!secureOn()||unlocked) return;
+  document.getElementById('unlockPass').value='';
+  document.getElementById('unlockStatus').textContent=''; document.getElementById('unlockStatus').className='td-status';
+  document.getElementById('unlockDialog').showModal();
+}
+async function doUnlock(){
+  const p=document.getElementById('unlockPass').value;
+  try{
+    await unlockVault(p);
+    document.getElementById('unlockDialog').close();
+    updateSecLink(); updateTdLink(); updateCloudLink(); updateConnUI();
+    toast('Keys unlocked.');
+    await afterUnlockSync();
+  }catch(e){
+    const el=document.getElementById('unlockStatus'); el.textContent='Wrong password — try again.'; el.className='td-status err';
+  }
+}
+async function afterUnlockSync(){
+  if(!navigator.onLine) return;
+  await flushTodoist();
+  if(syncOn()){ if(dirtyOffline){ await pushGist(true); } else if(sync.gistId){ await pullGist(true); } }
+  if(tdConnected()) await syncTodoist(true);
+  if(syncOn()) await pushGist(true);
 }
 
 /* ---------- channels editor ---------- */
@@ -1293,12 +1472,24 @@ document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
 document.getElementById('ghPush').addEventListener('click',async()=>{ readSyncFields(); await pushGist(false); });
 document.getElementById('ghPull').addEventListener('click',async()=>{ readSyncFields(); await pullGist(false); });
 document.getElementById('ghDisconnect').addEventListener('click',disconnectSync);
+// key encryption (password vault)
+document.getElementById('secBtn').addEventListener('click',openSecDialog);
+document.getElementById('secCancel').addEventListener('click',()=>document.getElementById('secDialog').close());
+document.getElementById('secSave').addEventListener('click',secSave);
+document.getElementById('secRemove').addEventListener('click',secRemove);
+document.getElementById('secLock').addEventListener('click',()=>{ lockNow(); updateSecLink(); document.getElementById('secDialog').close(); toast('Keys locked.'); });
+document.getElementById('secPass2').addEventListener('keydown',e=>{ if(e.key==='Enter')secSave(); });
+document.getElementById('unlockBtn').addEventListener('click',doUnlock);
+document.getElementById('unlockSkip').addEventListener('click',()=>document.getElementById('unlockDialog').close());
+document.getElementById('unlockForget').addEventListener('click',()=>{ if(confirm('Forget the encrypted keys on this device? You’ll need to re-enter your Todoist and GitHub keys.')){ forgetKeys(); updateSecLink(); document.getElementById('unlockDialog').close(); toast('Encrypted keys removed.'); } });
+document.getElementById('unlockPass').addEventListener('keydown',e=>{ if(e.key==='Enter')doUnlock(); });
 // filter presets in the Todoist dialog
 document.getElementById('tdPresets').addEventListener('click',e=>{ const btn=e.target.closest('button[data-f]'); if(btn){ document.getElementById('tdFilter').value=btn.getAttribute('data-f'); } });
 // pick up changes made on another device when returning to the tab (skip while a timer is running)
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden && navigator.onLine && syncOn() && sync.auto && !state.tasks.some(t=>t.running)) pullGist(true); });
 // connectivity: flush queued work and refresh status when the network returns / drops
 window.addEventListener('online',async()=>{ updateConnUI();
+  if(locked()) return;   // can't sync until keys are unlocked
   await flushTodoist();
   // push offline edits first (don't let a pull clobber them); otherwise pull others' changes
   if(syncOn()){ if(dirtyOffline){ await pushGist(true); } else { await pullGist(true); } }
@@ -1307,11 +1498,12 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadSync(); loadOutbox(); updateCloudLink();
+(async()=>{ applyTheme(preferredTheme()); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   await load(); updateConnUI();
-  // sync with the cloud on startup if connected & online — but push first if we have
-  // unsynced offline edits, so we never clobber them with an older remote snapshot
-  if(syncOn() && navigator.onLine){
+  if(locked()){
+    showUnlock();   // keys are encrypted — prompt before any sync
+  } else if(syncOn() && navigator.onLine){
+    // sync with the cloud on startup — push first if we have unsynced offline edits
     if(dirtyOffline){ await pushGist(true); }
     else if(sync.gistId){ await pullGist(true); }
   }
@@ -1322,8 +1514,8 @@ window.addEventListener('offline',updateConnUI);
       state.tasks.push({id:uid(),name:n,channelId:state.channels[0].id,estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:tdId}); });
     await sset('carry',[]); await saveDay(); render(); toast('Carried '+carry.length+' task(s) from before.');
   }
-  // flush any queued offline changes, then pull today's Todoist tasks
-  if(navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
+  // flush any queued offline changes, then pull today's Todoist tasks (unless locked)
+  if(!locked() && navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
   updateConnUI();
   // register the service worker so the app loads offline
   if('serviceWorker' in navigator){ try{ await navigator.serviceWorker.register('sw.js'); }catch(e){} }

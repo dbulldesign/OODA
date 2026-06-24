@@ -141,3 +141,20 @@ manifest, so you can "Add to Home Screen"):
 - The header shows your **last sync time** and an **Offline** badge, and the
   **⟳ Sync now** button (or reconnecting) triggers a sync. Offline edits are
   pushed before any pull so they're never clobbered.
+
+## Locking your keys with a password (optional)
+
+By default the Todoist and GitHub tokens are saved in plaintext in this
+browser's storage. If you'd rather not leave them readable, click **Lock keys**
+in the tools row and set a password:
+
+- The tokens are encrypted with **AES‑GCM**, using a key derived from your
+  password via **PBKDF2** (150k iterations). Only the ciphertext is stored on
+  the device — the password itself is never saved.
+- You **unlock once per session** with your password; the keys then live in
+  memory only. Your tasks and time tracking work whether or not you've unlocked.
+- There's **no recovery**: if you forget the password, choose **Forget keys** and
+  re-enter your tokens. You can **change the password**, **lock now**, or
+  **remove encryption** from the same dialog while unlocked.
+- While encryption is on, the Todoist token is kept **device-local** (it's no
+  longer included in the synced gist), so set it on each device.
