@@ -235,6 +235,49 @@
   }
   .toast{bottom:calc(22px + env(safe-area-inset-bottom))}
 
+  /* list controls: view tabs + sort/filter */
+  .listctl{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+  .viewtabs{display:flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden}
+  .vtab{border:0;background:var(--surface);color:var(--ink-soft);font-size:13px;padding:7px 14px;cursor:pointer;font-family:var(--display)}
+  .vtab.on{background:var(--ink);color:var(--surface);font-weight:600}
+  .ctl-sp{flex:1}
+  .ctlsel{border:1px solid var(--line-strong);border-radius:8px;padding:7px 9px;font-size:13px;background:var(--surface);color:var(--ink);max-width:46%}
+
+  /* task action overflow menu */
+  .menu{position:fixed;z-index:9990;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
+    box-shadow:0 10px 30px rgba(0,0,0,.18);padding:5px;min-width:150px}
+  .menu button{display:flex;align-items:center;gap:9px;width:100%;border:0;background:none;color:var(--ink);
+    font-size:14px;padding:9px 10px;border-radius:7px;cursor:pointer;text-align:left;font-family:var(--display)}
+  .menu button:hover{background:var(--surface-2)}
+  .menu button.danger{color:var(--over)}
+  .menu .sep{height:1px;background:var(--line);margin:4px 2px}
+
+  /* day calendar view */
+  .cal{display:flex;flex-direction:column;gap:10px}
+  .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+  .cal-backlog h4{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
+  .cal-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .cal-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface-2);
+    border-radius:16px;padding:5px 11px;font-size:13px;cursor:pointer;color:var(--ink);max-width:100%}
+  .cal-chip .cdot{width:8px;height:8px;border-radius:3px;flex:0 0 auto}
+  .cal-chip .cnm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cal-chip.sel{outline:2px solid var(--now);border-color:var(--now)}
+  .cal-backlog .hint{margin:8px 0 0;font-size:11.5px;color:var(--ink-faint)}
+  .cal-grid{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .cal-scroll{position:relative;overflow-y:auto;max-height:62vh}
+  .cal-canvas{position:relative}
+  .cal-hour{position:absolute;left:0;right:0;border-top:1px solid var(--line);padding-left:52px;box-sizing:border-box}
+  .cal-hour .hl{position:absolute;left:8px;top:-8px;font-size:10.5px;color:var(--ink-faint);font-family:var(--mono)}
+  .cal-half{position:absolute;left:52px;right:0;border-top:1px dashed var(--line)}
+  .cal-slot{position:absolute;left:52px;right:6px;cursor:pointer}
+  .cal-block{position:absolute;left:52px;right:6px;border-radius:7px;padding:4px 8px;overflow:hidden;color:#fff;
+    font-size:12.5px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18);cursor:pointer}
+  .cal-block .cb-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cal-block .cb-s{font-size:11px;opacity:.9;font-variant-numeric:tabular-nums}
+  .cal-block.done{opacity:.55;text-decoration:line-through}
+  .cal-now{position:absolute;left:46px;right:0;height:0;border-top:2px solid var(--over);z-index:3}
+  .cal-now::before{content:'';position:absolute;left:0;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--over)}
+
   /* phones — give the title a full line, bigger touch targets, snug cards */
   @media (max-width:520px){
     header{padding:14px 0 12px}
@@ -312,7 +355,24 @@
     <div class="legend" id="legend"></div>
   </div>
 
+  <div class="listctl">
+    <div class="viewtabs">
+      <button id="vbList" class="vtab on">List</button>
+      <button id="vbDay" class="vtab">Day</button>
+    </div>
+    <span class="ctl-sp"></span>
+    <select id="sortSel" class="ctlsel" title="Sort tasks">
+      <option value="manual">Manual order</option>
+      <option value="due">Due date</option>
+      <option value="project">Project</option>
+      <option value="channel">Channel</option>
+      <option value="name">Name A–Z</option>
+    </select>
+    <select id="filterSel" class="ctlsel" title="Filter tasks"></select>
+  </div>
+
   <ul class="tasks" id="taskList"></ul>
+  <div class="cal" id="calView" style="display:none"></div>
   <div class="empty" id="emptyState">No tasks yet. Add what you intend to do today — be a little ruthless.</div>
 
   <div class="add">
@@ -464,6 +524,10 @@
         <input id="teEst" type="number" min="0" step="0.25" placeholder="e.g. 1.5">
       </div>
       <div class="td-field">
+        <label>Schedule at (Day view)</label>
+        <input id="teSched" type="time" step="300">
+      </div>
+      <div class="td-field" style="grid-column:1/-1">
         <label>Project (Todoist)</label>
         <select id="teProject"></select>
       </div>
@@ -523,7 +587,10 @@ const PAUSE='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="
 const CHECK='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
 const CHEV='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
 const EDIT='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+const DOTS='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const expandedTasks=new Set();
+let viewMode='list', sortMode='manual', filterKey='all', calSel=null;
+const CAL_START=6*60, CAL_END=22*60, PXM=1;  // day view: 6:00–22:00, 1px per minute
 
 const DEFAULT_CHANNELS=[
   {id:'field',name:'Field',color:'#3F7A56'},
@@ -580,6 +647,9 @@ function durFmt(ms){ const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.f
 function ceilMinuteMs(ms){ return Math.ceil(ms/60000)*60000; }
 function hoursToMin(v){ const h=parseFloat(v); return isFinite(h)&&h>0? Math.round(h*60):0; }
 function minToHoursStr(min){ if(!min)return ''; const h=min/60; return (Math.round(h*100)/100).toString(); }
+function hmFromMin(min){ const h=Math.floor(min/60), m=min%60; let hh=h%12; if(hh===0)hh=12; return hh+':'+String(m).padStart(2,'0')+(h<12?'am':'pm'); }
+function hmInput(min){ if(min==null)return ''; return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
+function minFromHM(s){ if(!s)return null; const p=s.split(':'); const n=(+p[0])*60+(+p[1]); return isNaN(n)?null:n; }
 function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-t.startedAt : 0); }
 
 /* ---------- load ---------- */
@@ -618,7 +688,7 @@ async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
   const name=nameEl.value.trim(); if(!name)return;
   const estMin=hoursToMin(estEl.value);
-  state.tasks.push({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null});
+  state.tasks.push({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null});
   nameEl.value=''; estEl.value=''; nameEl.focus();
   await saveDay(); render();
 }
@@ -638,7 +708,7 @@ async function toggleDone(id){
   // round tracked time up to the next whole minute on completion
   if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
   await saveDay(); render();
-  if(t.done){ const idx=state.tasks.indexOf(t); const li=document.getElementById('taskList').children[idx]; celebrate(li);
+  if(t.done){ const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]'); celebrate(li);
     if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); } }
   pushDoneToTodoist(t);
 }
@@ -655,14 +725,67 @@ async function removeTask(id){
 }
 
 /* ---------- render ---------- */
+/* sort + filter helpers for the list view */
+function taskTags(t){ return (t.todoistMeta&&t.todoistMeta.labels)||[]; }
+function taskProject(t){ return (t.todoistMeta&&t.todoistMeta.projectName)||''; }
+function taskDueTs(t){ const d=t.todoistMeta&&t.todoistMeta.due; if(!d)return Infinity;
+  const s=d.datetime||d.date; const ms=Date.parse(d.datetime|| (d.date?d.date+'T00:00:00':'')); return isNaN(ms)?Infinity:ms; }
+function passesFilter(t){
+  if(filterKey==='all') return true;
+  const [kind,val]=filterKey.split(':');
+  if(kind==='ch') return t.channelId===val;
+  if(kind==='proj') return taskProject(t)===val;
+  if(kind==='tag') return taskTags(t).includes(val);
+  return true;
+}
+function sortedTasks(){
+  let arr=state.tasks.map((t,i)=>({t,i})).filter(o=>passesFilter(o.t));
+  const cmp={
+    manual:(a,b)=>a.i-b.i,
+    name:(a,b)=>a.t.name.localeCompare(b.t.name),
+    due:(a,b)=>taskDueTs(a.t)-taskDueTs(b.t)||a.i-b.i,
+    project:(a,b)=>(taskProject(a.t)||'~').localeCompare(taskProject(b.t)||'~')||a.i-b.i,
+    channel:(a,b)=>chById(a.t.channelId).name.localeCompare(chById(b.t.channelId).name)||a.i-b.i
+  }[sortMode]||((a,b)=>a.i-b.i);
+  arr.sort(cmp); return arr.map(o=>o.t);
+}
+function buildFilterOptions(){
+  const sel=document.getElementById('filterSel'); if(!sel)return;
+  const cur=filterKey; sel.innerHTML='';
+  const add=(v,l)=>{ const o=document.createElement('option'); o.value=v; o.textContent=l; sel.appendChild(o); };
+  add('all','All tasks');
+  const projs=[...new Set(state.tasks.map(taskProject).filter(Boolean))].sort();
+  const tags=[...new Set(state.tasks.flatMap(taskTags))].sort();
+  state.channels.forEach(c=>{ if(state.tasks.some(t=>t.channelId===c.id)) add('ch:'+c.id,'Channel · '+c.name); });
+  projs.forEach(p=>add('proj:'+p,'Project · '+p));
+  tags.forEach(g=>add('tag:'+g,'Tag · @'+g));
+  sel.value=[...sel.options].some(o=>o.value===cur)?cur:'all';
+  if(sel.value!==cur) filterKey='all';
+}
+function setView(v){
+  viewMode=v; calSel=null; try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
+  document.getElementById('vbList').classList.toggle('on',v==='list');
+  document.getElementById('vbDay').classList.toggle('on',v==='day');
+  const day=v==='day';
+  document.getElementById('sortSel').style.display=day?'none':'';
+  document.getElementById('filterSel').style.display=day?'none':'';
+  render();
+}
 function render(){
-  const list=document.getElementById('taskList'); list.innerHTML='';
-  document.getElementById('emptyState').style.display=state.tasks.length?'none':'block';
-  state.tasks.forEach(t=>{
+  buildFilterOptions();
+  const list=document.getElementById('taskList'), cal=document.getElementById('calView');
+  const dayView = viewMode==='day';
+  list.style.display = dayView?'none':'';
+  cal.style.display = dayView?'':'none';
+  document.getElementById('emptyState').style.display=(state.tasks.length||dayView)?'none':'block';
+  if(dayView){ renderDay(); renderArc(); renderNow(); renderPhase(); return; }
+  list.innerHTML='';
+  sortedTasks().forEach(t=>{
     const ch=chById(t.channelId); const act=liveActual(t);
     const over=t.estimateMin>0 && act>t.estimateMin*60000;
     const hasMeta=!!t.todoistMeta;
     const li=document.createElement('li');
+    li.dataset.id=t.id;
     li.className='task'+(t.running?' running':'')+(t.done?' done':'')+(expandedTasks.has(t.id)?' expanded':'');
     li.innerHTML=
       '<span class="dot" style="background:'+ch.color+'"></span>'+
@@ -670,13 +793,13 @@ function render(){
         '<div class="row1">'+
           '<span class="name" contenteditable="true" spellcheck="false">'+escapeHtml(t.name)+'</span>'+
           '<span class="times">'+(t.todoistId?'<span class="tdtag" title="Synced with Todoist">TD</span>':'')+
+            (t.scheduledMin!=null?'<span class="tdtag" style="color:var(--now);border-color:var(--now)" title="Scheduled">'+hmFromMin(t.scheduledMin)+'</span>':'')+
             (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
             '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
         '</div>'+
         taskMetaHtml(t)+
       '</div>'+
-      (hasMeta?'<button class="expand" title="Details">'+CHEV+'</button>':'')+
-      '<button class="edit" title="Edit / send to Todoist">'+EDIT+'</button>'+
+      '<button class="menu-btn" title="More">'+DOTS+'</button>'+
       '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
       '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
       (hasMeta?taskDetailsHtml(t):'');
@@ -685,14 +808,34 @@ function render(){
     nameEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
     li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
     li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
-    li.querySelector('.edit').addEventListener('click',()=>openTaskEditor(t.id));
-    li.querySelector('.dot').addEventListener('dblclick',()=>removeTask(t.id));
-    const exp=li.querySelector('.expand');
-    if(exp) exp.addEventListener('click',()=>{ const open=li.classList.toggle('expanded');
-      if(open)expandedTasks.add(t.id); else expandedTasks.delete(t.id); });
+    li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
     list.appendChild(li);
   });
   renderArc(); renderNow(); renderPhase();
+}
+/* task action overflow menu */
+function closeMenu(){ const m=document.getElementById('taskMenu'); if(m)m.remove();
+  document.removeEventListener('click',menuOutside,true); document.removeEventListener('scroll',closeMenu,true); }
+function menuOutside(e){ const m=document.getElementById('taskMenu'); if(m&&!m.contains(e.target)) closeMenu(); }
+function openTaskMenu(id,anchor){
+  closeMenu();
+  const t=state.tasks.find(x=>x.id===id); if(!t)return;
+  const hasMeta=!!t.todoistMeta;
+  const m=document.createElement('div'); m.className='menu'; m.id='taskMenu';
+  const expanded=expandedTasks.has(id);
+  m.innerHTML='<button data-a="edit">'+EDIT+' Edit / schedule</button>'+
+    (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
+    '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
+  document.body.appendChild(m);
+  const r=anchor.getBoundingClientRect(); const mw=160;
+  m.style.top=(r.bottom+6)+'px';
+  m.style.left=Math.max(8,Math.min(r.right-mw,innerWidth-mw-8))+'px';
+  m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
+    if(a==='edit') openTaskEditor(id);
+    else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
+    else if(a==='del') removeTask(id);
+  });
+  setTimeout(()=>{ document.addEventListener('click',menuOutside,true); document.addEventListener('scroll',closeMenu,true); },0);
 }
 function renderArc(){
   const arc=document.getElementById('arc');
@@ -756,13 +899,66 @@ function renderPhase(){
 }
 function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); } },1000); }
 function updateRunningRows(){
-  state.tasks.forEach(t=>{ if(t.running){ /* light refresh of the time text only */ } });
-  // cheap approach: re-render times for running tasks
-  const items=document.querySelectorAll('.task');
-  state.tasks.forEach((t,i)=>{ if(t.running&&items[i]){ const act=liveActual(t);
-    const over=t.estimateMin>0&&act>t.estimateMin*60000;
-    const span=items[i].querySelector('.times .act');
-    if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } });
+  // refresh only running tasks' time text, matched by id (list may be sorted/filtered)
+  state.tasks.forEach(t=>{ if(t.running){ const li=document.querySelector('.task[data-id="'+t.id+'"]'); if(li){
+    const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000;
+    const span=li.querySelector('.times .act');
+    if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } } });
+}
+/* ---------- day calendar view (schedule tasks on a timeline) ---------- */
+function renderDay(){
+  const cal=document.getElementById('calView'); cal.innerHTML='';
+  const sched=state.tasks.filter(t=>t.scheduledMin!=null);
+  const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
+  // unscheduled backlog
+  const bl=document.createElement('div'); bl.className='cal-backlog';
+  bl.innerHTML='<h4>Unscheduled</h4>';
+  const chips=document.createElement('div'); chips.className='cal-chips';
+  if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
+  back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button');
+    c.className='cal-chip'+(calSel===t.id?' sel':'');
+    c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+
+      (t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
+    c.addEventListener('click',()=>{ calSel=(calSel===t.id?null:t.id); renderDay(); });
+    chips.appendChild(c); });
+  bl.appendChild(chips);
+  const hint=document.createElement('p'); hint.className='hint';
+  hint.textContent = calSel? 'Now tap a time on the grid to place it (tap a block to edit/unschedule).' : 'Tap a task, then tap a time slot to schedule it.';
+  bl.appendChild(hint); cal.appendChild(bl);
+  // timeline
+  const grid=document.createElement('div'); grid.className='cal-grid';
+  const scroll=document.createElement('div'); scroll.className='cal-scroll';
+  const canvas=document.createElement('div'); canvas.className='cal-canvas';
+  canvas.style.height=((CAL_END-CAL_START)*PXM)+'px';
+  for(let mm=CAL_START; mm<=CAL_END; mm+=60){
+    const y=(mm-CAL_START)*PXM;
+    const hr=document.createElement('div'); hr.className='cal-hour'; hr.style.top=y+'px';
+    hr.innerHTML='<span class="hl">'+hmFromMin(mm)+'</span>'; canvas.appendChild(hr);
+    if(mm<CAL_END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); }
+  }
+  canvas.addEventListener('click',e=>{
+    if(!calSel) return;
+    const rect=canvas.getBoundingClientRect();
+    let mins=CAL_START + Math.round(((e.clientY-rect.top)/PXM)/15)*15;
+    mins=Math.max(CAL_START,Math.min(CAL_END-15,mins));
+    const t=state.tasks.find(x=>x.id===calSel);
+    if(t){ t.scheduledMin=mins; calSel=null; saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); }
+  });
+  sched.forEach(t=>{
+    const ch=chById(t.channelId);
+    const sm=Math.max(CAL_START,Math.min(CAL_END,t.scheduledMin));
+    const top=(sm-CAL_START)*PXM;
+    const h=Math.max(Math.min((t.estimateMin||30)*PXM,(CAL_END-CAL_START)*PXM-top),18);
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':''); b.dataset.id=t.id;
+    b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
+    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):'')+'</div>';
+    b.addEventListener('click',ev=>{ ev.stopPropagation(); openTaskEditor(t.id); });
+    canvas.appendChild(b);
+  });
+  const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
+  if(nowMin>=CAL_START&&nowMin<=CAL_END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-CAL_START)*PXM)+'px'; canvas.appendChild(nl); }
+  scroll.appendChild(canvas); grid.appendChild(scroll); cal.appendChild(grid);
+  requestAnimationFrame(()=>{ scroll.scrollTop = (nowMin>=CAL_START&&nowMin<=CAL_END)? Math.max(0,(nowMin-CAL_START)*PXM-140) : 0; });
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -1118,6 +1314,7 @@ function openTaskEditor(id){
   document.getElementById('teDue').value=(m.due&&(m.due.string||m.due.date))||'';
   document.getElementById('tePrio').value=String(m.priority||1);
   document.getElementById('teEst').value=minToHoursStr(t.estimateMin);
+  document.getElementById('teSched').value=hmInput(t.scheduledMin);
   document.getElementById('teLabels').value=(m.labels||[]).join(', ');
   buildTeProjects(m.projectId||'');
   const connected=tdConnected(), linked=!!t.todoistId;
@@ -1144,7 +1341,7 @@ async function saveTaskEditor(){
   const hasAny = !!(due||prio>1||labels.length||projectId);
 
   // apply locally
-  t.name=title; t.estimateMin=estMin;
+  t.name=title; t.estimateMin=estMin; t.scheduledMin=minFromHM(document.getElementById('teSched').value);
   if(linked||hasAny){
     const m=t.todoistMeta||(t.todoistMeta={projectId:'',projectName:'',section:'',labels:[],priority:1,due:null,description:'',rawContent:'',url:'',commentCount:0});
     m.priority=prio; m.labels=labels; m.rawContent=title;
@@ -1585,6 +1782,10 @@ document.getElementById('chSave').addEventListener('click',saveChannels);
 document.getElementById('addChBtn').addEventListener('click',()=>{ chDraft.push({id:uid(),name:'New channel',color:'#7A746B'}); renderChEdit(); });
 document.getElementById('exportCsv').addEventListener('click',exportCsv);
 document.getElementById('exportJson').addEventListener('click',exportJson);
+document.getElementById('vbList').addEventListener('click',()=>setView('list'));
+document.getElementById('vbDay').addEventListener('click',()=>setView('day'));
+document.getElementById('sortSel').addEventListener('change',e=>{ sortMode=e.target.value; try{localStorage.setItem(LS_PREFIX+'_sort',sortMode);}catch(_){} render(); });
+document.getElementById('filterSel').addEventListener('change',e=>{ filterKey=e.target.value; render(); });
 document.getElementById('todoistBtn').addEventListener('click',openTdDialog);
 document.getElementById('syncBtn').addEventListener('click',doManualSync);
 document.getElementById('tdSave').addEventListener('click',saveTodoist);
@@ -1637,7 +1838,9 @@ window.addEventListener('online',async()=>{ updateConnUI();
 window.addEventListener('offline',updateConnUI);
 
 (async()=>{ applyTheme(preferredTheme()); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+  try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
+  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day') setView('day'); }catch(e){}
   if(locked()){
     showUnlock();   // keys are encrypted — prompt before any sync
   } else if(syncOn() && navigator.onLine){

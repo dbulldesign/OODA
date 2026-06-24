@@ -27,6 +27,14 @@ footer shows which mode is active).
   over-estimate warnings.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
+- **List & Day views.** Switch with the **List / Day** tabs. In **List**, sort by
+  manual order, due date, project, channel, or name, and filter to a single
+  channel / project / @tag. In **Day** (Sunsama-style), see a time-blocked
+  calendar: tap an **Unscheduled** task then tap a time to place it; blocks are
+  sized by their estimate and coloured by channel, with a live "now" line. Set or
+  change a task's time from the editor's **Schedule at** field too.
+- Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
+  ▶ start and ✓ done buttons.
 - **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
   reveal; remembers your choice and defaults to your system preference.
 - A **confetti + pop** celebration when you complete a task (and an extra burst
