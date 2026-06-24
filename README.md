@@ -27,8 +27,9 @@ otherwise (the footer shows which mode is active).
 ## Todoist sync
 
 Daybook can pull tasks from Todoist and push completions back, talking directly
-to the Todoist REST API v2 from the browser. No server is involved — your token
-lives only in this device's storage and is sent only to Todoist.
+to the Todoist unified API v1 (`https://api.todoist.com/api/v1`) from the
+browser. No server is involved — your token lives only in this device's storage
+and is sent only to Todoist.
 
 **Setup**
 
@@ -52,6 +53,7 @@ lives only in this device's storage and is sent only to Todoist.
 - Daybook re-pulls automatically on load whenever a token is connected. Use
   **Disconnect** to remove the token and stop syncing.
 
-> Note: the integration relies on the Todoist REST API permitting cross-origin
-> browser requests with a Bearer token. If your browser blocks the request,
-> serve the page over `http(s)://` rather than opening it from `file://`.
+> Note: the integration relies on Todoist's API permitting cross-origin browser
+> requests, which it does (`Access-Control-Allow-Origin: *` for authenticated
+> requests). The older `rest/v2` endpoints were retired by Todoist in early
+> 2026; this app uses the current unified `api/v1` endpoints.
