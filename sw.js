@@ -3,8 +3,10 @@
    falling back to the cache (and to index.html for navigations) when offline.
    Cross-origin calls (Todoist / GitHub APIs) are left to the network and are
    handled by the app's offline queue. */
-const CACHE = 'ooda-v2';
-const SHELL = ['./', './index.html', './manifest.json'];
+const CACHE = 'ooda-v3';
+const SHELL = ['./', './index.html', './manifest.json',
+  './icons/icon-192.png', './icons/icon-512.png',
+  './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(()=>{}));
