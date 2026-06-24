@@ -1,0 +1,10 @@
+{
+  "name": "OODA — plan, track, close out",
+  "short_name": "OODA",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EBE8E0",
+  "theme_color": "#EBE8E0",
+  "description": "A single-file daily planner with time tracking and Todoist sync."
+}

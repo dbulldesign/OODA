@@ -107,3 +107,37 @@ travel; the GitHub token and the gist id stay local to each device.
   seamless.
 - The gist is **private**, but treat it like any synced data — anyone with the
   token and id could read it. Use **Disconnect** to stop syncing on a device.
+
+## Choosing what syncs from Todoist
+
+The **Which tasks to pull** field in the Todoist dialog is a normal
+[Todoist filter](https://todoist.com/help/articles/introduction-to-filters), so
+you decide exactly what comes in and there are one-tap presets. Combine terms
+with `&` (and) / `|` (or):
+
+| Goal | Filter |
+|------|--------|
+| Today + anything overdue (default) | `(today \| overdue)` |
+| Just today | `today` |
+| The week ahead | `7 days` |
+| Everything with a label | `@OODA` |
+| A single project | `#Work` |
+| A project, high priority only | `#Work & p1` |
+| Errands due today | `today & @errand` |
+
+Imported tasks land in today's list and map to the **channel** whose name
+matches their Todoist **project** (otherwise the first channel).
+
+## Offline
+
+OODA is offline-first and installable (it ships a service worker + web
+manifest, so you can "Add to Home Screen"):
+
+- The app **loads and runs with no connection** — add/track/complete tasks as
+  usual; everything is saved locally.
+- Todoist changes you make offline (completions, edits, new tasks) are **queued
+  and flush automatically when you're back online**; the header shows a count of
+  pending changes.
+- The header shows your **last sync time** and an **Offline** badge, and the
+  **⟳ Sync now** button (or reconnecting) triggers a sync. Offline edits are
+  pushed before any pull so they're never clobbered.
