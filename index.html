@@ -318,6 +318,7 @@
   .cal-rz{position:absolute;left:0;right:0;bottom:0;height:11px;cursor:ns-resize;touch-action:none}
   .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
   .cal-block{touch-action:none}
+  .cal-block.running{outline:2px solid var(--now);outline-offset:1px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}
   .cal-block.dragging{opacity:.92;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:4}
   .cal-canvas.drop{background:var(--now-soft)}
   .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
@@ -444,7 +445,7 @@
   <div class="add">
     <input class="name" id="addName" placeholder="What needs doing?" autocomplete="off">
     <select id="addChannel"></select>
-    <input class="est" id="addEst" type="number" min="0" step="0.25" placeholder="hrs" title="Estimate in hours — e.g. 1.5 = 1h 30m, 0.5 = 30m">
+    <input class="est" id="addEst" type="text" inputmode="decimal" placeholder="30m / 1h" title="Task length: 30m, 1h 15m, 1:15, or 1.5 hours">
     <button id="addBtn">Add</button>
   </div>
 
@@ -613,8 +614,8 @@
         </select>
       </div>
       <div class="td-field">
-        <label>Estimate (hrs)</label>
-        <input id="teEst" type="number" min="0" step="0.25" placeholder="e.g. 1.5">
+        <label>Length</label>
+        <input id="teEst" type="text" inputmode="decimal" placeholder="30m, 1h 15m, 1:15, 1.5">
       </div>
       <div class="td-field">
         <label>Schedule at (Day view)</label>
@@ -822,8 +823,28 @@ function minFmt(ms){ const m=Math.round(ms/60000); if(m<60)return m+'m'; return 
 function durFmt(ms){ const s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor(s%3600/60), ss=s%60;
   return (h>0? h+':'+String(m).padStart(2,'0') : ''+m)+':'+String(ss).padStart(2,'0'); }
 function ceilMinuteMs(ms){ return Math.ceil(ms/60000)*60000; }
-function hoursToMin(v){ const h=parseFloat(v); return isFinite(h)&&h>0? Math.round(h*60):0; }
-function minToHoursStr(min){ if(!min)return ''; const h=min/60; return (Math.round(h*100)/100).toString(); }
+function hoursToMin(v){ return durationToMin(v); }
+function durationToMin(v){
+  const raw=String(v||'').trim().toLowerCase(); if(!raw)return 0;
+  const clock=raw.match(/^(\d+)\s*:\s*([0-5]?\d)$/);
+  if(clock) return (+clock[1])*60+(+clock[2]);
+  let total=0, found=false, m;
+  const re=/(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/g;
+  while((m=re.exec(raw))){
+    const n=parseFloat(m[1]); if(!isFinite(n))continue;
+    total += m[2][0]==='h' ? n*60 : n; found=true;
+  }
+  if(found) return Math.max(0,Math.round(total));
+  const h=parseFloat(raw); return isFinite(h)&&h>0? Math.round(h*60):0;
+}
+function minToDurationStr(min){
+  if(!min)return '';
+  const h=Math.floor(min/60), m=min%60;
+  if(h&&m)return h+'h '+m+'m';
+  if(h)return h+'h';
+  return m+'m';
+}
+function minToHoursStr(min){ return minToDurationStr(min); }
 function hmFromMin(min){ const h=Math.floor(min/60), m=min%60; let hh=h%12; if(hh===0)hh=12; return hh+':'+String(m).padStart(2,'0')+(h<12?'am':'pm'); }
 function hmInput(min){ if(min==null)return ''; return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
 function minFromHM(s){ if(!s)return null; const p=s.split(':'); const n=(+p[0])*60+(+p[1]); return isNaN(n)?null:n; }
@@ -875,6 +896,8 @@ async function toggleRun(id){
   else {
     state.tasks.forEach(o=>{ if(o.running){ o.actualMs+=Date.now()-o.startedAt; o.running=false; o.startedAt=null; } });
     t.running=true; t.startedAt=Date.now(); t.done=false; state.activeId=id;
+    scheduleRunningTask(t,true);
+    reflowCascade(t.id);
   }
   await saveDay(); render();
 }
@@ -1097,7 +1120,7 @@ function renderPhase(){
   set('ph-reflect',allDone);
   function set(id,on){ document.getElementById(id).classList.toggle('on',!!on); }
 }
-function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); } },1000); }
+function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); } },1000); }
 /* periodic background sync — pull Todoist + cloud every few minutes */
 let autoSyncTimer=null;
 function startAutoSync(){ clearInterval(autoSyncTimer); autoSyncTimer=setInterval(autoSyncTick, 5*60*1000); }
@@ -1114,14 +1137,47 @@ function updateRunningRows(){
     const span=li.querySelector('.times .act');
     if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } } });
 }
+let lastRunningScheduleSig='';
+function updateRunningSchedule(){
+  const t=state.tasks.find(x=>x.running); if(!t)return;
+  scheduleRunningTask(t);
+  const before=scheduleSig();
+  reflowCascade(t.id);
+  const after=scheduleSig();
+  if(viewMode==='day') renderDay();
+  if(after!==before && after!==lastRunningScheduleSig){ lastRunningScheduleSig=after; saveDay(); }
+}
 /* ---------- day calendar view (schedule tasks on a timeline) ---------- */
 const SNAP=30;  // minutes — calendar snaps to half-hours
 function snap(m){ return Math.round(m/SNAP)*SNAP; }
-function blockDur(t){ return Math.max(t.estimateMin||30, SNAP); }
+function ceilSnap(m){ return Math.max(SNAP,Math.ceil(m/SNAP)*SNAP); }
+function blockDur(t){
+  const planned=Math.max(t.estimateMin||30, SNAP);
+  if(!t.running) return planned;
+  return Math.max(planned,ceilSnap(Math.ceil(liveActual(t)/60000)));
+}
 function scheduledActive(){ return state.tasks.filter(t=>t.scheduledMin!=null && !t.done); }
+function scheduleSig(){ return scheduledActive().map(t=>t.id+':'+t.scheduledMin+':'+blockDur(t)).sort().join('|'); }
+function scheduleRunningTask(t,force=false){
+  if(!force && t.scheduledMin!=null) return;
+  const mins=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(nowMinutes())));
+  t.scheduledMin=mins;
+}
 // push overlapping scheduled tasks down so nothing collides; keeps start times where possible
-function reflowCascade(){
+function reflowCascade(anchorId){
   const arr=scheduledActive().sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  const anchor=anchorId?arr.find(t=>t.id===anchorId):null;
+  if(anchor){
+    const before=arr.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)<=anchor.scheduledMin);
+    const after=arr.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)>anchor.scheduledMin).sort((a,b)=>a.scheduledMin-b.scheduledMin);
+    let cursor=calStart();
+    before.sort((a,b)=>a.scheduledMin-b.scheduledMin).forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
+      s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
+    cursor=Math.max(cursor,anchor.scheduledMin+blockDur(anchor));
+    after.forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
+      s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
+    return;
+  }
   let cursor=calStart();
   arr.forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
     s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
@@ -1182,7 +1238,7 @@ function renderDay(){
   const sched=state.tasks.filter(t=>t.scheduledMin!=null);
   const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
   // header: scheduled load vs capacity + adjustable day range
-  const schedMin=sched.filter(t=>!t.done).reduce((s,t)=>s+(t.estimateMin||0),0);
+  const schedMin=sched.filter(t=>!t.done).reduce((s,t)=>s+blockDur(t),0);
   const capMin=state.capacityHours*60, pct=capMin?Math.min(100,schedMin/capMin*100):0;
   const head=document.createElement('div'); head.className='cal-head';
   head.innerHTML='<div class="cal-cap"><div class="cal-cap-row"><span><b>'+(schedMin/60).toFixed(1).replace(/\.0$/,'')+'h</b> scheduled · '+state.capacityHours+'h capacity</span>'+
@@ -1235,20 +1291,21 @@ function renderDay(){
     quickAddAt(mins);   // tap empty slot → add a new task at that time
   });
   // lay overlapping blocks side-by-side in columns
-  const items=sched.map(t=>{ const s=Math.max(START,Math.min(END,t.scheduledMin)); return {t,s,e:s+Math.max(t.estimateMin||30,SNAP)}; });
+  const items=sched.map(t=>{ const s=Math.max(START,Math.min(END,t.scheduledMin)); return {t,s,e:s+blockDur(t)}; });
   const lay=layoutOverlap(items);
   sched.forEach(t=>{
     const ch=chById(t.channelId);
     const sm=Math.max(START,Math.min(END,t.scheduledMin));
     const top=(sm-START)*PXM;
-    const h=Math.max(Math.min((t.estimateMin||30)*PXM,(END-START)*PXM-top),18);
+    const dur=blockDur(t);
+    const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
-    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':''); b.dataset.id=t.id;
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':''); b.dataset.id=t.id;
     b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
-    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):'')+'</div>'+
+    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+' · '+(t.running?'tracking · ':'')+minFmt(dur*60000)+'</div>'+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
     canvas.appendChild(b);
@@ -2223,6 +2280,7 @@ document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
+document.getElementById('addEst').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
 document.getElementById('capInput').addEventListener('change',async e=>{ state.capacityHours=Math.max(1,parseFloat(e.target.value)||7); await saveConfig(); renderArc(); });
 document.getElementById('reflectText').addEventListener('blur',saveReflection);
