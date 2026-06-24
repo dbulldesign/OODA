@@ -254,6 +254,20 @@
 
   /* day calendar view */
   .cal{display:flex;flex-direction:column;gap:10px}
+  .cal-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:11px 14px}
+  .cal-cap{flex:1;min-width:180px}
+  .cal-cap-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px}
+  .cal-cap-row b{color:var(--ink)}
+  .cal-cap-row .warn{color:var(--over);font-weight:600}
+  .cal-cap-bar{height:8px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+  .cal-cap-fill{height:100%;background:var(--now);transition:width .4s cubic-bezier(.4,0,.2,1)}
+  .cal-cap-fill.over{background:var(--over)}
+  .cal-range{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .cal-range input{border:1px solid var(--line-strong);border-radius:6px;padding:5px 6px;font-size:12.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
+  .cal-rz{position:absolute;left:0;right:0;bottom:0;height:11px;cursor:ns-resize;touch-action:none}
+  .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
+  .cal-block{touch-action:none}
+  .cal-block.dragging{opacity:.92;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:4}
   .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
   .cal-backlog h4{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
   .cal-chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -590,7 +604,9 @@ const EDIT='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentCol
 const DOTS='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const expandedTasks=new Set();
 let viewMode='list', sortMode='manual', filterKey='all', calSel=null;
-const CAL_START=6*60, CAL_END=22*60, PXM=1;  // day view: 6:00–22:00, 1px per minute
+const PXM=1;  // day view: 1px per minute
+function calStart(){ return (state.dayStartH??6)*60; }
+function calEnd(){ return (state.dayEndH??22)*60; }
 
 const DEFAULT_CHANNELS=[
   {id:'field',name:'Field',color:'#3F7A56'},
@@ -602,7 +618,7 @@ const DEFAULT_CHANNELS=[
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,lastSync:null};
 const TD_BASE='https://api.todoist.com/api/v1';
 
-let state={ channels:[], capacityHours:7, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
+let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
 let memFallback={}; let storeOk=true; let tick=null;
 
 /* ---------- storage layer ----------
@@ -655,7 +671,7 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
   else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; await saveConfig(); }
   const day=await sget(todayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; }
@@ -670,7 +686,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
   const day=await sget(todayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -680,7 +696,7 @@ async function reloadState(){
   buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,todoist:td}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,todoist:td}); schedulePush(); }
 async function saveDay(){ await sset(todayKey(),{date:todayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
@@ -906,10 +922,24 @@ function updateRunningRows(){
     if(span){ span.textContent=durFmt(act); span.classList.toggle('over',over); } } } });
 }
 /* ---------- day calendar view (schedule tasks on a timeline) ---------- */
+const SNAP=5;  // minutes
+function snap(m){ return Math.round(m/SNAP)*SNAP; }
 function renderDay(){
   const cal=document.getElementById('calView'); cal.innerHTML='';
+  const START=calStart(), END=calEnd();
   const sched=state.tasks.filter(t=>t.scheduledMin!=null);
   const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
+  // header: scheduled load vs capacity + adjustable day range
+  const schedMin=sched.filter(t=>!t.done).reduce((s,t)=>s+(t.estimateMin||0),0);
+  const capMin=state.capacityHours*60, pct=capMin?Math.min(100,schedMin/capMin*100):0;
+  const head=document.createElement('div'); head.className='cal-head';
+  head.innerHTML='<div class="cal-cap"><div class="cal-cap-row"><span><b>'+(schedMin/60).toFixed(1).replace(/\.0$/,'')+'h</b> scheduled · '+state.capacityHours+'h capacity</span>'+
+      (schedMin>capMin?'<span class="warn">over by '+((schedMin-capMin)/60).toFixed(1).replace(/\.0$/,'')+'h</span>':'')+'</div>'+
+      '<div class="cal-cap-bar"><div class="cal-cap-fill'+(schedMin>capMin?' over':'')+'" style="width:'+pct+'%"></div></div></div>'+
+    '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>';
+  cal.appendChild(head);
+  head.querySelector('#dayStartInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayStartH=Math.floor(m/60); if(state.dayStartH>=state.dayEndH)state.dayStartH=state.dayEndH-1; saveConfig(); renderDay(); } });
+  head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderDay(); } });
   // unscheduled backlog
   const bl=document.createElement('div'); bl.className='cal-backlog';
   bl.innerHTML='<h4>Unscheduled</h4>';
@@ -923,42 +953,72 @@ function renderDay(){
     chips.appendChild(c); });
   bl.appendChild(chips);
   const hint=document.createElement('p'); hint.className='hint';
-  hint.textContent = calSel? 'Now tap a time on the grid to place it (tap a block to edit/unschedule).' : 'Tap a task, then tap a time slot to schedule it.';
+  hint.textContent = calSel? 'Tap a time slot to place it. Drag blocks to move, drag the bottom edge to resize.' : 'Tap a task then a time to schedule — or drag blocks to move/resize.';
   bl.appendChild(hint); cal.appendChild(bl);
   // timeline
   const grid=document.createElement('div'); grid.className='cal-grid';
   const scroll=document.createElement('div'); scroll.className='cal-scroll';
   const canvas=document.createElement('div'); canvas.className='cal-canvas';
-  canvas.style.height=((CAL_END-CAL_START)*PXM)+'px';
-  for(let mm=CAL_START; mm<=CAL_END; mm+=60){
-    const y=(mm-CAL_START)*PXM;
+  canvas.style.height=((END-START)*PXM)+'px';
+  for(let mm=START; mm<=END; mm+=60){
+    const y=(mm-START)*PXM;
     const hr=document.createElement('div'); hr.className='cal-hour'; hr.style.top=y+'px';
     hr.innerHTML='<span class="hl">'+hmFromMin(mm)+'</span>'; canvas.appendChild(hr);
-    if(mm<CAL_END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); }
+    if(mm<END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); }
   }
   canvas.addEventListener('click',e=>{
     if(!calSel) return;
     const rect=canvas.getBoundingClientRect();
-    let mins=CAL_START + Math.round(((e.clientY-rect.top)/PXM)/15)*15;
-    mins=Math.max(CAL_START,Math.min(CAL_END-15,mins));
+    let mins=snap(START + (e.clientY-rect.top)/PXM);
+    mins=Math.max(START,Math.min(END-SNAP,mins));
     const t=state.tasks.find(x=>x.id===calSel);
     if(t){ t.scheduledMin=mins; calSel=null; saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); }
   });
   sched.forEach(t=>{
     const ch=chById(t.channelId);
-    const sm=Math.max(CAL_START,Math.min(CAL_END,t.scheduledMin));
-    const top=(sm-CAL_START)*PXM;
-    const h=Math.max(Math.min((t.estimateMin||30)*PXM,(CAL_END-CAL_START)*PXM-top),18);
+    const sm=Math.max(START,Math.min(END,t.scheduledMin));
+    const top=(sm-START)*PXM;
+    const h=Math.max(Math.min((t.estimateMin||30)*PXM,(END-START)*PXM-top),18);
     const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':''); b.dataset.id=t.id;
     b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
-    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):'')+'</div>';
-    b.addEventListener('click',ev=>{ ev.stopPropagation(); openTaskEditor(t.id); });
+    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):'')+'</div>'+
+      '<div class="cal-rz"></div>';
+    attachBlockDrag(b,t,START,END);
     canvas.appendChild(b);
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
-  if(nowMin>=CAL_START&&nowMin<=CAL_END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-CAL_START)*PXM)+'px'; canvas.appendChild(nl); }
+  if(nowMin>=START&&nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
   scroll.appendChild(canvas); grid.appendChild(scroll); cal.appendChild(grid);
-  requestAnimationFrame(()=>{ scroll.scrollTop = (nowMin>=CAL_START&&nowMin<=CAL_END)? Math.max(0,(nowMin-CAL_START)*PXM-140) : 0; });
+  requestAnimationFrame(()=>{ scroll.scrollTop = (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
+}
+// drag-to-move (body) and drag-to-resize (bottom handle) for a calendar block
+function attachBlockDrag(b,t,START,END){
+  let mode=null,startY=0,origTop=0,origH=0,moved=false;
+  function down(e,m){
+    mode=m; moved=false; startY=e.clientY; origTop=parseFloat(b.style.top); origH=parseFloat(b.style.height);
+    b.setPointerCapture(e.pointerId); b.classList.add('dragging'); e.preventDefault(); e.stopPropagation();
+  }
+  function move(e){
+    if(!mode) return;
+    const dy=e.clientY-startY; if(Math.abs(dy)>3) moved=true;
+    if(mode==='move'){ let top=Math.max(0,Math.min(origTop+dy,(END-START)*PXM-origH)); b.style.top=top+'px';
+      b.querySelector('.cb-s').textContent=hmFromMin(snap(START+top/PXM))+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):''); }
+    else { let h=Math.max(15,Math.min(origH+dy,(END-START)*PXM-origTop)); b.style.height=h+'px';
+      b.querySelector('.cb-s').textContent=hmFromMin(t.scheduledMin)+' · '+minFmt(snap(h/PXM)*60000); }
+  }
+  function up(e){
+    if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
+    try{ b.releasePointerCapture(e.pointerId); }catch(_){}
+    if(!moved){ if(m==='move') openTaskEditor(t.id); return; }
+    if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); }
+    else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
+    saveDay(); render();
+  }
+  b.addEventListener('pointerdown',e=>{ if(e.target.classList.contains('cal-rz')) down(e,'resize'); else down(e,'move'); });
+  b.addEventListener('pointermove',move);
+  b.addEventListener('pointerup',up);
+  b.addEventListener('pointercancel',up);
+  b.addEventListener('click',e=>e.stopPropagation());  // don't also trigger tap-to-place
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 

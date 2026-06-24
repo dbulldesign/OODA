@@ -30,9 +30,12 @@ footer shows which mode is active).
 - **List & Day views.** Switch with the **List / Day** tabs. In **List**, sort by
   manual order, due date, project, channel, or name, and filter to a single
   channel / project / @tag. In **Day** (Sunsama-style), see a time-blocked
-  calendar: tap an **Unscheduled** task then tap a time to place it; blocks are
-  sized by their estimate and coloured by channel, with a live "now" line. Set or
-  change a task's time from the editor's **Schedule at** field too.
+  calendar: tap an **Unscheduled** task then tap a time to place it, or just
+  **drag blocks to move** them and **drag the bottom edge to resize** (which sets
+  the estimate). Blocks are coloured by channel with a live "now" line. The day
+  header shows a **scheduled-vs-capacity** bar, and you can set the **day's start
+  and end** hours there. Scheduling also works from the editor's **Schedule at**
+  field.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
   ▶ start and ✓ done buttons.
 - **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
