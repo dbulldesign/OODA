@@ -27,15 +27,19 @@ footer shows which mode is active).
   over-estimate warnings.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
-- **List & Day views.** Switch with the **List / Day** tabs. In **List**, sort by
-  manual order, due date, project, channel, or name, and filter to a single
-  channel / project / @tag. In **Day** (Sunsama-style), see a time-blocked
-  calendar: tap an **Unscheduled** task then tap a time to place it, or just
-  **drag blocks to move** them and **drag the bottom edge to resize** (which sets
-  the estimate). Blocks are coloured by channel with a live "now" line. The day
-  header shows a **scheduled-vs-capacity** bar, and you can set the **day's start
-  and end** hours there. Scheduling also works from the editor's **Schedule at**
-  field.
+- **List / Day / Week views** and **day navigation** (‹ › and **Today** by the
+  date). Pick any day to plan it.
+  - **List**: sort by manual order, due date, project, channel, or name; filter
+    to a single channel / project / @tag.
+  - **Day** (Sunsama-style): a time-blocked calendar. **Drag a task from
+    Unscheduled** straight onto the timeline, or tap-a-task-then-tap-a-time.
+    **Drag blocks to move**, **drag the bottom edge to resize** (sets the
+    estimate), and overlapping blocks lay out **side by side**. Blocks are
+    coloured by channel with a live "now" line. The header shows a
+    **scheduled-vs-capacity** bar and adjustable **day start/end** hours.
+    Scheduling also works from the editor's **Schedule at** field.
+  - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
+    to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
   ▶ start and ✓ done buttons.
 - **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
