@@ -321,7 +321,9 @@
   .cal-block.dragging{opacity:.92;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:4}
   .cal-canvas.drop{background:var(--now-soft)}
   .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
-  .cal-backlog h4{margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
+  .cal-backlog h4{margin:0;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
+  .cal-bl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .cal-backlog.drop{outline:2px dashed var(--now);outline-offset:2px;background:var(--now-soft)}
   .cal-chips{display:flex;flex-wrap:wrap;gap:6px}
   .cal-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface-2);
     border-radius:16px;padding:5px 11px;font-size:13px;cursor:pointer;color:var(--ink);max-width:100%}
@@ -691,6 +693,41 @@
     </div>
     <p class="td-hint">Scales everything up — handy on a big monitor. Affects this device only.</p>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="fillDialog">
+  <div class="dlg-in">
+    <h3>Fill my day</h3>
+    <p class="td-hint">Auto-place unscheduled tasks into the open slots on the timeline (it won't move tasks you've already placed).</p>
+    <div class="te-grid">
+      <div class="td-field">
+        <label>Start from</label>
+        <select id="fillStart"><option value="now">Now</option><option value="start">Day start</option></select>
+      </div>
+      <div class="td-field">
+        <label>Order</label>
+        <select id="fillOrder">
+          <option value="current">List order</option>
+          <option value="priority">Priority first</option>
+          <option value="short">Shortest first</option>
+          <option value="long">Longest first</option>
+        </select>
+      </div>
+      <div class="td-field">
+        <label>Break between (min)</label>
+        <input id="fillGap" type="number" min="0" step="5" value="0">
+      </div>
+      <div class="td-field">
+        <label>Default length (min)</label>
+        <input id="fillDef" type="number" min="5" step="5" value="30">
+      </div>
+    </div>
+    <label class="td-check"><input id="fillCap" type="checkbox" checked> Stop when my capacity is full</label>
+    <div class="dlg-actions">
+      <button id="fillCancel">Cancel</button>
+      <button class="primary" id="fillGo">Fill day</button>
+    </div>
   </div>
 </dialog>
 
@@ -1096,6 +1133,49 @@ function compactDay(){
   arr.forEach(t=>{ t.scheduledMin=Math.min(cursor,calEnd()-SNAP); cursor=t.scheduledMin+blockDur(t); });
 }
 function maybeAutoArrange(){ if(state.autoArrange) reflowCascade(); }
+function nowMinutes(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
+let lastBacklog=null;
+/* ----- auto-place backlog into open slots ("Fill day") ----- */
+function orderBacklog(list,order){
+  const a=list.slice();
+  if(order==='priority') a.sort((x,y)=>((y.todoistMeta&&y.todoistMeta.priority)||1)-((x.todoistMeta&&x.todoistMeta.priority)||1));
+  else if(order==='short') a.sort((x,y)=>(x.estimateMin||0)-(y.estimateMin||0));
+  else if(order==='long') a.sort((x,y)=>(y.estimateMin||0)-(x.estimateMin||0));
+  return a; // 'current' keeps list order
+}
+function findFreeSlot(occupied,from,dur,dayEnd){
+  let cur=from;
+  for(const o of occupied){ if(o.e<=cur) continue;
+    if(o.s-cur>=dur) return cur; cur=Math.max(cur,o.e); }
+  return (cur+dur<=dayEnd)? cur : null;
+}
+function fillDay(p){
+  const occupied=scheduledActive().map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)})).sort((a,b)=>a.s-b.s);
+  let placedTotal=occupied.reduce((s,o)=>s+(o.e-o.s),0);
+  const capMin=state.capacityHours*60, dayEnd=calEnd();
+  let cursor=snap(p.start==='now'? Math.max(calStart(),nowMinutes()) : calStart());
+  let backlog=orderBacklog(state.tasks.filter(t=>t.scheduledMin==null && !t.done),p.order);
+  let placed=0;
+  for(const t of backlog){
+    const dur=Math.ceil((t.estimateMin||p.defMin)/SNAP)*SNAP;
+    if(p.capacity && placedTotal+dur>capMin) continue;
+    const slot=findFreeSlot(occupied,cursor,dur,dayEnd);
+    if(slot==null) continue;
+    t.scheduledMin=slot; if(!t.estimateMin) t.estimateMin=p.defMin;
+    occupied.push({s:slot,e:slot+dur}); occupied.sort((a,b)=>a.s-b.s);
+    placedTotal+=dur; placed++; cursor=slot+dur+(p.gap||0);
+  }
+  return placed;
+}
+function openFillDialog(){ document.getElementById('fillDialog').showModal(); }
+function doFill(){
+  const p={ start:document.getElementById('fillStart').value, order:document.getElementById('fillOrder').value,
+    gap:parseInt(document.getElementById('fillGap').value)||0, defMin:parseInt(document.getElementById('fillDef').value)||30,
+    capacity:document.getElementById('fillCap').checked };
+  const n=fillDay(p);
+  saveDay(); document.getElementById('fillDialog').close(); render();
+  toast(n? ('Placed '+n+' task'+(n===1?'':'s')+'.') : 'No room to place tasks — free up time or extend the day.');
+}
 function renderDay(){
   const cal=document.getElementById('calView'); cal.innerHTML='';
   const START=calStart(), END=calEnd();
@@ -1116,9 +1196,10 @@ function renderDay(){
   head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderDay(); } });
   head.querySelector('#aaToggle').addEventListener('change',e=>{ state.autoArrange=e.target.checked; saveConfig(); if(state.autoArrange){ reflowCascade(); saveDay(); } renderDay(); toast(state.autoArrange?'Auto-arrange on — new tasks reflow the day.':'Auto-arrange off.'); });
   head.querySelector('#tidyBtn').addEventListener('click',()=>{ compactDay(); saveDay(); renderDay(); toast('Day tidied — packed from '+hmFromMin(START)+'.'); });
-  // unscheduled backlog
-  const bl=document.createElement('div'); bl.className='cal-backlog';
-  bl.innerHTML='<h4>Unscheduled</h4>';
+  // unscheduled backlog (also a drop target to remove a task from the calendar)
+  const bl=document.createElement('div'); bl.className='cal-backlog'; lastBacklog=bl;
+  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled</h4>'+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div>';
+  const fb=bl.querySelector('#fillBtn'); if(fb) fb.addEventListener('click',openFillDialog);
   const chips=document.createElement('div'); chips.className='cal-chips';
   if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
   back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button');
@@ -1203,23 +1284,28 @@ function layoutOverlap(items){
 }
 // drag-to-move (body) and drag-to-resize (bottom handle) for a calendar block
 function attachBlockDrag(b,t,START,END){
-  let mode=null,startY=0,origTop=0,origH=0,moved=false;
+  let mode=null,startY=0,startX=0,origTop=0,origH=0,moved=false;
   function down(e,m){
-    mode=m; moved=false; startY=e.clientY; origTop=parseFloat(b.style.top); origH=parseFloat(b.style.height);
+    mode=m; moved=false; startY=e.clientY; startX=e.clientX; origTop=parseFloat(b.style.top); origH=parseFloat(b.style.height);
     b.setPointerCapture(e.pointerId); b.classList.add('dragging'); e.preventDefault(); e.stopPropagation();
   }
+  function overBacklog(e){ if(!lastBacklog) return false; const r=lastBacklog.getBoundingClientRect();
+    return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom; }
   function move(e){
     if(!mode) return;
-    const dy=e.clientY-startY; if(Math.abs(dy)>3) moved=true;
-    if(mode==='move'){ let top=Math.max(0,Math.min(origTop+dy,(END-START)*PXM-origH)); b.style.top=top+'px';
-      b.querySelector('.cb-s').textContent=hmFromMin(snap(START+top/PXM))+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):''); }
+    const dy=e.clientY-startY; if(Math.abs(dy)>3||Math.abs(e.clientX-startX)>3) moved=true;
+    if(mode==='move'){ const ob=overBacklog(e); if(lastBacklog) lastBacklog.classList.toggle('drop',ob);
+      let top=Math.max(0,Math.min(origTop+dy,(END-START)*PXM-origH)); b.style.top=top+'px';
+      b.querySelector('.cb-s').textContent= ob? 'release to unschedule' : (hmFromMin(snap(START+top/PXM))+(t.estimateMin?' · '+minFmt(t.estimateMin*60000):'')); }
     else { let h=Math.max(15,Math.min(origH+dy,(END-START)*PXM-origTop)); b.style.height=h+'px';
       b.querySelector('.cb-s').textContent=hmFromMin(t.scheduledMin)+' · '+minFmt(snap(h/PXM)*60000); }
   }
   function up(e){
     if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
+    if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
     if(!moved){ if(m==='move') openTaskEditor(t.id); return; }
+    if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
     maybeAutoArrange(); saveDay(); render();
@@ -2132,6 +2218,8 @@ document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
+document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
+document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });

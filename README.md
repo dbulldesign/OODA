@@ -47,8 +47,11 @@ footer shows which mode is active).
     with a live "now" line. The header shows a **scheduled-vs-capacity** bar and
     adjustable **day start/end** hours. Turn on **Auto-arrange** to have new/moved
     tasks push conflicting blocks down automatically, or hit **Tidy day** to pack
-    everything back-to-back. Scheduling also works from the editor's **Schedule
-    at** field.
+    everything back-to-back. **Fill my day** auto-places your unscheduled tasks
+    into open slots with parameters (start from now or day start, order, break
+    length, default length, stop at capacity). **Drag a block back onto the
+    Unscheduled list to remove it from the calendar.** Scheduling also works from
+    the editor's **Schedule at** field.
   - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
