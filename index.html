@@ -200,6 +200,20 @@
   .td-mini{margin:8px 0 0;font-size:11.5px;color:var(--ink-faint);line-height:1.5}
   .td-mini code{font-family:var(--mono);font-size:11px;background:var(--surface-2);padding:1px 4px;border-radius:4px}
   .td-mini a{color:#2E6B9E}
+  /* todoist task browser */
+  #browseDialog{max-width:540px}
+  .bz-bar{display:flex;gap:8px;margin-bottom:10px}
+  .bz-bar input{flex:1;border:1px solid var(--line-strong);border-radius:7px;padding:9px;font-size:13.5px;background:var(--surface-2);color:var(--ink)}
+  .bz-list{max-height:48vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+  .bz-empty{padding:18px;text-align:center;color:var(--ink-faint);font-size:13px}
+  .bz-proj{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);padding:9px 10px 4px;position:sticky;top:0;background:var(--surface-2)}
+  .bz-row{display:flex;gap:9px;align-items:flex-start;padding:7px 10px;border-top:1px solid var(--line);cursor:pointer}
+  .bz-row input{margin-top:3px;flex:0 0 auto}
+  .bz-c{flex:1;min-width:0}
+  .bz-name{font-size:14px;display:block}
+  .bz-sub{font-size:11.5px;color:var(--ink-soft);display:block;margin-top:2px}
+  .bz-row.added{opacity:.5}
+  .bz-all{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;cursor:pointer}
   .sync-meta{font-size:11px;color:var(--ink-faint);text-align:right;white-space:nowrap;display:flex;align-items:center;justify-content:flex-end;gap:5px}
   .sync-meta.off{color:var(--over);font-weight:600}
   .spin{display:none;width:11px;height:11px;border:2px solid var(--line-strong);border-top-color:var(--now);border-radius:50%;flex:0 0 auto}
@@ -342,8 +356,29 @@
     <div class="dlg-actions">
       <button class="danger" id="tdDisconnect">Disconnect</button>
       <span style="display:flex;gap:8px">
+        <button id="tdBrowse">Browse…</button>
         <button id="tdSync">Sync now</button>
         <button class="primary" id="tdSave">Save</button>
+      </span>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="browseDialog">
+  <div class="dlg-in">
+    <h3>Import tasks from Todoist</h3>
+    <p class="td-hint">Pull in <b>any</b> task — leave the box blank for all active tasks, or type a filter to narrow it. Tick the ones to bring into today.</p>
+    <div class="bz-bar">
+      <input id="bzQuery" type="text" spellcheck="false" placeholder="blank = all tasks · or #Work, @errand, p1, 7 days…">
+      <button class="primary" id="bzLoad">Load</button>
+    </div>
+    <div class="bz-list" id="bzList"></div>
+    <div class="td-status" id="bzStatus"></div>
+    <div class="dlg-actions">
+      <button id="bzCancel">Close</button>
+      <span style="display:flex;gap:12px;align-items:center">
+        <label class="bz-all"><input type="checkbox" id="bzAll"> Select all</label>
+        <button class="primary" id="bzImport" disabled>Import selected</button>
       </span>
     </div>
   </div>
@@ -886,6 +921,74 @@ async function syncTodoist(silent){
 function pushDoneToTodoist(t){
   if(!t||!t.todoistId||!tdConnected()||!state.todoist.autocomplete)return;
   enqueueTd({kind:t.done?'close':'reopen',taskLocalId:t.id});
+}
+
+/* ---------- browse & import any Todoist task ---------- */
+let bzTasks=[], bzProj={}, bzSect={};
+function setBzStatus(m,c){ const e=document.getElementById('bzStatus'); if(e){ e.textContent=m||''; e.className='td-status'+(c?' '+c:''); } }
+function openBrowseDialog(){
+  if(locked()){ showUnlock(); return; }
+  if(!tdConnected()){ openTdDialog(); return; }
+  document.getElementById('bzQuery').value='';
+  document.getElementById('bzAll').checked=false;
+  document.getElementById('bzList').innerHTML='<div class="bz-empty">Loading…</div>';
+  document.getElementById('bzImport').disabled=true; setBzStatus('');
+  document.getElementById('browseDialog').showModal();
+  loadBrowse();
+}
+async function loadBrowse(){
+  if(!tdConnected()){ setBzStatus('Connect Todoist first.','err'); return; }
+  if(!navigator.onLine){ setBzStatus('Offline — connect to load tasks.','err'); return; }
+  setBzStatus('Loading…'); document.getElementById('bzList').innerHTML='<div class="bz-empty">Loading…</div>';
+  beginNet();
+  try{
+    bzProj={}; bzSect={};
+    try{ (await tdGetAll('/projects?limit=200')).forEach(p=>bzProj[p.id]=p.name); }catch(e){}
+    try{ (await tdGetAll('/sections?limit=200')).forEach(s=>bzSect[s.id]=s.name); }catch(e){}
+    const q=document.getElementById('bzQuery').value.trim();
+    bzTasks = q ? await tdGetAll('/tasks/filter?query='+encodeURIComponent(q)+'&limit=200')
+                : await tdGetAll('/tasks?limit=200');
+    renderBrowse();
+    setBzStatus(bzTasks.length+' task'+(bzTasks.length===1?'':'s')+(q?' matching':' active')+'.');
+  }catch(e){ document.getElementById('bzList').innerHTML=''; setBzStatus('Couldn’t load — '+e.message,'err'); }
+  finally{ endNet(); }
+}
+function renderBrowse(){
+  const box=document.getElementById('bzList'); box.innerHTML='';
+  if(!bzTasks.length){ box.innerHTML='<div class="bz-empty">No tasks match.</div>'; document.getElementById('bzImport').disabled=true; return; }
+  const groups={};
+  bzTasks.forEach(td=>{ const pn=bzProj[td.project_id]||'(no project)'; (groups[pn]=groups[pn]||[]).push(td); });
+  Object.keys(groups).sort().forEach(pn=>{
+    const h=document.createElement('div'); h.className='bz-proj'; h.textContent=pn; box.appendChild(h);
+    groups[pn].forEach(td=>{
+      const added=state.tasks.some(t=>t.todoistId===td.id);
+      const due=td.due?(td.due.string||td.due.date||''):'';
+      const sub=[due,(td.labels||[]).map(l=>'@'+l).join(' '),prioLabel(td.priority||1)].filter(Boolean).join(' · ');
+      const row=document.createElement('label'); row.className='bz-row'+(added?' added':'');
+      row.innerHTML='<input type="checkbox" '+(added?'checked disabled':'')+' data-id="'+escapeHtml(td.id)+'">'+
+        '<span class="bz-c"><span class="bz-name">'+escapeHtml(td.content)+'</span>'+
+        ((sub||added)?'<span class="bz-sub">'+escapeHtml(sub)+(added?(sub?' · ':'')+'already added':'')+'</span>':'')+'</span>';
+      box.appendChild(row);
+    });
+  });
+  box.querySelectorAll('input[type=checkbox]:not([disabled])').forEach(cb=>cb.addEventListener('change',updateBzImport));
+  updateBzImport();
+}
+function selectedBz(){ return [...document.querySelectorAll('#bzList input[type=checkbox]:not([disabled]):checked')].map(cb=>cb.getAttribute('data-id')); }
+function updateBzImport(){ document.getElementById('bzImport').disabled = selectedBz().length===0; }
+async function importBrowse(){
+  const ids=selectedBz(); if(!ids.length)return;
+  let added=0;
+  ids.forEach(id=>{ const td=bzTasks.find(x=>x.id===id);
+    if(!td || state.tasks.some(t=>t.todoistId===td.id))return;
+    const meta=buildTdMeta(td,bzProj,bzSect);
+    state.tasks.push({id:uid(),name:td.content,channelId:matchChannel(meta.projectName),
+      estimateMin:tdEstimate(td),actualMs:0,done:false,running:false,startedAt:null,todoistId:td.id,todoistMeta:meta});
+    added++;
+  });
+  await saveDay(); render();
+  document.getElementById('browseDialog').close();
+  toast('Imported '+added+' task'+(added===1?'':'s')+'.');
 }
 
 /* ---------- offline outbox: queue Todoist writes, flush when online ---------- */
@@ -1465,6 +1568,12 @@ document.getElementById('tdSync').addEventListener('click',async()=>{
   await syncTodoist(false);
 });
 document.getElementById('tdDisconnect').addEventListener('click',disconnectTodoist);
+document.getElementById('tdBrowse').addEventListener('click',()=>{ document.getElementById('tdDialog').close(); openBrowseDialog(); });
+document.getElementById('bzLoad').addEventListener('click',loadBrowse);
+document.getElementById('bzQuery').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); loadBrowse(); } });
+document.getElementById('bzCancel').addEventListener('click',()=>document.getElementById('browseDialog').close());
+document.getElementById('bzImport').addEventListener('click',importBrowse);
+document.getElementById('bzAll').addEventListener('change',e=>{ document.querySelectorAll('#bzList input[type=checkbox]:not([disabled])').forEach(cb=>{cb.checked=e.target.checked;}); updateBzImport(); });
 document.getElementById('teCancel').addEventListener('click',()=>document.getElementById('taskDialog').close());
 document.getElementById('teSave').addEventListener('click',saveTaskEditor);
 document.getElementById('cloudBtn').addEventListener('click',openSyncDialog);
