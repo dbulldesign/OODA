@@ -25,19 +25,26 @@ footer shows which mode is active).
 - Per-task start/pause timers shown as minutes:seconds (rounded up to the next
   whole minute when a task is completed), estimates vs. actuals, and
   over-estimate warnings.
+- **Search** the task list, and completed tasks drop into a collapsed
+  **Completed** section at the bottom so the list stays focused.
+- **Move a task to another day** — pick a date in the editor, or use **Move to
+  tomorrow** in a task's ⋯ menu.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
+- Responsive **mobile and desktop** layouts (the Day view goes two-column on wide
+  screens; phones get a single-column, touch-sized layout).
 - **List / Day / Week views** and **day navigation** (‹ › and **Today** by the
   date). Pick any day to plan it.
   - **List**: sort by manual order, due date, project, channel, or name; filter
     to a single channel / project / @tag.
-  - **Day** (Sunsama-style): a time-blocked calendar. **Drag a task from
-    Unscheduled** straight onto the timeline, or tap-a-task-then-tap-a-time.
-    **Drag blocks to move**, **drag the bottom edge to resize** (sets the
-    estimate), and overlapping blocks lay out **side by side**. Blocks are
-    coloured by channel with a live "now" line. The header shows a
-    **scheduled-vs-capacity** bar and adjustable **day start/end** hours.
-    Scheduling also works from the editor's **Schedule at** field.
+  - **Day** (Sunsama-style): a time-blocked calendar that **snaps to 30-minute**
+    slots. **Drag a task from Unscheduled** onto the timeline, tap-a-task-then-
+    tap-a-time, or **tap an empty slot to add a new task** there. **Drag blocks to
+    move**, **drag the bottom edge to resize** (sets the estimate), and
+    overlapping blocks lay out **side by side**. Blocks are coloured by channel
+    with a live "now" line. The header shows a **scheduled-vs-capacity** bar and
+    adjustable **day start/end** hours. Scheduling also works from the editor's
+    **Schedule at** field.
   - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
@@ -84,9 +91,11 @@ and is sent only to Todoist.
   **priority**, **labels**, **estimate**, and **project**. For a Todoist-linked
   task, saving pushes those changes back to Todoist (renaming inline pushes too).
   For a local task, tick *Also create this task in Todoist* to create it there.
-- OODA re-pulls automatically on load whenever a token is connected, and the
-  **⟳ Sync Todoist** header button pulls on demand. Use **Disconnect** to remove
-  the token and stop syncing.
+- OODA re-pulls automatically on load, **every ~5 minutes in the background**,
+  and when you return to the tab; the **⟳ Sync Todoist** header button pulls on
+  demand. (Background pulls only run while you're viewing today, so imported
+  tasks land on the right day.) Use **Disconnect** to remove the token and stop
+  syncing.
 
 > Note: the integration relies on Todoist's API permitting cross-origin browser
 > requests, which it does (`Access-Control-Allow-Origin: *` for authenticated
