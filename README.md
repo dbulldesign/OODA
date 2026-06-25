@@ -136,6 +136,9 @@ and is sent only to Todoist.
 - **Complete back** — when "Complete / reopen the task in Todoist…" is enabled,
   checking a synced task off here closes it in Todoist (and un-checking reopens
   it).
+- **Sub-tasks** — expanding a synced task's details loads its Todoist
+  **sub-tasks** as a checklist; ticking one closes it in Todoist (unticking
+  reopens it). Loaded on demand and cached per task.
 - **Two-way edit / create** — the pencil button on any task opens an editor for
   the title, **due date** (natural language, e.g. *tomorrow 9am*, *every Mon*),
   **priority**, **labels**, **estimate**, and **project**. For a Todoist-linked
