@@ -19,6 +19,16 @@ footer shows which mode is active).
 
 ## What it does
 
+- **Quick-add (natural language)** in the add box — type
+  `Draft report tomorrow 2pm ~45m #Work @errand p1` and OODA pulls out the
+  **estimate** (`~45m` / `1h`), **#project** (→ channel), **@labels**,
+  **priority** (`p1`–`p4`), a **time** (`2pm`, `noon`, `at 15:30`) and a **day**
+  (`today`, `tonight`, `tomorrow`, `mon`–`sun`, `next week`); the rest is the
+  task name. Dated tasks land on the right day (and push the due string to
+  Todoist when auto-create is on).
+- **Keyboard shortcuts** (press `?` for the list): `n` new, `/` search,
+  `j`/`k` move the selection, `space` start/pause, `x` complete, `e` edit,
+  `d` delete (with Undo), `[`/`]` previous/next day, `t` today.
 - **Plan / Work / Reflect** phase indicator that follows the state of the day.
 - A live "now tracking" clock and a capacity bar that fills with your estimates,
   grouped by colour-coded **channels** (editable).
