@@ -24,6 +24,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Stamp build version
+        # Give every deploy a unique version (1.1.<run_number>) so the PWA's
+        # in-app "new version available" prompt fires, and keep the service
+        # worker cache name in lock-step. The committed source keeps its base
+        # version; only the deployed artifact is stamped.
+        run: |
+          VER="1.1.${{ github.run_number }}"
+          sed -i "s/const APP_VERSION='[^']*'/const APP_VERSION='${VER}'/" index.html
+          sed -i "s/const CACHE = 'ooda-v[^']*'/const CACHE = 'ooda-v${VER}'/" sw.js
+          echo "Stamped version ${VER}"
+          grep -n "APP_VERSION=" index.html | head -1
+          grep -n "const CACHE" sw.js | head -1
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site

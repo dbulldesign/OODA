@@ -342,6 +342,24 @@
   .theme-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
     border-radius:20px;width:30px;height:30px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
   .theme-btn:hover{background:var(--surface-2);color:var(--ink)}
+  .settings-btn{font-size:15px}
+  /* header connection status pills */
+  .conn-stat{display:flex;gap:6px;align-items:center}
+  .cstat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);background:var(--surface);
+    color:var(--ink-soft);border-radius:20px;padding:3px 10px;font-size:11.5px;cursor:pointer;line-height:1.4}
+  .cstat:hover{background:var(--surface-2)}
+  .cstat .cdotx{width:7px;height:7px;border-radius:50%;background:#b9b3a8;flex:none}
+  .cstat.on{color:var(--ink);border-color:var(--line-strong)}
+  .cstat.on .cdotx{background:#3F7A56;box-shadow:0 0 0 3px rgba(63,122,86,.18)}
+  /* settings dialog */
+  .set-group{margin:0 0 12px}
+  .set-h{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin:0 0 6px}
+  .set-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .set-grid button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);
+    border-radius:9px;padding:10px 12px;font-size:13.5px;cursor:pointer;text-align:left;font-family:var(--display)}
+  .set-grid button:hover{background:var(--surface);border-color:var(--ink-soft)}
+  .set-grid button.td-on,.set-grid button.cloud-on{border-color:#3F7A56;color:var(--ink)}
+  .set-foot{font-size:11px;color:var(--ink-faint);font-family:var(--mono);margin:2px 0 4px}
   /* confetti */
   #confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
   .confetti-bit{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;will-change:transform,opacity;opacity:0}
@@ -571,8 +589,13 @@
         <span id="ph-work">Work</span>
         <span id="ph-reflect">Reflect</span>
         <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
+        <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
       </div>
       <button class="sync-btn" id="syncBtn" style="display:none"><span class="net-dot" id="netDot"></span><span id="syncBtnText">⟳ Sync</span></button>
+      <div class="conn-stat" id="connStat">
+        <button class="cstat" id="tdStat" title="Todoist — tap to manage"><span class="cdotx"></span>Todoist</button>
+        <button class="cstat" id="dsStat" title="Device sync — tap to manage"><span class="cdotx"></span>Sync</button>
+      </div>
       <div class="sync-meta" id="syncMeta"><span class="spin" id="syncSpin"></span><span id="syncMetaText"></span></div>
     </div>
   </header>
@@ -670,7 +693,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="reviewBtn">Review</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a> · <a id="exportIcs">Export ICS</a> · <a id="backupOut">Backup</a> · <a id="backupIn">Restore</a></span>
+    <span><a id="settingsLink">⚙ Settings</a></span>
     <input type="file" id="backupFile" accept="application/json,.json" style="display:none">
     <span id="storeState"></span>
     <span id="appVer" class="app-ver" title="App version"></span>
@@ -928,6 +951,47 @@
     </div>
     <div class="rev-body" id="revBody"></div>
     <div class="dlg-actions"><span></span><button class="primary" id="revDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="settingsDialog">
+  <div class="dlg-in">
+    <h3>Settings</h3>
+    <div class="set-group">
+      <div class="set-h">Connections</div>
+      <div class="set-grid">
+        <button id="todoistBtn">Todoist</button>
+        <button id="cloudBtn">Device sync</button>
+        <button id="secBtn">Lock keys</button>
+      </div>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Plan &amp; review</div>
+      <div class="set-grid">
+        <button id="reviewBtn">Review</button>
+        <button id="tplBtn">Templates</button>
+        <button id="carryBtn">Carry overdue</button>
+        <button id="editCh">Edit channels</button>
+      </div>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Appearance</div>
+      <div class="set-grid">
+        <button id="dispBtn">Display</button>
+      </div>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Data</div>
+      <div class="set-grid">
+        <button id="exportCsv">Export CSV</button>
+        <button id="exportJson">Export JSON</button>
+        <button id="exportIcs">Export ICS</button>
+        <button id="backupOut">Backup</button>
+        <button id="backupIn">Restore</button>
+      </div>
+    </div>
+    <div class="set-foot"><span id="setVer"></span></div>
+    <div class="dlg-actions"><span></span><button class="primary" id="settingsDone">Done</button></div>
   </div>
 </dialog>
 
@@ -1315,6 +1379,7 @@ function render(){
   cal.style.display = dayView?'':'none';
   week.style.display = weekView?'':'none';
   month.style.display = monthView?'':'none';
+  if(notList) document.getElementById('boardView').style.display='none';   // board is a list-only layout
   // bulk-select + search-all controls only make sense in the flat list view
   const flatList = !notList && listLayout!=='board';
   document.getElementById('selBtn').style.display = flatList?'':'none';
@@ -2213,8 +2278,10 @@ async function deleteTemplate(i){ state.templates.splice(i,1); await saveConfig(
 function tdConnected(){ return !!(state.todoist&&state.todoist.token); }
 function updateTdLink(){
   const a=document.getElementById('todoistBtn');
-  if(tdConnected()){ a.textContent='Todoist ✓'; a.classList.add('td-on'); }
-  else { a.textContent='Todoist'; a.classList.remove('td-on'); }
+  if(a){ if(tdConnected()){ a.textContent='Todoist ✓'; a.classList.add('td-on'); }
+    else { a.textContent='Todoist'; a.classList.remove('td-on'); } }
+  const st=document.getElementById('tdStat'); if(st){ st.classList.toggle('on',tdConnected());
+    st.title = tdConnected()?'Todoist connected — tap to manage':'Todoist not connected — tap to set up'; }
   const b=document.getElementById('syncBtn'); if(b) b.style.display=(tdConnected()||syncOn())?'inline-block':'none';
 }
 async function doManualSync(){
@@ -2707,9 +2774,11 @@ function setDirty(v){ dirtyOffline=v; try{ localStorage.setItem(LS_PREFIX+'_dirt
 function loadSync(){ try{ const raw=localStorage.getItem(LS_PREFIX+SYNC_LOCAL); if(raw) sync={...sync,...JSON.parse(raw)}; dirtyOffline=localStorage.getItem(LS_PREFIX+'_dirty')==='1'; }catch(e){} }
 function saveSync(){ try{ const s = secureOn()? {...sync,token:''} : sync; localStorage.setItem(LS_PREFIX+SYNC_LOCAL,JSON.stringify(s)); }catch(e){} }
 function updateCloudLink(){
-  const a=document.getElementById('cloudBtn'); if(!a)return;
-  if(syncOn()){ a.textContent='Device sync ✓'; a.classList.add('cloud-on'); }
-  else { a.textContent='Device sync'; a.classList.remove('cloud-on'); }
+  const a=document.getElementById('cloudBtn');
+  if(a){ if(syncOn()){ a.textContent='Device sync ✓'; a.classList.add('cloud-on'); }
+    else { a.textContent='Device sync'; a.classList.remove('cloud-on'); } }
+  const st=document.getElementById('dsStat'); if(st){ st.classList.toggle('on',syncOn());
+    st.title = syncOn()?'Device sync on — tap to manage':'Device sync off — tap to set up'; }
   updateConnUI();
 }
 function setSyncStatus(msg,cls){ const el=document.getElementById('syncStatus'); if(el){ el.textContent=msg; el.className='td-status'+(cls?' '+cls:''); } }
@@ -3301,6 +3370,14 @@ async function initServiceWorker(){
 }
 /* ---------- wire up ---------- */
 showVersion();
+function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION; document.getElementById('settingsDialog').showModal(); }
+document.getElementById('settingsBtn').addEventListener('click',openSettings);
+document.getElementById('settingsLink').addEventListener('click',openSettings);
+document.getElementById('settingsDone').addEventListener('click',()=>document.getElementById('settingsDialog').close());
+// clicking any action in Settings closes it so its own dialog / flow takes over
+document.getElementById('settingsDialog').addEventListener('click',e=>{ if(e.target.closest('.set-grid button')) document.getElementById('settingsDialog').close(); });
+document.getElementById('tdStat').addEventListener('click',openTdDialog);
+document.getElementById('dsStat').addEventListener('click',openSyncDialog);
 document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
