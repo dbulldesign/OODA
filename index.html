@@ -543,6 +543,7 @@
       <p class="td-mini">Any <a href="https://todoist.com/help/articles/introduction-to-filters" target="_blank" rel="noopener">Todoist filter</a> works — combine with <code>&amp;</code> (and) / <code>|</code> (or). Examples: <code>today &amp; @errand</code>, <code>#Work &amp; p1</code>, <code>overdue | today</code>. Imported tasks map to the OODA channel whose name matches their Todoist project (else the first channel).</p>
     </div>
     <label class="td-check"><input id="tdAuto" type="checkbox"> Complete / reopen the task in Todoist when I check it off here</label>
+    <label class="td-check"><input id="tdCreate" type="checkbox"> Create new OODA tasks in Todoist automatically</label>
     <div class="td-status" id="tdStatus"></div>
     <div class="dlg-actions">
       <button class="danger" id="tdDisconnect">Disconnect</button>
@@ -635,7 +636,7 @@
       </div>
       <div class="td-field" style="grid-column:1/-1">
         <label>Project (Todoist)</label>
-        <select id="teProject"></select>
+        <div style="display:flex;gap:8px"><select id="teProject" style="flex:1"></select><button type="button" id="teNewProj" class="aa-btn">+ New</button></div>
       </div>
     </div>
     <div class="td-field">
@@ -760,7 +761,7 @@ const DEFAULT_CHANNELS=[
   {id:'admin',name:'Admin',color:'#7A746B'},
   {id:'comms',name:'Comms',color:'#B14A3C'}
 ];
-const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,lastSync:null};
+const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,lastSync:null,projects:[]};
 const TD_BASE='https://api.todoist.com/api/v1';
 
 let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
@@ -894,9 +895,18 @@ async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
   const name=nameEl.value.trim(); if(!name)return;
   const estMin=hoursToMin(estEl.value);
-  state.tasks.unshift({id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null});
+  const t={id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null};
+  state.tasks.unshift(t);
   nameEl.value=''; estEl.value=''; nameEl.focus();
+  autoCreateInTodoist(t);
   await saveDay(); render();
+}
+// queue a Todoist create for a brand-new local task when auto-create is on
+function autoCreateInTodoist(t){
+  if(!tdConnected() || state.todoist.autocreate===false || t.todoistId) return;
+  const payload={content:t.name, priority:1, labels:[]};
+  if(t.estimateMin>0){ payload.duration=t.estimateMin; payload.duration_unit='minute'; }
+  enqueueTd({kind:'create',taskLocalId:t.id,payload});
 }
 async function toggleRun(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
@@ -1815,6 +1825,18 @@ function buildTeProjects(sel){
   const none=document.createElement('option'); none.value=''; none.textContent='—'; s.appendChild(none);
   tdProjects().forEach(p=>{ const o=document.createElement('option'); o.value=p.id; o.textContent=p.name; if(p.id===sel)o.selected=true; s.appendChild(o); });
 }
+async function tdCreateProject(name){
+  const p=await tdFetch('/projects',{method:'POST',body:JSON.stringify({name})});
+  if(p&&p.id){ state.todoist.projects=[...(state.todoist.projects||[]),{id:p.id,name:p.name}]; await saveConfig(); }
+  return p;
+}
+async function newProjectFlow(){
+  if(!tdConnected()){ toast('Connect Todoist first.'); return; }
+  if(!navigator.onLine){ toast('Go online to create a project.'); return; }
+  const name=(prompt('New Todoist project name')||'').trim(); if(!name) return;
+  try{ const p=await tdCreateProject(name); if(p&&p.id){ buildTeProjects(p.id); toast('Project “'+name+'” created.'); } }
+  catch(e){ toast('Couldn’t create project: '+e.message); }
+}
 function openTaskEditor(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
   editingTaskId=id; const m=t.todoistMeta||{};
@@ -1829,7 +1851,7 @@ function openTaskEditor(id){
   const connected=tdConnected(), linked=!!t.todoistId;
   document.getElementById('teProject').disabled=!connected;
   document.getElementById('teSyncWrap').style.display=(!linked&&connected)?'flex':'none';
-  document.getElementById('teSync').checked=false;
+  document.getElementById('teSync').checked=(!linked&&connected&&state.todoist.autocreate!==false);
   document.getElementById('taskDlgTitle').textContent=linked?'Edit Todoist task':'Edit task';
   setTeStatus(linked&&connected?'Changes save here and push to Todoist.'
     :(!connected?'Connect Todoist to push due date, priority and labels.'
@@ -1861,7 +1883,12 @@ async function saveTaskEditor(){
 
   // queue Todoist writes (flushed now if online, later if offline)
   let queued=false;
-  if(connected && linked){
+  const pendingCreate = tdOutbox.find(o=>o.kind==='create'&&o.taskLocalId===t.id);
+  if(connected && pendingCreate){
+    // task hasn't been created yet — fold the edits into the pending create
+    pendingCreate.payload=buildTaskPayload({title,due,prio,estMin,labels}); if(projectId)pendingCreate.payload.project_id=projectId;
+    saveOutbox(); queued=true;
+  } else if(connected && linked){
     enqueueTd({kind:'update',taskLocalId:t.id,todoistId:t.todoistId,payload:buildTaskPayload({title,due,prio,estMin,labels})});
     if(projectId) enqueueTd({kind:'move',taskLocalId:t.id,todoistId:t.todoistId,projectId});
     queued=true;
@@ -1912,6 +1939,7 @@ function openTdDialog(){
   document.getElementById('tdToken').value=state.todoist.token||'';
   document.getElementById('tdFilter').value=state.todoist.filter||DEFAULT_TODOIST.filter;
   document.getElementById('tdAuto').checked=!!state.todoist.autocomplete;
+  document.getElementById('tdCreate').checked=state.todoist.autocreate!==false;
   setTdStatus(lastSyncLabel(), tdConnected()?'ok':'');
   document.getElementById('tdDialog').showModal();
 }
@@ -1919,6 +1947,7 @@ async function saveTodoist(){
   state.todoist.token=document.getElementById('tdToken').value.trim();
   state.todoist.filter=document.getElementById('tdFilter').value.trim()||DEFAULT_TODOIST.filter;
   state.todoist.autocomplete=document.getElementById('tdAuto').checked;
+  state.todoist.autocreate=document.getElementById('tdCreate').checked;
   await persistSecrets(); await saveConfig(); updateTdLink();
   toast(tdConnected()?'Todoist settings saved.':'Todoist disconnected.');
   document.getElementById('tdDialog').close();
@@ -2361,6 +2390,7 @@ document.getElementById('bzCancel').addEventListener('click',()=>document.getEle
 document.getElementById('bzImport').addEventListener('click',importBrowse);
 document.getElementById('bzAll').addEventListener('change',e=>{ document.querySelectorAll('#bzList input[type=checkbox]:not([disabled])').forEach(cb=>{cb.checked=e.target.checked;}); updateBzImport(); });
 document.getElementById('teCancel').addEventListener('click',()=>document.getElementById('taskDialog').close());
+document.getElementById('teNewProj').addEventListener('click',newProjectFlow);
 document.getElementById('teSave').addEventListener('click',saveTaskEditor);
 document.getElementById('cloudBtn').addEventListener('click',openSyncDialog);
 document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
