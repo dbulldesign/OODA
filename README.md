@@ -54,6 +54,10 @@ footer shows which mode is active).
   around it instead of moving it.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
+- **Review** (tools row) — a dashboard over the last **7 / 30 days or all time**:
+  completion rate, time tracked, your **day streak**, active days,
+  **estimate-vs-actual accuracy** (are you over- or under-estimating?), and a
+  **time-by-channel** breakdown. Built entirely from data already on your device.
 - Responsive **mobile and desktop** layouts (the Day view goes two-column on wide
   screens; phones get a single-column, touch-sized layout). A **Display** option
   (tools row) adds a **fill-the-screen** wide mode and a **text/UI size** control
