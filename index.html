@@ -79,6 +79,7 @@
   .rev-empty{color:var(--ink-soft);font-size:13px;padding:8px 0}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+  .sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
     border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer;font-family:var(--display);white-space:nowrap;
     display:inline-flex;align-items:center;gap:6px}
@@ -236,6 +237,10 @@
   .reflect button:hover{filter:brightness(.98)}
 
   .tools{display:flex;justify-content:space-between;align-items:center;margin-top:26px;font-size:12.5px;color:var(--ink-faint);flex-wrap:wrap;gap:10px}
+  #settingsLink{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface);
+    color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600;font-family:var(--display)}
+  #settingsLink:hover{background:var(--surface-2)}
+  .tools .meta-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .tools a{color:var(--ink-soft);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
   .tools a.td-on{color:var(--todoist);font-weight:600}
   details.history{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:6px 16px}
@@ -529,7 +534,19 @@
   @media (max-width:520px){
     header{padding:14px 0 12px}
     h1{font-size:25px}
-    .phase span{padding:5px 9px}
+    /* header: let the right-side controls use the full width, left-aligned, with bigger tap targets */
+    .head-right{width:100%;align-items:stretch;gap:10px}
+    .phase{flex-wrap:wrap;justify-content:flex-start;gap:6px}
+    .phase span{padding:7px 12px;font-size:12.5px}
+    .theme-btn{width:38px;height:38px;font-size:16px}
+    .sync-row{justify-content:flex-start;gap:8px}
+    .sync-btn{padding:9px 16px;font-size:13px}
+    .cstat{padding:8px 13px;font-size:12.5px}
+    .sync-meta{justify-content:flex-start;text-align:left;white-space:normal}
+    /* footer: Settings becomes a full-width button, status text drops below */
+    .tools{flex-direction:column;align-items:stretch;gap:10px}
+    #settingsLink{justify-content:center;padding:11px 14px;font-size:14px}
+    .tools .meta-line{justify-content:space-between}
     .now{padding:14px;gap:12px}
     .now .clock{font-size:22px}
     .now .what{font-size:15px}
@@ -591,10 +608,12 @@
         <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
         <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
       </div>
-      <button class="sync-btn" id="syncBtn" style="display:none"><span class="net-dot" id="netDot"></span><span id="syncBtnText">⟳ Sync</span></button>
-      <div class="conn-stat" id="connStat">
-        <button class="cstat" id="tdStat" title="Todoist — tap to manage"><span class="cdotx"></span>Todoist</button>
-        <button class="cstat" id="dsStat" title="Device sync — tap to manage"><span class="cdotx"></span>Sync</button>
+      <div class="sync-row">
+        <button class="sync-btn" id="syncBtn" style="display:none"><span class="net-dot" id="netDot"></span><span id="syncBtnText">⟳ Sync</span></button>
+        <div class="conn-stat" id="connStat">
+          <button class="cstat" id="tdStat" title="Todoist — tap to manage"><span class="cdotx"></span>Todoist</button>
+          <button class="cstat" id="dsStat" title="Device sync — tap to manage"><span class="cdotx"></span>Sync</button>
+        </div>
       </div>
       <div class="sync-meta" id="syncMeta"><span class="spin" id="syncSpin"></span><span id="syncMetaText"></span></div>
     </div>
@@ -693,10 +712,9 @@
   </div>
 
   <div class="tools">
-    <span><a id="settingsLink">⚙ Settings</a></span>
+    <a id="settingsLink">⚙ Settings</a>
     <input type="file" id="backupFile" accept="application/json,.json" style="display:none">
-    <span id="storeState"></span>
-    <span id="appVer" class="app-ver" title="App version"></span>
+    <span class="meta-line"><span id="storeState"></span><span id="appVer" class="app-ver" title="App version"></span></span>
   </div>
 
   <details class="history">
