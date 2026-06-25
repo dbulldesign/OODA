@@ -180,6 +180,37 @@
   .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--surface);
     padding:10px 18px;border-radius:8px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;max-width:90%;text-align:center}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.has-action{display:inline-flex;align-items:center;gap:12px;text-align:left}
+  .toast-act{background:none;border:1px solid var(--surface);color:var(--surface);border-radius:6px;
+    padding:3px 12px;font-size:12.5px;font-weight:600;cursor:pointer;flex:none}
+  .toast-act:hover{background:var(--surface);color:var(--ink)}
+  /* bulk selection */
+  .sel-cb{flex:none;width:18px;height:18px;margin-right:2px;accent-color:var(--accent,#3b7);cursor:pointer;display:none}
+  .selecting .task .sel-cb{display:inline-block}
+  .selecting .task .go,.selecting .task .menu-btn{display:none}
+  .task.picked{background:var(--surface-2)}
+  .bulk-bar{display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin:6px 0;
+    border:1px solid var(--line-strong);border-radius:10px;background:var(--surface-2);font-size:13px}
+  .bulk-bar.show{display:flex}
+  .bulk-bar .bk-ct{font-weight:600;margin-right:2px}
+  .bulk-bar button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);
+    border-radius:7px;padding:5px 10px;font-size:12.5px;cursor:pointer}
+  .bulk-bar button.danger{color:var(--over,#c33);border-color:var(--over,#c33)}
+  .bulk-bar .bk-sp{flex:1}
+  .btn-mini{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);
+    border-radius:7px;padding:6px 10px;font-size:12.5px;cursor:pointer}
+  .btn-mini.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  /* search-all-days results */
+  .sa-results{margin:6px 0;border:1px solid var(--line-strong);border-radius:10px;overflow:hidden}
+  .sa-hd{padding:7px 12px;background:var(--surface-2);font-size:12px;color:var(--ink-soft);
+    display:flex;justify-content:space-between;align-items:center}
+  .sa-day{padding:6px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-soft);font-family:var(--mono)}
+  .sa-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);cursor:pointer}
+  .sa-item:hover{background:var(--surface-2)}
+  .sa-item .dot{flex:none}
+  .sa-item .sa-nm{flex:1}
+  .sa-item.done .sa-nm{text-decoration:line-through;color:var(--ink-soft)}
+  .sa-jump{font-size:11px;color:var(--accent,#3b7)}
   dialog{border:1px solid var(--line-strong);border-radius:12px;padding:0;max-width:420px;width:92%;background:var(--surface);color:var(--ink)}
   dialog::backdrop{background:rgba(31,42,44,.35)}
   .dlg-in{padding:20px}
@@ -521,7 +552,21 @@
       <button data-l="list" class="on" title="List">▤</button>
       <button data-l="board" title="Board">▦</button>
     </div>
+    <button id="selBtn" class="btn-mini" title="Select multiple tasks">Select</button>
+    <button id="searchAllBtn" class="btn-mini" title="Search across every day" style="display:none">All days</button>
   </div>
+
+  <div class="bulk-bar" id="bulkBar">
+    <span class="bk-ct" id="bkCount">0 selected</span>
+    <button data-b="all">Select all</button>
+    <button data-b="tomorrow">→ Tomorrow</button>
+    <button data-b="date">Move to…</button>
+    <button data-b="done">✓ Complete</button>
+    <button data-b="del" class="danger">✕ Delete</button>
+    <span class="bk-sp"></span>
+    <button data-b="cancel">Done</button>
+  </div>
+  <div class="sa-results" id="saResults" style="display:none"></div>
 
   <ul class="tasks" id="taskList"></ul>
   <div class="board" id="boardView" style="display:none"></div>
@@ -802,6 +847,8 @@ const EDIT='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentCol
 const DOTS='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const expandedTasks=new Set();
 let viewMode='list', sortMode='manual', filterKey='all', calSel=null, lastCanvas=null, searchQuery='', showCompleted=false, listLayout='list';
+let selectMode=false; const selected=new Set();      // bulk selection
+let searchAll=false;                                 // search across every stored day
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -973,13 +1020,19 @@ async function toggleRun(id){
 }
 async function toggleDone(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
+  const prevActual=t.actualMs, prevRunning=t.running, prevStarted=t.startedAt, prevActive=state.activeId;
   if(t.running){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null; }
   t.done=!t.done;
   // round tracked time up to the next whole minute on completion
   if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
   await saveDay(); render();
   if(t.done){ const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]'); celebrate(li);
-    if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); } }
+    if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); }
+    else toastAction('Completed.','Undo',async()=>{
+      t.done=false; t.actualMs=prevActual; t.running=prevRunning; t.startedAt=prevStarted; state.activeId=prevActive;
+      await saveDay(); render(); pushDoneToTodoist(t);
+    });
+  }
   pushDoneToTodoist(t);
 }
 async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(!t)return;
@@ -989,9 +1042,11 @@ async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(!t
   if(t.todoistId&&tdConnected()) enqueueTd({kind:'update',taskLocalId:t.id,payload:{content:nn}});
 }
 async function removeTask(id){
-  const t=state.tasks.find(x=>x.id===id);
-  if(t&&t.running)state.activeId=null;
-  state.tasks=state.tasks.filter(x=>x.id!==id); await saveDay(); render();
+  const idx=state.tasks.findIndex(x=>x.id===id);
+  if(idx<0)return; const t=state.tasks[idx];
+  if(t.running)state.activeId=null;
+  state.tasks.splice(idx,1); await saveDay(); render();
+  toastAction('Task deleted.','Undo',async()=>{ state.tasks.splice(Math.min(idx,state.tasks.length),0,t); await saveDay(); render(); });
 }
 
 /* ---------- render ---------- */
@@ -1057,6 +1112,16 @@ function render(){
   cal.style.display = dayView?'':'none';
   week.style.display = weekView?'':'none';
   month.style.display = monthView?'':'none';
+  // bulk-select + search-all controls only make sense in the flat list view
+  const flatList = !notList && listLayout!=='board';
+  document.getElementById('selBtn').style.display = flatList?'':'none';
+  document.getElementById('searchAllBtn').style.display = (flatList&&searchQuery)?'':'none';
+  list.classList.toggle('selecting', selectMode && flatList);
+  updateBulkBar();
+  const sa=document.getElementById('saResults');
+  if(flatList && searchAll && searchQuery){ list.style.display='none'; document.getElementById('completedWrap').style.display='none';
+    sa.style.display=''; renderSearchAll(); renderArc(); renderNow(); renderPhase(); return; }
+  sa.style.display='none';
   document.getElementById('emptyState').style.display=(state.tasks.length||notList)?'none':'block';
   if(notList){ document.getElementById('completedWrap').style.display='none'; }
   if(monthView){ renderMonth(); renderArc(); renderNow(); renderPhase(); return; }
@@ -1091,8 +1156,9 @@ function taskRow(t){
   const hasMeta=!!t.todoistMeta;
   const li=document.createElement('li');
   li.dataset.id=t.id;
-  li.className='task'+(t.running?' running':'')+(t.done?' done':'')+(expandedTasks.has(t.id)?' expanded':'');
+  li.className='task'+(t.running?' running':'')+(t.done?' done':'')+(expandedTasks.has(t.id)?' expanded':'')+(selected.has(t.id)?' picked':'');
   li.innerHTML=
+    '<input type="checkbox" class="sel-cb"'+(selected.has(t.id)?' checked':'')+' title="Select">'+
     '<span class="dot" style="background:'+ch.color+'"></span>'+
     '<div class="body">'+
       '<div class="row1">'+
@@ -1108,6 +1174,9 @@ function taskRow(t){
     '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
     '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
     (hasMeta?taskDetailsHtml(t):'');
+  const cb=li.querySelector('.sel-cb');
+  cb.addEventListener('click',e=>{ e.stopPropagation();
+    if(e.target.checked) selected.add(t.id); else selected.delete(t.id); li.classList.toggle('picked',e.target.checked); updateBulkBar(); });
   const nameEl=li.querySelector('.name');
   nameEl.addEventListener('blur',()=>renameTask(t.id,nameEl.textContent));
   nameEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
@@ -1115,6 +1184,83 @@ function taskRow(t){
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
   return li;
+}
+/* ---------- bulk selection ---------- */
+function toggleSelectMode(on){
+  selectMode = on===undefined ? !selectMode : on;
+  if(!selectMode) selected.clear();
+  document.getElementById('selBtn').classList.toggle('on',selectMode);
+  render();
+}
+function updateBulkBar(){
+  const bar=document.getElementById('bulkBar'); if(!bar)return;
+  bar.classList.toggle('show', selectMode && viewMode==='list' && listLayout!=='board');
+  document.getElementById('bkCount').textContent = selected.size+' selected';
+}
+async function bulkAction(b){
+  if(b==='cancel'){ toggleSelectMode(false); return; }
+  if(b==='all'){ sortedTasks().forEach(t=>selected.add(t.id)); render(); return; }
+  const ids=[...selected]; if(!ids.length){ toast('Nothing selected.'); return; }
+  if(b==='del'){
+    const removed=[]; ids.forEach(id=>{ const i=state.tasks.findIndex(x=>x.id===id);
+      if(i>=0){ if(state.tasks[i].running)state.activeId=null; removed.push({t:state.tasks[i],i}); } });
+    removed.sort((a,b)=>b.i-a.i).forEach(r=>state.tasks.splice(r.i,1));
+    selected.clear(); await saveDay(); render();
+    toastAction(removed.length+' deleted.','Undo',async()=>{
+      removed.sort((a,b)=>a.i-b.i).forEach(r=>state.tasks.splice(Math.min(r.i,state.tasks.length),0,r.t));
+      await saveDay(); render(); });
+  } else if(b==='done'){
+    const changed=[]; ids.forEach(id=>{ const t=state.tasks.find(x=>x.id===id);
+      if(t&&!t.done){ changed.push({id,actual:t.actualMs}); if(t.running){t.actualMs=liveActual(t);t.running=false;t.startedAt=null;if(state.activeId===id)state.activeId=null;} t.done=true; if(t.actualMs>0)t.actualMs=ceilMinuteMs(t.actualMs); pushDoneToTodoist(t); } });
+    selected.clear(); await saveDay(); render();
+    if(changed.length) toastAction(changed.length+' completed.','Undo',async()=>{
+      changed.forEach(c=>{ const t=state.tasks.find(x=>x.id===c.id); if(t){ t.done=false; t.actualMs=c.actual; pushDoneToTodoist(t); } });
+      await saveDay(); render(); });
+  } else if(b==='tomorrow' || b==='date'){
+    let dst;
+    if(b==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); dst=dayKeyFor(d); }
+    else { const v=prompt('Move selected tasks to which date? (YYYY-MM-DD)', dayKey().slice(4)); if(!v)return;
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(v.trim())){ toast('Use YYYY-MM-DD.'); return; } dst='day:'+v.trim(); }
+    const src=dayKey(); let n=0;
+    for(const id of ids){ if(await moveTaskBetweenDays(src,id,dst)) n++; }
+    selected.clear(); render();
+    if(n) toastAction(n+' moved to '+fmtDateRel(new Date(dst.slice(4)+'T12:00:00')),'Undo',async()=>{
+      for(const id of ids){ await moveTaskBetweenDays(dst,id,src); } render(); });
+  }
+}
+/* ---------- search across every stored day ---------- */
+async function renderSearchAll(){
+  const wrap=document.getElementById('saResults'); const q=searchQuery.toLowerCase();
+  wrap.innerHTML='<div class="sa-hd">Searching all days…</div>';
+  const keys=(await slist('day:')).sort().reverse();
+  const groups=[];
+  for(const k of keys){
+    const rec = k===dayKey() ? {tasks:state.tasks} : await sget(k);
+    const tasks=(rec&&rec.tasks)||[];
+    const hits=tasks.filter(t=>{
+      const meta=t.todoistMeta||{};
+      const hay=(t.name+' '+(meta.projectName||'')+' '+((meta.labels||[]).join(' '))+' '+(meta.description||'')).toLowerCase();
+      return hay.includes(q);
+    });
+    if(hits.length) groups.push({k,hits});
+  }
+  const total=groups.reduce((n,g)=>n+g.hits.length,0);
+  let html='<div class="sa-hd"><span>'+total+' match'+(total===1?'':'es')+' across '+groups.length+' day'+(groups.length===1?'':'s')+'</span></div>';
+  groups.forEach(g=>{
+    const d=new Date(g.k.slice(4)+'T12:00:00');
+    html+='<div class="sa-day">'+fmtDateRel(d)+'</div>';
+    g.hits.forEach(t=>{ const ch=chById(t.channelId);
+      html+='<div class="sa-item'+(t.done?' done':'')+'" data-k="'+g.k+'">'+
+        '<span class="dot" style="background:'+ch.color+'"></span>'+
+        '<span class="sa-nm">'+escapeHtml(t.name)+'</span><span class="sa-jump">Open day ›</span></div>'; });
+  });
+  if(!groups.length) html+='<div class="sa-item">No matches anywhere.</div>';
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.sa-item[data-k]').forEach(el=>el.addEventListener('click',async()=>{
+    const k=el.getAttribute('data-k'); viewDate=new Date(k.slice(4)+'T12:00:00');
+    searchAll=false; document.getElementById('searchAllBtn').classList.remove('on');
+    updateDateLabel(); await loadDay(); render();
+  }));
 }
 /* ---------- board (kanban by channel) ---------- */
 function renderBoard(){
@@ -1187,8 +1333,9 @@ function openTaskMenu(id,anchor){
   m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
     if(a==='edit') openTaskEditor(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
-    else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1);
-      moveTaskToDate(id,dayKeyFor(d)).then(ok=>{ if(ok){ render(); toast('Moved to '+fmtDateRel(d)); } }); }
+    else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const src=dayKey(), dst=dayKeyFor(d);
+      moveTaskToDate(id,dst).then(ok=>{ if(ok){ render();
+        toastAction('Moved to '+fmtDateRel(d),'Undo',async()=>{ await moveTaskBetweenDays(dst,id,src); render(); }); } }); }
     else if(a==='del') removeTask(id);
   });
   setTimeout(()=>{ document.addEventListener('click',menuOutside,true); document.addEventListener('scroll',closeMenu,true); },0);
@@ -2480,8 +2627,17 @@ async function loadHistory(){
 
 /* ---------- toast ---------- */
 let toastT=null;
-function toast(msg){ const el=document.getElementById('toast'); el.textContent=msg; el.classList.add('show');
+function toast(msg){ const el=document.getElementById('toast'); el.classList.remove('has-action'); el.textContent=msg; el.classList.add('show');
   clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),2600); }
+/* toast with an inline action button (used for Undo) */
+function toastAction(msg,label,fn){
+  const el=document.getElementById('toast'); el.innerHTML='';
+  const s=document.createElement('span'); s.textContent=msg; el.appendChild(s);
+  const b=document.createElement('button'); b.className='toast-act'; b.textContent=label;
+  b.addEventListener('click',()=>{ clearTimeout(toastT); el.classList.remove('show','has-action'); Promise.resolve(fn()); });
+  el.appendChild(b); el.classList.add('show','has-action');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show','has-action'),6500);
+}
 
 /* ---------- theme (light / dark) ---------- */
 function preferredTheme(){
@@ -2587,8 +2743,11 @@ document.getElementById('dNext').addEventListener('click',()=>shiftDay(1));
 document.getElementById('dToday').addEventListener('click',()=>gotoDate(new Date()));
 document.getElementById('sortSel').addEventListener('change',e=>{ sortMode=e.target.value; try{localStorage.setItem(LS_PREFIX+'_sort',sortMode);}catch(_){} render(); });
 document.getElementById('filterSel').addEventListener('change',e=>{ filterKey=e.target.value; render(); });
-document.getElementById('searchInp').addEventListener('input',e=>{ searchQuery=e.target.value.trim(); render(); });
+document.getElementById('searchInp').addEventListener('input',e=>{ searchQuery=e.target.value.trim(); if(!searchQuery){ searchAll=false; document.getElementById('searchAllBtn').classList.remove('on'); } render(); });
 document.getElementById('compHead').addEventListener('click',()=>{ showCompleted=!showCompleted; render(); });
+document.getElementById('selBtn').addEventListener('click',()=>toggleSelectMode());
+document.getElementById('searchAllBtn').addEventListener('click',e=>{ searchAll=!searchAll; e.currentTarget.classList.toggle('on',searchAll); render(); });
+document.getElementById('bulkBar').addEventListener('click',e=>{ const b=e.target.closest('button[data-b]'); if(b) bulkAction(b.getAttribute('data-b')); });
 document.getElementById('todoistBtn').addEventListener('click',openTdDialog);
 document.getElementById('syncBtn').addEventListener('click',doManualSync);
 document.getElementById('tdSave').addEventListener('click',saveTodoist);
