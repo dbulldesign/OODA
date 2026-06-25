@@ -54,9 +54,13 @@
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
-    border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer;font-family:var(--display);white-space:nowrap}
+    border-radius:20px;padding:5px 13px;font-size:12px;cursor:pointer;font-family:var(--display);white-space:nowrap;
+    display:inline-flex;align-items:center;gap:6px}
   .sync-btn:hover{background:var(--surface-2);color:var(--ink)}
   .sync-btn.syncing{opacity:.55;pointer-events:none}
+  .net-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--ink-faint)}
+  .net-dot.on{background:#3F9A56;box-shadow:0 0 0 2px rgba(63,154,86,.22)}
+  .net-dot.off{background:var(--over);box-shadow:0 0 0 2px rgba(177,66,51,.22)}
   .date{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
   h1{font-size:30px;margin:2px 0 0;font-weight:650;letter-spacing:-.02em}
   .phase{display:flex;align-items:center;gap:4px;font-size:12px}
@@ -283,11 +287,14 @@
   .wk-col.today .wk-dom{color:var(--now)}
   .wk-meta{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
   .wk-tasks{display:flex;flex-direction:column;gap:4px;min-height:24px}
-  .wk-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink)}
+  .wk-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);padding:3px 4px;border-radius:6px;cursor:grab;touch-action:none;background:var(--surface-2)}
+  .wk-item:hover{background:var(--paper)}
+  .wk-item.dragging{opacity:.4}
   .wk-item.done{opacity:.5;text-decoration:line-through}
   .wk-item .cdot{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
   .wk-item .wk-t{font-family:var(--mono);font-size:10.5px;color:var(--now)}
   .wk-item .wk-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wk-col.drop{outline:2px dashed var(--now);outline-offset:-2px;background:var(--now-soft)}
 
   /* task action overflow menu */
   .menu{position:fixed;z-index:9990;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
@@ -339,10 +346,11 @@
   .cal-hour .hl{position:absolute;left:8px;top:-8px;font-size:10.5px;color:var(--ink-faint);font-family:var(--mono)}
   .cal-half{position:absolute;left:52px;right:0;border-top:1px dashed var(--line)}
   .cal-slot{position:absolute;left:52px;right:6px;cursor:pointer}
-  .cal-block{position:absolute;left:52px;right:6px;border-radius:7px;padding:4px 8px;overflow:hidden;color:#fff;
-    font-size:12.5px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18);cursor:pointer}
-  .cal-block .cb-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .cal-block .cb-s{font-size:11px;opacity:.9;font-variant-numeric:tabular-nums}
+  .cal-block{position:absolute;left:52px;right:6px;border-radius:7px;padding:3px 8px;overflow:hidden;color:#fff;
+    font-size:12.5px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18);cursor:pointer;border:1.5px solid rgba(0,0,0,.22)}
+  .cal-block .cb-row{display:flex;align-items:baseline;gap:6px;line-height:1.25}
+  .cal-block .cb-t{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cal-block .cb-s{flex:0 0 auto;font-size:11px;opacity:.95;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px rgba(0,0,0,.25)}
   .cal-block.done{opacity:.55;text-decoration:line-through}
   .cal-now{position:absolute;left:46px;right:0;height:0;border-top:2px solid var(--over);z-index:3}
   .cal-now::before{content:'';position:absolute;left:0;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--over)}
@@ -412,7 +420,7 @@
         <span id="ph-reflect">Reflect</span>
         <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
       </div>
-      <button class="sync-btn" id="syncBtn" style="display:none">⟳ Sync Todoist</button>
+      <button class="sync-btn" id="syncBtn" style="display:none"><span class="net-dot" id="netDot"></span><span id="syncBtnText">⟳ Sync</span></button>
       <div class="sync-meta" id="syncMeta"><span class="spin" id="syncSpin"></span><span id="syncMetaText"></span></div>
     </div>
   </header>
@@ -1305,7 +1313,8 @@ function renderDay(){
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
-    b.innerHTML='<div class="cb-t">'+escapeHtml(t.name)+'</div><div class="cb-s">'+hmFromMin(t.scheduledMin)+' · '+(t.running?'tracking · ':'')+minFmt(dur*60000)+'</div>'+
+    b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span>'+
+      '<span class="cb-s">'+(t.running?'⏱ ':'')+hmFromMin(t.scheduledMin)+' · '+minFmt(dur*60000)+'</span></div>'+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
     canvas.appendChild(b);
@@ -1410,6 +1419,7 @@ async function renderWeek(){
   days.forEach((d,i)=>{
     const tasks=(recs[i]&&recs[i].tasks)||[];
     const col=document.createElement('div');
+    col.dataset.key=dayKeyFor(d);
     col.className='wk-col'+(isSameDay(d,new Date())?' today':'')+(isSameDay(d,viewDate)?' sel':'');
     const planned=tasks.reduce((s,t)=>s+(t.estimateMin||0),0);
     const hd=document.createElement('button'); hd.className='wk-hd';
@@ -1421,16 +1431,39 @@ async function renderWeek(){
     col.appendChild(meta);
     const lc=document.createElement('div'); lc.className='wk-tasks';
     tasks.slice().sort((a,b)=>((a.scheduledMin==null?1e9:a.scheduledMin)-(b.scheduledMin==null?1e9:b.scheduledMin))).forEach(t=>{
-      const ch=chById(t.channelId); const it=document.createElement('div'); it.className='wk-item'+(t.done?' done':'');
+      const ch=chById(t.channelId); const it=document.createElement('div'); it.className='wk-item'+(t.done?' done':''); it.dataset.id=t.id;
       it.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span>'+
         (t.scheduledMin!=null?'<span class="wk-t">'+hmFromMin(t.scheduledMin)+'</span>':'')+
         '<span class="wk-nm">'+escapeHtml(t.name)+'</span>';
+      it.addEventListener('pointerdown',e=>startWeekDrag(e,t,dayKeyFor(d),it));
       lc.appendChild(it);
     });
     col.appendChild(lc);
     row.appendChild(col);
   });
   wk.appendChild(row);
+}
+// drag a task from one week-day column to another
+function startWeekDrag(e,t,srcKey,itemEl){
+  let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
+  try{ itemEl.setPointerCapture(e.pointerId); }catch(_){}
+  function colAt(x,y){ for(const c of document.querySelectorAll('#weekView .wk-col')){ const r=c.getBoundingClientRect();
+    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
+  function mark(c){ document.querySelectorAll('#weekView .wk-col').forEach(x=>x.classList.toggle('drop',x===c&&c&&c.dataset.key!==srcKey)); }
+  function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
+    if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; itemEl.classList.add('dragging');
+      ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
+    if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; mark(colAt(ev.clientX,ev.clientY)); } }
+  async function up(ev){ itemEl.removeEventListener('pointermove',mv); itemEl.removeEventListener('pointerup',up); itemEl.removeEventListener('pointercancel',up);
+    try{ itemEl.releasePointerCapture(ev.pointerId); }catch(_){}
+    if(ghost) ghost.remove(); document.querySelectorAll('#weekView .wk-col').forEach(x=>x.classList.remove('drop'));
+    if(!moved) return;
+    const c=colAt(ev.clientX,ev.clientY);
+    if(c && c.dataset.key!==srcKey){ const ok=await moveTaskBetweenDays(srcKey,t.id,c.dataset.key);
+      if(ok){ renderWeek(); if(isSameDay(viewDate,new Date())) updateConnUI(); toast('Moved to '+c.querySelector('.wk-dow').textContent+' '+c.querySelector('.wk-dom').textContent); } }
+  }
+  itemEl.addEventListener('pointermove',mv); itemEl.addEventListener('pointerup',up); itemEl.addEventListener('pointercancel',up);
+  e.preventDefault();
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -1516,8 +1549,8 @@ async function doManualSync(){
   if(locked()){ showUnlock(); return; }
   if(!tdConnected() && !syncOn()){ openTdDialog(); return; }
   if(!navigator.onLine){ toast('Still offline — will sync automatically when back online.'); updateConnUI(); return; }
-  const b=document.getElementById('syncBtn');
-  b.classList.add('syncing'); b.textContent='Syncing…';
+  const b=document.getElementById('syncBtn'), bt=document.getElementById('syncBtnText');
+  b.classList.add('syncing'); if(bt) bt.textContent='Syncing…';
   try{
     // if we have unsynced offline edits, push them up first so a pull can't clobber them
     if(syncOn()){ if(dirtyOffline){ await pushGist(true); } else if(sync.gistId){ await pullGist(true); } }
@@ -1751,10 +1784,13 @@ function updateConnUI(){
     }
     if(sm) sm.classList.toggle('off',(!online&&!busy)||locked());
   }
-  const b=document.getElementById('syncBtn');
+  const dot=document.getElementById('netDot');
+  if(dot){ dot.classList.toggle('on',online); dot.classList.toggle('off',!online);
+    dot.title=online?'Online':'Offline'; }
+  const b=document.getElementById('syncBtn'), bt=document.getElementById('syncBtnText');
   if(b){ const show = locked() || tdConnected() || syncOn();
-    b.style.display=show?'inline-block':'none';
-    if(!b.classList.contains('syncing')) b.textContent = locked()?'🔒 Unlock' : (online?'⟳ Sync now':'⟳ Offline — retry'); }
+    b.style.display=show?'inline-flex':'none';
+    if(bt && !b.classList.contains('syncing')) bt.textContent = locked()?'🔒 Unlock' : (busy?'Syncing…' : (online?'⟳ Sync':'⟳ Retry')); }
 }
 
 /* ---------- two-way writes ---------- */
@@ -1844,17 +1880,21 @@ async function saveTaskEditor(){
   toast(movedDay ? ('Moved to '+fmtDateRel(new Date(targetKey.slice(4)+'T12:00:00')))
     : (queued ? (navigator.onLine?'Saved & syncing to Todoist.':'Saved — will sync to Todoist when online.') : 'Saved.'));
 }
-async function moveTaskToDate(id,targetKey){
-  if(targetKey===dayKey()) return false;
-  const idx=state.tasks.findIndex(t=>t.id===id); if(idx<0) return false;
-  const t=state.tasks[idx];
+async function moveTaskToDate(id,targetKey){ return moveTaskBetweenDays(dayKey(),id,targetKey); }
+// move a task from any day's record to any other day's record (preserves scheduledMin)
+async function moveTaskBetweenDays(srcKey,id,dstKey){
+  if(srcKey===dstKey) return false;
+  let srcTasks, srcRec=null;
+  if(srcKey===dayKey()){ srcTasks=state.tasks; } else { srcRec=await sget(srcKey)||{date:srcKey.slice(4),tasks:[],reflection:'',closed:false}; srcTasks=srcRec.tasks||(srcRec.tasks=[]); }
+  const idx=srcTasks.findIndex(t=>t.id===id); if(idx<0) return false;
+  const t=srcTasks[idx];
   if(t.running){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; }
-  if(state.activeId===id) state.activeId=null;
-  state.tasks.splice(idx,1);
-  const rec=await sget(targetKey)||{date:targetKey.slice(4),tasks:[],reflection:'',closed:false};
-  rec.tasks=rec.tasks||[]; rec.tasks.push(t);
-  await sset(targetKey,rec);
-  await saveDay();  // persist current day (now without the task)
+  srcTasks.splice(idx,1);
+  if(srcKey===dayKey()){ if(state.activeId===id) state.activeId=null; await saveDay(); }
+  else { await sset(srcKey,srcRec); }
+  if(dstKey===dayKey()){ state.tasks.push(t); await saveDay(); }
+  else { const dstRec=await sget(dstKey)||{date:dstKey.slice(4),tasks:[],reflection:'',closed:false}; dstRec.tasks=dstRec.tasks||[]; dstRec.tasks.push(t); await sset(dstKey,dstRec); }
+  schedulePush();
   return true;
 }
 function lastSyncLabel(){
