@@ -3,14 +3,20 @@
    falling back to the cache (and to index.html for navigations) when offline.
    Cross-origin calls (Todoist / GitHub APIs) are left to the network and are
    handled by the app's offline queue. */
-const CACHE = 'ooda-v3';
+const CACHE = 'ooda-v1.1.0';   // keep in sync with APP_VERSION in index.html
 const SHELL = ['./', './index.html', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png'];
 
 self.addEventListener('install', e => {
+  // Pre-cache the shell, but do NOT skipWaiting here: a new worker waits so the
+  // page can show an "update available" prompt and activate it on the user's say-so.
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(()=>{}));
-  self.skipWaiting();
+});
+
+// the page posts this when the user clicks "Update & reload"
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {

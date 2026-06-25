@@ -230,6 +230,10 @@ manifest, so you can "Add to Home Screen"):
 
 - The app **loads and runs with no connection** — add/track/complete tasks as
   usual; everything is saved locally.
+- **In-app updates** — when a new version is deployed, the open app (including
+  the installed PWA) shows a **"new version available"** bar; tap **Update &
+  reload** to activate it and reload into the new version. The current version
+  number (e.g. `v1.1.0`) is shown in the tools row footer.
 - Todoist changes you make offline (completions, edits, new tasks) are **queued
   and flush automatically when you're back online**; the header shows a count of
   pending changes.
