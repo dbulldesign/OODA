@@ -17,6 +17,7 @@
     --line:#D9D3C7; --line-strong:#C5BEAF;
     --now:#C2752A; --now-soft:#F2E0CB; --now-deep:#8A4E18;
     --over:#B14233; --over-soft:#F0D8D2;
+    --cap-over:#D9822B; --cap-over-soft:#F2DEC2;
     --todoist:#E44332;
     --radius:10px;
     --display:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
@@ -28,6 +29,7 @@
     --line:#2E3639; --line-strong:#3C4548;
     --now:#D98A3D; --now-soft:#3A2C18; --now-deep:#E0A05B;
     --over:#D2604F; --over-soft:#3A211C;
+    --cap-over:#E0922F; --cap-over-soft:#3A2D18;
     --todoist:#F06A5C;
   }
   *{box-sizing:border-box}
@@ -122,9 +124,9 @@
   .arc{position:relative;height:18px;border-radius:6px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line)}
   .arc .seg{position:absolute;top:0;height:100%;transition:width .5s cubic-bezier(.4,0,.2,1),left .5s cubic-bezier(.4,0,.2,1)}
   .arc .tracked{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,rgba(31,42,44,.22)0,rgba(31,42,44,.22)4px,transparent 4px,transparent 8px);transition:width .5s cubic-bezier(.4,0,.2,1)}
-  .arc .overzone{position:absolute;top:0;right:0;height:100%;background:repeating-linear-gradient(45deg,var(--over-soft)0,var(--over-soft)5px,transparent 5px,transparent 10px)}
+  .arc .overzone{position:absolute;top:0;right:0;height:100%;background:repeating-linear-gradient(45deg,var(--cap-over-soft)0,var(--cap-over-soft)5px,transparent 5px,transparent 10px)}
   .arc-foot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-faint);margin-top:7px}
-  .arc-foot .warn{color:var(--over);font-weight:600}
+  .arc-foot .warn{color:var(--cap-over);font-weight:600}
 
   /* legend / channels */
   .legend{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:11px;font-size:12px;color:var(--ink-soft)}
@@ -238,7 +240,7 @@
 
   .tools{display:flex;justify-content:space-between;align-items:center;margin-top:26px;font-size:12.5px;color:var(--ink-faint);flex-wrap:wrap;gap:10px}
   #settingsLink{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface);
-    color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600;font-family:var(--display)}
+    color:var(--ink);border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600;font-family:var(--display);text-decoration:none}
   #settingsLink:hover{background:var(--surface-2)}
   .tools .meta-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .tools a{color:var(--ink-soft);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
@@ -482,10 +484,10 @@
   .cal-cap{flex:1;min-width:180px}
   .cal-cap-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-soft);margin-bottom:7px}
   .cal-cap-row b{color:var(--ink)}
-  .cal-cap-row .warn{color:var(--over);font-weight:600}
+  .cal-cap-row .warn{color:var(--cap-over);font-weight:600}
   .cal-cap-bar{height:8px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
   .cal-cap-fill{height:100%;background:var(--now);transition:width .4s cubic-bezier(.4,0,.2,1)}
-  .cal-cap-fill.over{background:var(--over)}
+  .cal-cap-fill.over{background:var(--cap-over)}
   .cal-range{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;white-space:nowrap}
   .cal-range input{border:1px solid var(--line-strong);border-radius:6px;padding:5px 6px;font-size:12.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
   .cal-arrange{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -872,6 +874,8 @@
     <label class="td-check" id="teSyncWrap"><input id="teSync" type="checkbox"> Also create this task in Todoist</label>
     <div class="td-status" id="teStatus"></div>
     <div class="dlg-actions">
+      <button id="teUnschedule" style="display:none">↩ Unschedule</button>
+      <span style="flex:1"></span>
       <button id="teCancel">Cancel</button>
       <button class="primary" id="teSave">Save</button>
     </div>
@@ -1144,6 +1148,13 @@ async function loadDay(){
 }
 async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); render(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 function shiftDay(n){ const d=new Date(viewDate); d.setDate(d.getDate()+n); gotoDate(d); }
+// header ‹ › steps by the current view's unit: a week in Week, a month in Month, else a day
+function navStep(dir){ const d=new Date(viewDate);
+  if(viewMode==='week') d.setDate(d.getDate()+7*dir);
+  else if(viewMode==='month') d.setMonth(d.getMonth()+dir);
+  else d.setDate(d.getDate()+dir);
+  gotoDate(d);
+}
 function fmtDateLong(){ return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
 function chById(id){ return state.channels.find(c=>c.id===id)||state.channels[0]||{name:'—',color:'#999'}; }
@@ -2037,7 +2048,7 @@ function startDayDrag(e,t,srcKey,itemEl,cellSel){
   async function up(ev){ itemEl.removeEventListener('pointermove',mv); itemEl.removeEventListener('pointerup',up); itemEl.removeEventListener('pointercancel',up);
     try{ itemEl.releasePointerCapture(ev.pointerId); }catch(_){}
     if(ghost) ghost.remove(); document.querySelectorAll(cellSel).forEach(x=>x.classList.remove('drop'));
-    if(!moved) return;
+    if(!moved){ await gotoDate(new Date(srcKey.slice(4)+'T12:00:00')); openTaskEditor(t.id); return; }   // tap → open details
     const c=cellAt(ev.clientX,ev.clientY);
     if(c && c.dataset.key && c.dataset.key!==srcKey){ const ok=await moveTaskBetweenDays(srcKey,t.id,c.dataset.key);
       if(ok){ render(); updateConnUI(); toast('Moved to '+new Date(c.dataset.key.slice(4)+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})); } }
@@ -2661,6 +2672,7 @@ function openTaskEditor(id){
   document.getElementById('tePrio').value=String(m.priority||1);
   document.getElementById('teEst').value=minToHoursStr(t.estimateMin);
   document.getElementById('teSched').value=hmInput(t.scheduledMin);
+  document.getElementById('teUnschedule').style.display = t.scheduledMin!=null ? 'inline-block':'none';
   document.getElementById('teDate').value=dayKey().slice(4);
   document.getElementById('teLabels').value=(m.labels||[]).join(', ');
   buildTeProjects(m.projectId||'');
@@ -3502,8 +3514,8 @@ document.getElementById('layoutSeg').addEventListener('click',e=>{ const b=e.tar
   listLayout=b.getAttribute('data-l'); try{localStorage.setItem(LS_PREFIX+'_layout',listLayout);}catch(_){}
   document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x===b));
   if(viewMode!=='list') setView('list'); else render(); });
-document.getElementById('dPrev').addEventListener('click',()=>shiftDay(-1));
-document.getElementById('dNext').addEventListener('click',()=>shiftDay(1));
+document.getElementById('dPrev').addEventListener('click',()=>navStep(-1));
+document.getElementById('dNext').addEventListener('click',()=>navStep(1));
 document.getElementById('dToday').addEventListener('click',()=>gotoDate(new Date()));
 document.getElementById('sortSel').addEventListener('change',e=>{ sortMode=e.target.value; try{localStorage.setItem(LS_PREFIX+'_sort',sortMode);}catch(_){} render(); });
 document.getElementById('filterSel').addEventListener('change',e=>{ filterKey=e.target.value; render(); });
@@ -3537,8 +3549,8 @@ document.addEventListener('keydown',e=>{
     case 'x': case 'Enter': if(kbdId){ e.preventDefault(); toggleDone(kbdId); } break;
     case 'e': if(kbdId){ e.preventDefault(); openTaskEditor(kbdId); } break;
     case 'd': if(kbdId){ e.preventDefault(); removeTask(kbdId); } break;
-    case '[': e.preventDefault(); shiftDay(-1); break;
-    case ']': e.preventDefault(); shiftDay(1); break;
+    case '[': e.preventDefault(); navStep(-1); break;
+    case ']': e.preventDefault(); navStep(1); break;
     case 't': e.preventDefault(); gotoDate(new Date()); break;
     case '?': e.preventDefault(); showShortcuts(); break;
   }
@@ -3567,6 +3579,11 @@ document.getElementById('bzAll').addEventListener('change',e=>{ document.querySe
 document.getElementById('teCancel').addEventListener('click',()=>document.getElementById('taskDialog').close());
 document.getElementById('teNewProj').addEventListener('click',newProjectFlow);
 document.getElementById('teSave').addEventListener('click',saveTaskEditor);
+document.getElementById('teUnschedule').addEventListener('click',async()=>{
+  const t=state.tasks.find(x=>x.id===editingTaskId); if(!t)return;
+  t.scheduledMin=null; t.pinned=false; await saveDay();
+  document.getElementById('taskDialog').close(); render(); toast('Moved to unscheduled.');
+});
 document.getElementById('cloudBtn').addEventListener('click',openSyncDialog);
 document.getElementById('ghSave').addEventListener('click',saveSyncSettings);
 document.getElementById('ghPush').addEventListener('click',async()=>{ readSyncFields(); await pushGist(false); });
