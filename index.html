@@ -1104,8 +1104,10 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[]}); schedulePush(); }
-async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],updatedAt:Date.now()}); schedulePush(); }
+// write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
+async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
+async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 
 /* ---------- task ops ---------- */
 /* ---------- quick-add natural-language parsing ----------
@@ -1145,7 +1147,7 @@ function parseQuickAdd(raw){
 // add a brand-new task to any day's record (current day stays in state.tasks)
 async function addTaskToDay(key,t){
   if(key===dayKey()){ state.tasks.unshift(t); await saveDay(); }
-  else { const rec=await sget(key)||{date:key.slice(4),tasks:[],reflection:'',closed:false}; rec.tasks=rec.tasks||[]; rec.tasks.unshift(t); await sset(key,rec); schedulePush(); }
+  else { const rec=await sget(key)||{date:key.slice(4),tasks:[],reflection:'',closed:false}; rec.tasks=rec.tasks||[]; rec.tasks.unshift(t); await ssetDay(key,rec); schedulePush(); }
 }
 async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
@@ -2054,7 +2056,7 @@ async function saveReflection(){ state.reflection=document.getElementById('refle
 async function closeDay(){
   state.tasks.forEach(t=>{ if(t.running){ t.actualMs+=Date.now()-t.startedAt; t.running=false; t.startedAt=null; } });
   state.activeId=null; state.reflection=document.getElementById('reflectText').value;
-  await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:true});
+  await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:true});
   schedulePush();
   render(); loadHistory(); toast('Day closed and saved to your record.');
 }
@@ -2082,11 +2084,11 @@ async function carryOverdue(){
       if(t.todoistId)seenTd.add(t.todoistId); seenName.add(t.name.toLowerCase());
       t.scheduledMin=null; t.pinned=false; t.running=false; t.startedAt=null; moved.push(t);
     });
-    if(stay.length!==rec.tasks.length){ rec.tasks=stay; await sset(k,rec); }
+    if(stay.length!==rec.tasks.length){ rec.tasks=stay; await ssetDay(k,rec); }
   }
   if(!moved.length){ toast('No overdue tasks to carry. 🎉'); return; }
   if(tk===dayKey()){ state.tasks=moved.concat(state.tasks); await saveDay(); render(); }
-  else { todayRec.tasks=moved.concat(todayRec.tasks); await sset(tk,todayRec); schedulePush(); }
+  else { todayRec.tasks=moved.concat(todayRec.tasks); await ssetDay(tk,todayRec); schedulePush(); }
   const msg='Carried '+moved.length+' overdue task'+(moved.length===1?'':'s')+' to today.';
   if(tk===dayKey()) toast(msg);
   else toastAction(msg,'View today',async()=>{ await gotoDate(new Date()); });
@@ -2345,7 +2347,7 @@ async function syncTodoistRange(projMap,sectMap){
     });
     if(changed){
       if(isCur){ state.tasks=list; curChanged=true; }
-      else await sset(key,{date:key.slice(4),tasks:list,reflection:(rec&&rec.reflection)||'',closed:(rec&&rec.closed)||false});
+      else await ssetDay(key,{date:key.slice(4),tasks:list,reflection:(rec&&rec.reflection)||'',closed:(rec&&rec.closed)||false});
     }
   }
   if(curChanged) render();
@@ -2620,9 +2622,9 @@ async function moveTaskBetweenDays(srcKey,id,dstKey){
   if(t.running){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; }
   srcTasks.splice(idx,1);
   if(srcKey===dayKey()){ if(state.activeId===id) state.activeId=null; await saveDay(); }
-  else { await sset(srcKey,srcRec); }
+  else { await ssetDay(srcKey,srcRec); }
   if(dstKey===dayKey()){ state.tasks.push(t); await saveDay(); }
-  else { const dstRec=await sget(dstKey)||{date:dstKey.slice(4),tasks:[],reflection:'',closed:false}; dstRec.tasks=dstRec.tasks||[]; dstRec.tasks.push(t); await sset(dstKey,dstRec); }
+  else { const dstRec=await sget(dstKey)||{date:dstKey.slice(4),tasks:[],reflection:'',closed:false}; dstRec.tasks=dstRec.tasks||[]; dstRec.tasks.push(t); await ssetDay(dstKey,dstRec); }
   schedulePush();
   return true;
 }
@@ -2728,6 +2730,28 @@ async function pushGist(silent){
   }catch(e){ setSyncStatus('Push failed — '+e.message,'err'); if(!silent)toast('Cloud push failed: '+e.message); }
   finally{ endNet(); }
 }
+/* Merge a remote snapshot into local storage per-key instead of clobbering.
+   Day records and config carry an updatedAt; newer wins. On ties (or legacy
+   records with no stamp) the local copy is kept so the device you're actively
+   using isn't overwritten, and the caller pushes the merged result back. */
+async function mergeRemote(data){
+  let changed=false, localNewer=false;
+  for(const k in data){
+    const remote=data[k];
+    if(k.startsWith('day:') || k==='config'){
+      const local=await sget(k);
+      const lu=(local&&local.updatedAt)||0, ru=(remote&&remote.updatedAt)||0;
+      if(local==null){ await sset(k,remote); changed=true; }
+      else if(ru>lu){ await sset(k,remote); changed=true; }
+      else if(lu>ru){ localNewer=true; }                 // keep local; push it back
+      else if(JSON.stringify(local)!==JSON.stringify(remote)){ localNewer=true; }  // tie but differ — bias to local
+    } else {
+      // carry and anything else: take the remote copy
+      await sset(k,remote); changed=true;
+    }
+  }
+  return {changed,localNewer};
+}
 async function pullGist(silent){
   if(!syncOn()||!sync.gistId){ if(!silent)toast('Nothing to pull yet — Push first or paste a Sync ID.'); return false; }
   if(!navigator.onLine){ if(!silent)toast('Offline — can’t pull right now.'); return false; }
@@ -2740,11 +2764,13 @@ async function pullGist(silent){
     let content=f.content;
     if(f.truncated&&f.raw_url){ const r=await fetch(f.raw_url); content=await r.text(); }
     const parsed=JSON.parse(content), data=parsed.data||parsed;
-    for(const k in data){ await sset(k,data[k]); }
+    const {changed,localNewer}=await mergeRemote(data);
     sync.lastPull=Date.now(); saveSync();
     await reloadState(); await loadHistory();
     setSyncStatus(syncStatusLabel(),'ok'); updateConnUI();
-    if(!silent)toast('Pulled latest from cloud.');
+    if(!silent)toast(changed?'Merged latest from cloud.':'Already up to date.');
+    // if this device held newer days than the cloud, push the merged result back so both converge
+    if(localNewer){ pulling=false; pushGist(true); }
     return true;
   }catch(e){ setSyncStatus('Pull failed — '+e.message,'err'); if(!silent)toast('Cloud pull failed: '+e.message); return false; }
   finally{ pulling=false; endNet(); }
