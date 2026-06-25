@@ -54,6 +54,10 @@ footer shows which mode is active).
   around it instead of moving it.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
+- **Export ICS** (tools row) downloads your scheduled tasks as a calendar file
+  (`.ics`) you can import into Google/Apple Calendar. **Backup** exports your
+  whole dataset (settings + every day) to a JSON file, and **Restore** loads one
+  back — handy for seeding a new device without device sync.
 - **Review** (tools row) — a dashboard over the last **7 / 30 days or all time**:
   completion rate, time tracked, your **day streak**, active days,
   **estimate-vs-actual accuracy** (are you over- or under-estimating?), and a
