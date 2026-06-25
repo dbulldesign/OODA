@@ -129,6 +129,10 @@ and is sent only to Todoist.
   the chevron to expand and see the **description**, any **links** (from the
   title or description), the full due string, comment count, and an **Open in
   Todoist** link.
+- **Push times back** — enable *Push my scheduled block times back to Todoist* in
+  the Todoist dialog and scheduling a synced task in the Day view sets its **due
+  time** in Todoist. You can also push a single task on demand from its ⋯ menu
+  (*Push time → Todoist*).
 - **Complete back** — when "Complete / reopen the task in Todoist…" is enabled,
   checking a synced task off here closes it in Todoist (and un-checking reopens
   it).

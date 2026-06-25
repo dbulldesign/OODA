@@ -699,6 +699,7 @@
     <label class="td-check"><input id="tdAuto" type="checkbox"> Complete / reopen the task in Todoist when I check it off here</label>
     <label class="td-check"><input id="tdCreate" type="checkbox"> Create new OODA tasks in Todoist automatically</label>
     <label class="td-check"><input id="tdHorizon" type="checkbox"> Show upcoming &amp; recurring tasks on their due days (next 3 weeks)</label>
+    <label class="td-check"><input id="tdPushTimes" type="checkbox"> Push my scheduled block times back to Todoist (as the task’s due time)</label>
     <p class="td-mini">Places dated and recurring Todoist tasks onto their due day in the Day / Week / Month views. Note: Todoist only exposes a recurring task’s <em>next</em> occurrence, so a daily‑repeating task appears on its next due day, not literally every day — it rolls forward as you complete it.</p>
     <div class="td-status" id="tdStatus"></div>
     <div class="dlg-actions">
@@ -971,7 +972,7 @@ const DEFAULT_CHANNELS=[
   {id:'admin',name:'Admin',color:'#7A746B'},
   {id:'comms',name:'Comms',color:'#B14A3C'}
 ];
-const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,horizon:true,lastSync:null,projects:[]};
+const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,horizon:true,pushtimes:false,lastSync:null,projects:[]};
 const TD_BASE='https://api.todoist.com/api/v1';
 
 let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[] };
@@ -1493,6 +1494,7 @@ function openTaskMenu(id,anchor){
   m.innerHTML='<button data-a="edit">'+EDIT+' Edit / schedule</button>'+
     (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
     (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
+    (t.scheduledMin!=null&&t.todoistId&&tdConnected()?'<button data-a="pushtime">⏱ Push time → Todoist</button>':'')+
     '<button data-a="tomorrow">→ Move to tomorrow</button>'+
     '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
   document.body.appendChild(m);
@@ -1503,6 +1505,7 @@ function openTaskMenu(id,anchor){
     if(a==='edit') openTaskEditor(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
     else if(a==='pin') togglePin(id);
+    else if(a==='pushtime'){ const tt=state.tasks.find(x=>x.id===id); if(tt) pushTimeToTodoist(tt,true); }
     else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const src=dayKey(), dst=dayKeyFor(d);
       moveTaskToDate(id,dst).then(ok=>{ if(ok){ render();
         toastAction('Moved to '+fmtDateRel(d),'Undo',async()=>{ await moveTaskBetweenDays(dst,id,src); render(); }); } }); }
@@ -1824,7 +1827,7 @@ function attachBlockDrag(b,t,START,END){
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
     if(!moved){ if(m==='move') openTaskEditor(t.id); return; }
     if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
-    if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); }
+    if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
     maybeAutoArrange(); saveDay(); render();
   }
@@ -1853,7 +1856,7 @@ function startChipDrag(e,t,chip){
     if(cv){ const r=cv.getBoundingClientRect();
       if(ev.clientX>=r.left&&ev.clientX<=r.right&&ev.clientY>=r.top&&ev.clientY<=r.bottom){
         let mins=snap(calStart()+(ev.clientY-r.top)/PXM); mins=Math.max(calStart(),Math.min(calEnd()-SNAP,mins));
-        t.scheduledMin=mins; calSel=null; maybeAutoArrange(); saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); return;
+        t.scheduledMin=mins; calSel=null; pushTimeToTodoist(t); maybeAutoArrange(); saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); return;
       }
     }
     renderDay();
@@ -2316,6 +2319,15 @@ function pushDoneToTodoist(t){
   if(!t||!t.todoistId||!tdConnected()||!state.todoist.autocomplete)return;
   enqueueTd({kind:t.done?'close':'reopen',taskLocalId:t.id});
 }
+// push a scheduled block's time back to Todoist as the task's due date+time
+function tdDueStringFor(t){ return dayKey().slice(4)+' '+String(Math.floor(t.scheduledMin/60)).padStart(2,'0')+':'+String(t.scheduledMin%60).padStart(2,'0'); }
+function pushTimeToTodoist(t,manual){
+  if(!t||!t.todoistId||!tdConnected()||t.scheduledMin==null) return false;
+  if(!manual && state.todoist.pushtimes!==true) return false;
+  enqueueTd({kind:'update',taskLocalId:t.id,payload:{due_string:tdDueStringFor(t)}});
+  if(manual) toast('Pushed “'+t.name+'” → Todoist for '+hmFromMin(t.scheduledMin)+'.');
+  return true;
+}
 
 /* ---------- browse & import any Todoist task ---------- */
 let bzTasks=[], bzProj={}, bzSect={};
@@ -2595,6 +2607,7 @@ function openTdDialog(){
   document.getElementById('tdAuto').checked=!!state.todoist.autocomplete;
   document.getElementById('tdCreate').checked=state.todoist.autocreate!==false;
   document.getElementById('tdHorizon').checked=state.todoist.horizon!==false;
+  document.getElementById('tdPushTimes').checked=state.todoist.pushtimes===true;
   setTdStatus(lastSyncLabel(), tdConnected()?'ok':'');
   document.getElementById('tdDialog').showModal();
 }
@@ -2604,6 +2617,7 @@ async function saveTodoist(){
   state.todoist.autocomplete=document.getElementById('tdAuto').checked;
   state.todoist.autocreate=document.getElementById('tdCreate').checked;
   state.todoist.horizon=document.getElementById('tdHorizon').checked;
+  state.todoist.pushtimes=document.getElementById('tdPushTimes').checked;
   await persistSecrets(); await saveConfig(); updateTdLink();
   toast(tdConnected()?'Todoist settings saved.':'Todoist disconnected.');
   document.getElementById('tdDialog').close();
@@ -3254,6 +3268,7 @@ document.getElementById('tdSync').addEventListener('click',async()=>{
   state.todoist.autocomplete=document.getElementById('tdAuto').checked;
   state.todoist.autocreate=document.getElementById('tdCreate').checked;
   state.todoist.horizon=document.getElementById('tdHorizon').checked;
+  state.todoist.pushtimes=document.getElementById('tdPushTimes').checked;
   await saveConfig(); updateTdLink();
   await syncTodoist(false);
 });
