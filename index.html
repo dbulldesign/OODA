@@ -648,7 +648,8 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="reviewBtn">Review</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="reviewBtn">Review</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a> · <a id="exportIcs">Export ICS</a> · <a id="backupOut">Backup</a> · <a id="backupIn">Restore</a></span>
+    <input type="file" id="backupFile" accept="application/json,.json" style="display:none">
     <span id="storeState"></span>
   </div>
 
@@ -2907,6 +2908,45 @@ function download(name,content,type){
     a.remove(); URL.revokeObjectURL(url); toast('Exported '+name);
   }catch(e){ navigator.clipboard?.writeText(content); toast('Download blocked — copied to clipboard instead.'); }
 }
+/* ---------- export to calendar (.ics) ---------- */
+function icsEsc(s){ return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function icsDt(ds,min){ const p=ds.split('-'); const hh=String(Math.floor(min/60)).padStart(2,'0'), mm=String(min%60).padStart(2,'0');
+  return p[0]+p[1]+p[2]+'T'+hh+mm+'00'; }   // floating local time (imports in the viewer's zone)
+async function exportIcs(){
+  const days=await gatherDays();
+  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//OODA//Planner//EN','CALSCALE:GREGORIAN'];
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'').replace('Z','Z');
+  let n=0;
+  days.forEach(d=>{ const ds=d.key.slice(4); (d.tasks||[]).forEach(t=>{ if(t.scheduledMin==null) return;
+    const dur=Math.max(t.estimateMin||30,15); const start=t.scheduledMin, end=Math.min(start+dur,24*60-1);
+    lines.push('BEGIN:VEVENT','UID:ooda-'+(t.id||uid())+'-'+ds+'@ooda.app','DTSTAMP:'+stamp,
+      'DTSTART:'+icsDt(ds,start),'DTEND:'+icsDt(ds,end),
+      'SUMMARY:'+icsEsc(t.name)+(t.done?' ✓':''),
+      'END:VEVENT'); n++; }); });
+  lines.push('END:VCALENDAR');
+  if(!n){ toast('No scheduled tasks to export — schedule some in the Day view first.'); return; }
+  download('ooda-schedule.ics',lines.join('\r\n'),'text/calendar');
+}
+/* ---------- full backup (export / restore a whole device) ---------- */
+async function exportBackup(){
+  const data={ooda_backup:1, exportedAt:new Date().toISOString(), config:await sget('config'), carry:await sget('carry'), days:{}};
+  for(const k of await slist('day:')){ data.days[k]=await sget(k); }
+  download('ooda-backup.json',JSON.stringify(data,null,2),'application/json');
+}
+async function importBackup(file){
+  if(!file)return;
+  try{
+    const data=JSON.parse(await file.text());
+    if(!data || (!data.config && !data.days)){ toast('That doesn’t look like an OODA backup.'); return; }
+    const dayCount=data.days?Object.keys(data.days).length:0;
+    if(!confirm('Restore this backup onto THIS device? It overwrites your current settings and '+dayCount+' day(s).')) return;
+    if(data.config) await sset('config',data.config);
+    if(data.carry) await sset('carry',data.carry);
+    if(data.days){ for(const k of Object.keys(data.days)){ if(k.startsWith('day:')) await sset(k,data.days[k]); } }
+    await reloadState(); await loadDay(); render(); loadHistory();
+    toast('Backup restored — '+dayCount+' day(s) and settings.');
+  }catch(e){ toast('Import failed: '+e.message); }
+}
 
 /* ---------- history ---------- */
 async function loadHistory(){
@@ -3119,6 +3159,10 @@ document.getElementById('chSave').addEventListener('click',saveChannels);
 document.getElementById('addChBtn').addEventListener('click',()=>{ chDraft.push({id:uid(),name:'New channel',color:'#7A746B'}); renderChEdit(); });
 document.getElementById('exportCsv').addEventListener('click',exportCsv);
 document.getElementById('exportJson').addEventListener('click',exportJson);
+document.getElementById('exportIcs').addEventListener('click',exportIcs);
+document.getElementById('backupOut').addEventListener('click',exportBackup);
+document.getElementById('backupIn').addEventListener('click',()=>document.getElementById('backupFile').click());
+document.getElementById('backupFile').addEventListener('change',e=>{ const f=e.target.files[0]; e.target.value=''; importBackup(f); });
 document.getElementById('vbList').addEventListener('click',()=>setView('list'));
 document.getElementById('vbDay').addEventListener('click',()=>setView('day'));
 document.getElementById('vbWeek').addEventListener('click',()=>setView('week'));
