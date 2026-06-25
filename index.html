@@ -51,6 +51,10 @@
   .disp-sizes button:nth-child(3){font-size:17px}
   .disp-sizes button:nth-child(4){font-size:19px}
   .disp-sizes button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .fx-choices{display:flex;gap:6px;flex-wrap:wrap}
+  .fx-choices button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
+    padding:6px 12px;cursor:pointer;font-family:var(--display);font-size:13px;line-height:1}
+  .fx-choices button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
@@ -150,6 +154,27 @@
     @keyframes celebrate{0%{transform:scale(1)}30%{transform:scale(1.015);box-shadow:0 6px 22px rgba(63,122,86,.28)}100%{transform:scale(1)}}
   }
   .icon{width:14px;height:14px;display:block}
+  /* lively icons — springy hover / press micro-interactions everywhere */
+  @media (prefers-reduced-motion:no-preference){
+    button .icon{transition:transform .2s cubic-bezier(.34,1.56,.5,1)}
+    button:hover .icon{transform:scale(1.18)}
+    button:active .icon{transform:scale(.84)}
+    .go:hover .icon{transform:scale(1.2) translateX(1px)}
+    .go.running .icon{animation:icon-pulse 1.5s ease-in-out infinite}
+    @keyframes icon-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.22)}}
+    .check:hover .icon{transform:scale(1.2)}
+    .menu-btn:hover .icon{transform:rotate(90deg) scale(1.1)}
+    .vtab .icon,.vtab{transition:transform .18s ease}
+    .menu button .icon,.menu button:hover .icon{transition:transform .18s ease}
+    .menu button:hover .icon{transform:translateX(2px)}
+    .theme-btn{transition:transform .3s cubic-bezier(.34,1.56,.5,1)}
+    .theme-btn:hover{transform:rotate(-18deg) scale(1.12)}
+    .theme-btn:active{transform:scale(.9)}
+    .expand{transition:transform .25s ease}
+    /* emoji-based tool buttons get a gentle wiggle on hover */
+    .tool:hover,.iconbtn:hover{transition:transform .2s cubic-bezier(.34,1.56,.5,1)}
+    @keyframes icon-bounce{0%{transform:translateY(0)}40%{transform:translateY(-3px)}100%{transform:translateY(0)}}
+  }
 
   /* add row */
   .add{display:flex;gap:8px;margin:12px 0 22px;flex-wrap:wrap}
@@ -273,6 +298,7 @@
   /* confetti */
   #confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:9999}
   .confetti-bit{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;will-change:transform,opacity;opacity:0}
+  .fx-emoji{position:absolute;will-change:transform,opacity;pointer-events:none;line-height:1;user-select:none}
   @media (prefers-reduced-motion:no-preference){
     .confetti-bit{animation:fall var(--dur,1.4s) cubic-bezier(.2,.6,.4,1) forwards}
     @keyframes fall{0%{opacity:1;transform:translateY(0) rotate(0)}100%{opacity:.9;transform:translateY(108vh) rotate(var(--spin,540deg))}}
@@ -799,6 +825,11 @@
       </div>
     </div>
     <p class="td-hint">Scales everything up — handy on a big monitor. Affects this device only.</p>
+    <div class="td-field">
+      <label>Completion celebration</label>
+      <div class="fx-choices" id="fxChoices"></div>
+      <p class="td-hint">Plays when you finish a task. Tap one to preview. Respects “reduce motion”.</p>
+    </div>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
   </div>
 </dialog>
@@ -2656,7 +2687,13 @@ function applyDisplay(){
   document.documentElement.style.zoom = dispScale===1? '' : String(dispScale);
 }
 function markSizes(){ document.querySelectorAll('#dispSizes button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.s)===dispScale)); }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; markSizes(); document.getElementById('dispDialog').showModal(); }
+function buildFxChoices(){
+  const wrap=document.getElementById('fxChoices'); if(!wrap||wrap.dataset.built)return;
+  wrap.innerHTML=FX_OPTIONS.map(o=>'<button type="button" data-fx="'+o.id+'">'+o.label+'</button>').join('');
+  wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
+  wrap.dataset.built='1';
+}
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; markSizes(); buildFxChoices(); markFx(); document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
@@ -2684,28 +2721,108 @@ function themeRipple(btn,next){
 }
 
 /* ---------- celebration (confetti + pop) ---------- */
-const CONFETTI_COLORS=['#3F7A56','#C2752A','#2E6B9E','#B14233','#5B4B9E','#E0A05B'];
+const CONFETTI_COLORS=['#3F7A56','#C2752A','#2E6B9E','#B14233','#5B4B9E','#E0A05B','#D9B44A','#7FB069'];
+/* completion effects — pick one in Display settings */
+const FX_OPTIONS=[
+  {id:'confetti',label:'Confetti'},
+  {id:'fireworks',label:'Fireworks'},
+  {id:'emoji',label:'Party 🎉'},
+  {id:'stars',label:'Stars ✨'},
+  {id:'balloons',label:'Balloons 🎈'},
+  {id:'none',label:'None'}
+];
+let fxMode='confetti';
+function loadFx(){ try{ fxMode=localStorage.getItem(LS_PREFIX+'_fx')||'confetti'; }catch(e){} }
+function setFx(v){ fxMode=v; try{ localStorage.setItem(LS_PREFIX+'_fx',v); }catch(e){} markFx(); if(v!=='none') celebrate(null); }
+function markFx(){ document.querySelectorAll('#fxChoices button').forEach(b=>b.classList.toggle('on',b.dataset.fx===fxMode)); }
+function fxHost(){ return document.getElementById('confetti'); }
+function fxPiece(cls){ const el=document.createElement('div'); el.className=cls; return el; }
+// full-screen confetti — pieces seeded across the whole width, slow drift down
+function fxConfetti(){
+  const host=fxHost(); if(!host)return;
+  const N=Math.min(180,Math.max(70,Math.round(innerWidth/8)));
+  for(let i=0;i<N;i++){
+    const bit=fxPiece('confetti-bit');
+    bit.style.background=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
+    bit.style.left=(Math.random()*innerWidth)+'px'; bit.style.top=(-20-Math.random()*60)+'px';
+    const w=6+Math.random()*8; bit.style.width=w+'px'; bit.style.height=(w*1.5)+'px';
+    if(Math.random()<0.5) bit.style.borderRadius='50%';
+    const dx=(Math.random()*2-1)*140, dur=3.2+Math.random()*2.6, spin=(Math.random()*2-1)*1080, delay=Math.random()*900;
+    host.appendChild(bit);
+    bit.animate([{transform:'translate(0,0) rotate(0)',opacity:1},
+      {transform:'translate('+dx+'px,'+(innerHeight+80)+'px) rotate('+spin+'deg)',opacity:.95}],
+      {duration:dur*1000,delay,easing:'cubic-bezier(.25,.55,.45,1)',fill:'forwards'}).onfinish=()=>bit.remove();
+  }
+}
+// several radiating bursts at random points
+function fxFireworks(){
+  const host=fxHost(); if(!host)return;
+  for(let b=0;b<6;b++) setTimeout(()=>{
+    const cx=innerWidth*(0.15+Math.random()*0.7), cy=innerHeight*(0.15+Math.random()*0.45);
+    const color=CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)], P=30;
+    for(let i=0;i<P;i++){
+      const bit=fxPiece('confetti-bit'); bit.style.background=color; bit.style.borderRadius='50%';
+      bit.style.width='7px'; bit.style.height='7px'; bit.style.left=cx+'px'; bit.style.top=cy+'px';
+      const ang=(i/P)*Math.PI*2+Math.random()*0.2, dist=90+Math.random()*150, dur=1.3+Math.random()*0.8;
+      host.appendChild(bit);
+      bit.animate([{transform:'translate(0,0) scale(1)',opacity:1},
+        {transform:'translate('+Math.cos(ang)*dist+'px,'+(Math.sin(ang)*dist+70)+'px) scale(.4)',opacity:0}],
+        {duration:dur*1000,easing:'cubic-bezier(.15,.7,.3,1)',fill:'forwards'}).onfinish=()=>bit.remove();
+    }
+  }, b*320);
+}
+// emoji rain
+function fxEmoji(){
+  const host=fxHost(); if(!host)return; const set=['🎉','🎊','✨','🥳','💥','⭐','🌟'];
+  const N=Math.min(80,Math.max(40,Math.round(innerWidth/14)));
+  for(let i=0;i<N;i++){
+    const s=fxPiece('fx-emoji'); s.textContent=set[i%set.length];
+    s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(-30-Math.random()*60)+'px';
+    s.style.fontSize=(18+Math.random()*20)+'px';
+    const dx=(Math.random()*2-1)*120, dur=3+Math.random()*2.5, spin=(Math.random()*2-1)*420, delay=Math.random()*800;
+    host.appendChild(s);
+    s.animate([{transform:'translate(0,0) rotate(0)',opacity:1},
+      {transform:'translate('+dx+'px,'+(innerHeight+70)+'px) rotate('+spin+'deg)',opacity:.95}],
+      {duration:dur*1000,delay,easing:'cubic-bezier(.25,.6,.45,1)',fill:'forwards'}).onfinish=()=>s.remove();
+  }
+}
+// twinkling stars rising
+function fxStars(){
+  const host=fxHost(); if(!host)return; const set=['✨','⭐','🌟','💫'];
+  const N=46;
+  for(let i=0;i<N;i++){
+    const s=fxPiece('fx-emoji'); s.textContent=set[i%set.length];
+    s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(innerHeight+20)+'px';
+    s.style.fontSize=(14+Math.random()*22)+'px';
+    const drift=(Math.random()*2-1)*90, dur=3+Math.random()*2.4, delay=Math.random()*1000;
+    host.appendChild(s);
+    s.animate([{transform:'translate(0,0) scale(.5)',opacity:0},
+      {transform:'translate('+drift*0.5+'px,'+(-innerHeight*0.5)+'px) scale(1)',opacity:1,offset:.35},
+      {transform:'translate('+drift+'px,'+(-innerHeight-40)+'px) scale(.8)',opacity:0}],
+      {duration:dur*1000,delay,easing:'ease-out',fill:'forwards'}).onfinish=()=>s.remove();
+  }
+}
+// balloons floating up
+function fxBalloons(){
+  const host=fxHost(); if(!host)return; const cols=['🎈','🎈','🎈'];
+  const N=16;
+  for(let i=0;i<N;i++){
+    const s=fxPiece('fx-emoji'); s.textContent=cols[i%cols.length];
+    s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(innerHeight+50)+'px';
+    s.style.fontSize=(28+Math.random()*22)+'px';
+    const drift=(Math.random()*2-1)*70, dur=4.5+Math.random()*3, delay=Math.random()*900;
+    host.appendChild(s);
+    s.animate([{transform:'translate(0,0)',opacity:1},
+      {transform:'translate('+drift+'px,'+(-innerHeight-90)+'px)',opacity:.9}],
+      {duration:dur*1000,delay,easing:'ease-in',fill:'forwards'}).onfinish=()=>s.remove();
+  }
+}
+const FX_FN={confetti:fxConfetti,fireworks:fxFireworks,emoji:fxEmoji,stars:fxStars,balloons:fxBalloons};
 function celebrate(li){
   if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if(li){ li.classList.remove('celebrate'); void li.offsetWidth; li.classList.add('celebrate'); }
-  const host=document.getElementById('confetti'); if(!host) return;
-  let originX=innerWidth/2, originY=innerHeight*0.35;
-  if(li){ const r=li.getBoundingClientRect(); originX=r.left+Math.min(40,r.width/2); originY=r.top+r.height/2; }
-  const N=26;
-  for(let i=0;i<N;i++){
-    const bit=document.createElement('div'); bit.className='confetti-bit';
-    const c=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
-    bit.style.background=c;
-    bit.style.left=originX+'px'; bit.style.top=originY+'px';
-    const dx=(Math.random()*2-1)*180, dur=1+Math.random()*0.9, spin=(Math.random()*2-1)*720;
-    bit.style.setProperty('--dur',dur+'s'); bit.style.setProperty('--spin',spin+'deg');
-    if(Math.random()<0.5) bit.style.borderRadius='50%';
-    host.appendChild(bit);
-    bit.animate([
-      {transform:'translate(0,0) rotate(0)',opacity:1},
-      {transform:'translate('+dx+'px,'+(innerHeight*0.9)+'px) rotate('+spin+'deg)',opacity:0.95}
-    ],{duration:dur*1000,easing:'cubic-bezier(.2,.6,.4,1)',fill:'forwards'}).onfinish=()=>bit.remove();
-  }
+  if(fxMode==='none') return;
+  (FX_FN[fxMode]||fxConfetti)();
 }
 
 /* ---------- wire up ---------- */
@@ -2802,7 +2919,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadFx(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
