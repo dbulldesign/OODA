@@ -64,6 +64,12 @@ footer shows which mode is active).
   completion rate, time tracked, your **day streak**, active days,
   **estimate-vs-actual accuracy** (are you over- or under-estimating?), and a
   **time-by-channel** breakdown. Built entirely from data already on your device.
+- A single **⚙ Settings** button (in the header, plus a footer link) gathers
+  everything that used to be a long tools row — **Todoist**, **Device sync**,
+  **Lock keys**, **Display**, **Review**, **Templates**, **Carry overdue**,
+  **Edit channels**, and **Export / Backup / Restore** — grouped in one dialog.
+  Next to the header sync button, **Todoist** and **Sync** status pills show a
+  green dot when connected (tap either to manage it).
 - Responsive **mobile and desktop** layouts (the Day view goes two-column on wide
   screens; phones get a single-column, touch-sized layout). A **Display** option
   (tools row) adds a **fill-the-screen** wide mode and a **text/UI size** control
@@ -232,8 +238,9 @@ manifest, so you can "Add to Home Screen"):
   usual; everything is saved locally.
 - **In-app updates** — when a new version is deployed, the open app (including
   the installed PWA) shows a **"new version available"** bar; tap **Update &
-  reload** to activate it and reload into the new version. The current version
-  number (e.g. `v1.1.0`) is shown in the tools row footer.
+  reload** to activate it and reload into the new version. Each deploy is stamped
+  with a unique version (`1.1.<build>`) automatically, and the current version
+  number is shown in the tools-row footer and the Settings dialog.
 - Todoist changes you make offline (completions, edits, new tasks) are **queued
   and flush automatically when you're back online**; the header shows a count of
   pending changes.
