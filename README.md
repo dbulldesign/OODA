@@ -98,6 +98,14 @@ and is sent only to Todoist.
   **priority**, **labels**, **estimate**, and **project**. For a Todoist-linked
   task, saving pushes those changes back to Todoist (renaming inline pushes too).
   For a local task, tick *Also create this task in Todoist* to create it there.
+- **Upcoming & recurring on their due days** — with *Show upcoming & recurring
+  tasks on their due days* enabled (default on, in the Todoist dialog), OODA also
+  places dated and recurring Todoist tasks onto their **due day** for the next
+  three weeks, so they appear in the **Day / Week / Month** views ahead of time
+  and move with you if you reschedule them in Todoist. Note that Todoist only
+  exposes a recurring task's **next** occurrence, so a daily-repeating task shows
+  on its next due day (not literally every day) and rolls forward as you complete
+  it. Overdue items stay surfaced on today via the main filter.
 - OODA re-pulls automatically on load, **every ~5 minutes in the background**,
   and when you return to the tab; the **⟳ Sync Todoist** header button pulls on
   demand. (Background pulls only run while you're viewing today, so imported
