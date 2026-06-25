@@ -25,7 +25,9 @@ footer shows which mode is active).
   **priority** (`p1`–`p4`), a **time** (`2pm`, `noon`, `at 15:30`) and a **day**
   (`today`, `tonight`, `tomorrow`, `mon`–`sun`, `next week`); the rest is the
   task name. Dated tasks land on the right day (and push the due string to
-  Todoist when auto-create is on).
+  Todoist when auto-create is on). Typing **`#`** pops a **project picker** —
+  your Todoist projects and channels drop down and filter as you type; pick one
+  to insert it (multi-word names supported).
 - **Keyboard shortcuts** (press `?` for the list): `n` new, `/` search,
   `j`/`k` move the selection, `space` start/pause, `x` complete, `e` edit,
   `d` delete (with Undo), `[`/`]` previous/next day, `t` today.
