@@ -45,6 +45,13 @@ footer shows which mode is active).
   shows a toast with **Undo** so a mistaken tap is one click to reverse.
 - **Move a task to another day** — pick a date in the editor, or use **Move to
   tomorrow** in a task's ⋯ menu.
+- **Carry overdue** (tools row) sweeps every unfinished task from days before
+  today onto today in one tap (de-duplicated).
+- **Day templates** (tools row) save a day's set of tasks — with their schedule
+  and pinned times — and drop them onto any day later.
+- **Pin a time** — 📌 on a calendar block (or *Pin time* in the ⋯ menu) marks it
+  fixed so **Auto-arrange**, **Tidy day**, and **Fill my day** flow other blocks
+  around it instead of moving it.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
   history of past days.
 - Responsive **mobile and desktop** layouts (the Day view goes two-column on wide

@@ -55,6 +55,12 @@
   .fx-choices button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
     padding:6px 12px;cursor:pointer;font-family:var(--display);font-size:13px;line-height:1}
   .fx-choices button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .tpl-list{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px;max-height:46vh;overflow:auto}
+  .tpl-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
+  .tpl-info{flex:1;min-width:0;display:flex;flex-direction:column}
+  .tpl-sub{font-size:12px;color:var(--ink-soft)}
+  .tpl-apply,.tpl-del{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12.5px;cursor:pointer}
+  .tpl-del{color:var(--over,#c33);border-color:var(--over,#c33);padding:5px 9px}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
@@ -456,6 +462,11 @@
   .cal-block .cb-t{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cal-block .cb-s{flex:0 0 auto;font-size:11px;opacity:.95;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px rgba(0,0,0,.25)}
   .cal-block.done{opacity:.55;text-decoration:line-through}
+  .cal-block .cb-pin{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.18);color:#fff;
+    border-radius:6px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;opacity:0;padding:0;transition:opacity .15s}
+  .cal-block:hover .cb-pin{opacity:.85}
+  .cal-block .cb-pin.on{opacity:1;background:rgba(0,0,0,.34)}
+  .cal-block.pinned{border-color:rgba(255,255,255,.85);box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 1.5px rgba(255,255,255,.5)}
   .cal-now{position:absolute;left:46px;right:0;height:0;border-top:2px solid var(--over);z-index:3}
   .cal-now::before{content:'';position:absolute;left:0;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--over)}
 
@@ -621,7 +632,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
     <span id="storeState"></span>
   </div>
 
@@ -860,6 +871,18 @@
   </div>
 </dialog>
 
+<dialog id="tplDialog">
+  <div class="dlg-in">
+    <h3>Day templates</h3>
+    <p class="td-hint">Save a day's set of tasks (with their schedule) and drop it onto any day later.</p>
+    <div class="tpl-list" id="tplList"></div>
+    <div class="dlg-actions">
+      <button id="tplSave">Save current day…</button>
+      <button class="primary" id="tplDone">Done</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="fillDialog">
   <div class="dlg-in">
     <h3>Fill my day</h3>
@@ -920,7 +943,7 @@ const DEFAULT_CHANNELS=[
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,horizon:true,lastSync:null,projects:[]};
 const TD_BASE='https://api.todoist.com/api/v1';
 
-let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST} };
+let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[] };
 let memFallback={}; let storeOk=true; let tick=null;
 
 /* ---------- storage layer ----------
@@ -1018,8 +1041,8 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
-  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; await saveConfig(); }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; }
+  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; }
   // resume a running task across reloads
@@ -1033,7 +1056,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -1043,7 +1066,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[]}); schedulePush(); }
 async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
@@ -1147,6 +1170,12 @@ async function renameTask(id,val){ const t=state.tasks.find(x=>x.id===id); if(!t
   if(t.todoistMeta)t.todoistMeta.rawContent=nn;
   await saveDay(); render();
   if(t.todoistId&&tdConnected()) enqueueTd({kind:'update',taskLocalId:t.id,payload:{content:nn}});
+}
+async function togglePin(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t||t.scheduledMin==null)return;
+  t.pinned=!t.pinned; await saveDay();
+  if(viewMode==='day') renderDay(); else render();
+  toast(t.pinned?'Time pinned — auto-arrange & tidy will keep it.':'Unpinned.');
 }
 async function removeTask(id){
   const idx=state.tasks.findIndex(x=>x.id===id);
@@ -1432,6 +1461,7 @@ function openTaskMenu(id,anchor){
   const expanded=expandedTasks.has(id);
   m.innerHTML='<button data-a="edit">'+EDIT+' Edit / schedule</button>'+
     (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
+    (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
     '<button data-a="tomorrow">→ Move to tomorrow</button>'+
     '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
   document.body.appendChild(m);
@@ -1441,6 +1471,7 @@ function openTaskMenu(id,anchor){
   m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
     if(a==='edit') openTaskEditor(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
+    else if(a==='pin') togglePin(id);
     else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const src=dayKey(), dst=dayKeyFor(d);
       moveTaskToDate(id,dst).then(ok=>{ if(ok){ render();
         toastAction('Moved to '+fmtDateRel(d),'Undo',async()=>{ await moveTaskBetweenDays(dst,id,src); render(); }); } }); }
@@ -1552,12 +1583,24 @@ function scheduleRunningTask(t,force=false){
   t.scheduledMin=mins;
 }
 // push overlapping scheduled tasks down so nothing collides; keeps start times where possible
+// pinned blocks are fixed obstacles auto-arrange / tidy / fill won't move
+function pinnedObstacles(){ return scheduledActive().filter(t=>t.pinned).map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)})); }
+// place `movable` tasks sequentially from day start, stepping over fixed obstacles
+function packAround(movable,obst){
+  const o=obst.slice().sort((a,b)=>a.s-b.s); let cursor=calStart();
+  movable.sort((a,b)=>a.scheduledMin-b.scheduledMin).forEach(t=>{ const dur=blockDur(t);
+    let placed=false, guard=0;
+    while(!placed && guard++<64){ const hit=o.find(x=>cursor<x.e && cursor+dur>x.s);
+      if(hit){ cursor=hit.e; } else placed=true; if(cursor+dur>calEnd()) placed=true; }
+    t.scheduledMin=snap(Math.min(cursor,calEnd()-SNAP)); cursor=t.scheduledMin+dur; });
+}
 function reflowCascade(anchorId){
-  const arr=scheduledActive().sort((a,b)=>a.scheduledMin-b.scheduledMin);
-  const anchor=anchorId?arr.find(t=>t.id===anchorId):null;
+  const movable=scheduledActive().filter(t=>!t.pinned).sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  const obst=pinnedObstacles();
+  const anchor=anchorId?movable.find(t=>t.id===anchorId):null;
   if(anchor){
-    const before=arr.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)<=anchor.scheduledMin);
-    const after=arr.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)>anchor.scheduledMin).sort((a,b)=>a.scheduledMin-b.scheduledMin);
+    const before=movable.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)<=anchor.scheduledMin);
+    const after=movable.filter(t=>t.id!==anchor.id && t.scheduledMin+blockDur(t)>anchor.scheduledMin).sort((a,b)=>a.scheduledMin-b.scheduledMin);
     let cursor=calStart();
     before.sort((a,b)=>a.scheduledMin-b.scheduledMin).forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
       s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
@@ -1566,16 +1609,10 @@ function reflowCascade(anchorId){
       s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
     return;
   }
-  let cursor=calStart();
-  arr.forEach(t=>{ let s=Math.max(t.scheduledMin,calStart()); if(s<cursor)s=cursor;
-    s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
+  packAround(movable,obst);
 }
-// pack everything back-to-back from the start of the day (manual "Tidy")
-function compactDay(){
-  const arr=scheduledActive().sort((a,b)=>a.scheduledMin-b.scheduledMin);
-  let cursor=calStart();
-  arr.forEach(t=>{ t.scheduledMin=Math.min(cursor,calEnd()-SNAP); cursor=t.scheduledMin+blockDur(t); });
-}
+// pack everything back-to-back from the start of the day (manual "Tidy"), stepping over pinned blocks
+function compactDay(){ packAround(scheduledActive().filter(t=>!t.pinned),pinnedObstacles()); }
 function maybeAutoArrange(){ if(state.autoArrange) reflowCascade(); }
 function nowMinutes(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
 let lastBacklog=null;
@@ -1688,15 +1725,19 @@ function renderDay(){
     const dur=blockDur(t);
     const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
-    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':''); b.dataset.id=t.id;
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':''); b.dataset.id=t.id;
     b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
     b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span>'+
       '<span class="cb-s">'+(t.running?'⏱ ':'')+hmFromMin(t.scheduledMin)+' · '+minFmt(dur*60000)+'</span></div>'+
+      '<button class="cb-pin'+(t.pinned?' on':'')+'" title="'+(t.pinned?'Pinned — auto-arrange keeps this time':'Pin this time')+'">📌</button>'+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
+    const pin=b.querySelector('.cb-pin');
+    pin.addEventListener('pointerdown',e=>e.stopPropagation());
+    pin.addEventListener('click',e=>{ e.stopPropagation(); togglePin(t.id); });
     canvas.appendChild(b);
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
@@ -1952,6 +1993,69 @@ async function rollover(){
   if(!carry.length){ toast('Nothing unfinished to carry.'); return; }
   await sset('carry',carry); schedulePush(); toast(carry.length+' task(s) queued for tomorrow.');
 }
+/* pull every unfinished task from days before today onto today */
+async function carryOverdue(){
+  if(locked()){ showUnlock(); return; }
+  const tk=todayKey();
+  const keys=(await slist('day:')).filter(k=>k<tk).sort();
+  // existing today tasks (to de-dupe by Todoist id / name)
+  let todayRec = tk===dayKey() ? {tasks:state.tasks} : (await sget(tk)||{date:tk.slice(4),tasks:[],reflection:'',closed:false});
+  const seenTd=new Set(todayRec.tasks.filter(t=>t.todoistId).map(t=>t.todoistId));
+  const seenName=new Set(todayRec.tasks.map(t=>t.name.toLowerCase()));
+  const moved=[];
+  for(const k of keys){
+    const rec=await sget(k); if(!rec||!rec.tasks||!rec.tasks.length) continue;
+    const stay=[];
+    rec.tasks.forEach(t=>{
+      if(t.done){ stay.push(t); return; }
+      if((t.todoistId&&seenTd.has(t.todoistId)) || seenName.has(t.name.toLowerCase())){ return; } // drop duplicate
+      if(t.todoistId)seenTd.add(t.todoistId); seenName.add(t.name.toLowerCase());
+      t.scheduledMin=null; t.pinned=false; t.running=false; t.startedAt=null; moved.push(t);
+    });
+    if(stay.length!==rec.tasks.length){ rec.tasks=stay; await sset(k,rec); }
+  }
+  if(!moved.length){ toast('No overdue tasks to carry. 🎉'); return; }
+  if(tk===dayKey()){ state.tasks=moved.concat(state.tasks); await saveDay(); render(); }
+  else { todayRec.tasks=moved.concat(todayRec.tasks); await sset(tk,todayRec); schedulePush(); }
+  const msg='Carried '+moved.length+' overdue task'+(moved.length===1?'':'s')+' to today.';
+  if(tk===dayKey()) toast(msg);
+  else toastAction(msg,'View today',async()=>{ await gotoDate(new Date()); });
+}
+/* ---------- day templates (save / apply a day shape) ---------- */
+function openTemplatesDialog(){
+  if(locked()){ showUnlock(); return; }
+  renderTemplates(); document.getElementById('tplDialog').showModal();
+}
+function renderTemplates(){
+  const list=document.getElementById('tplList'); const tpls=state.templates||[];
+  if(!tpls.length){ list.innerHTML='<div class="bz-empty">No templates yet. Save the current day below.</div>'; return; }
+  list.innerHTML=tpls.map((t,i)=>'<div class="tpl-row"><div class="tpl-info"><b>'+escapeHtml(t.name)+'</b>'+
+    '<span class="tpl-sub">'+t.items.length+' task'+(t.items.length===1?'':'s')+
+      (t.items.some(x=>x.scheduledMin!=null)?' · scheduled':'')+'</span></div>'+
+    '<button class="tpl-apply" data-i="'+i+'">Apply</button>'+
+    '<button class="tpl-del danger" data-i="'+i+'" title="Delete">✕</button></div>').join('');
+}
+async function saveCurrentAsTemplate(){
+  const tasks=state.tasks.filter(t=>!t.done);
+  if(!tasks.length){ toast('Nothing on this day to save.'); return; }
+  const name=(prompt('Template name:', viewDate.toLocaleDateString(undefined,{weekday:'long'})+' shape')||'').trim();
+  if(!name)return;
+  const items=tasks.map(t=>({name:t.name,channelName:chById(t.channelId).name,estimateMin:t.estimateMin||0,
+    scheduledMin:(t.scheduledMin!=null?t.scheduledMin:null),pinned:!!t.pinned}));
+  (state.templates=state.templates||[]).push({name,items});
+  await saveConfig(); renderTemplates(); toast('Saved template “'+name+'”.');
+}
+async function applyTemplate(i){
+  const tpl=state.templates[i]; if(!tpl)return;
+  const added=tpl.items.map(it=>({id:uid(),name:it.name,channelId:matchChannel(it.channelName),
+    estimateMin:it.estimateMin||0,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
+    scheduledMin:(it.scheduledMin!=null?it.scheduledMin:null),pinned:!!it.pinned}));
+  state.tasks=state.tasks.concat(added);
+  added.forEach(t=>autoCreateInTodoist(t));
+  await saveDay(); render(); document.getElementById('tplDialog').close();
+  toast('Applied “'+tpl.name+'” — '+added.length+' task'+(added.length===1?'':'s')+' added.');
+}
+async function deleteTemplate(i){ state.templates.splice(i,1); await saveConfig(); renderTemplates(); }
 
 /* ---------- Todoist sync ---------- */
 function tdConnected(){ return !!(state.todoist&&state.todoist.token); }
@@ -2918,6 +3022,12 @@ document.getElementById('capInput').addEventListener('change',async e=>{ state.c
 document.getElementById('reflectText').addEventListener('blur',saveReflection);
 document.getElementById('closeBtn').addEventListener('click',closeDay);
 document.getElementById('rolloverBtn').addEventListener('click',rollover);
+document.getElementById('carryBtn').addEventListener('click',carryOverdue);
+document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
+document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
+document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
+document.getElementById('tplList').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return;
+  const i=+b.dataset.i; if(b.classList.contains('tpl-apply')) applyTemplate(i); else if(b.classList.contains('tpl-del')) deleteTemplate(i); });
 document.getElementById('editCh').addEventListener('click',openChDialog);
 document.getElementById('chCancel').addEventListener('click',()=>document.getElementById('chDialog').close());
 document.getElementById('chSave').addEventListener('click',saveChannels);
