@@ -87,6 +87,10 @@ footer shows which mode is active).
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
   ▶ start and ✓ done buttons.
+- **Block reminders** — turn on *Remind me 5 min before each scheduled block* in
+  **Display** to get a browser notification ahead of each timed task (today).
+  Reminders re-arm as you reschedule; they need the tab open and notification
+  permission.
 - **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
   reveal; remembers your choice and defaults to your system preference.
 - A **full-screen celebration** when you complete a task (and an extra burst
