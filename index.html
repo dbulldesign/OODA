@@ -162,6 +162,12 @@
   .tdetails .d-desc{white-space:pre-wrap;margin-bottom:8px;color:var(--ink)}
   .tdetails .d-row{margin:3px 0}
   .tdetails b{color:var(--ink);font-weight:600}
+  .tdetails .d-subs{margin:4px 0 8px;display:flex;flex-direction:column;gap:4px}
+  .tdetails .d-subs b{display:block;margin-bottom:2px}
+  .tdetails .d-sub{display:flex;align-items:center;gap:8px;color:var(--ink);cursor:pointer}
+  .tdetails .d-sub input{width:15px;height:15px;accent-color:#3F7A56;flex:none}
+  .tdetails .d-sub.done span{text-decoration:line-through;color:var(--ink-soft)}
+  .tdetails .d-subs-load{font-style:italic}
   .task .expand{color:var(--ink-faint);transition:transform .2s}
   .task.expanded .expand{transform:rotate(180deg)}
   .task button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);
@@ -1352,6 +1358,11 @@ function taskRow(t){
   li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
+  if(expandedTasks.has(t.id) && t.todoistId){
+    loadSubtasks(t.id);
+    li.querySelectorAll('.subtask-cb').forEach(cb=>cb.addEventListener('change',e=>{ e.stopPropagation();
+      toggleSubtask(t.todoistId,cb.dataset.sid,cb.checked); cb.closest('.d-sub').classList.toggle('done',cb.checked); }));
+  }
   return li;
 }
 /* ---------- bulk selection ---------- */
@@ -2010,7 +2021,32 @@ function taskDetailsHtml(t){
   if(m.labels&&m.labels.length) parts.push('<div class="d-row"><b>Labels:</b> '+m.labels.map(escapeHtml).join(', ')+'</div>');
   if(m.commentCount) parts.push('<div class="d-row">'+m.commentCount+' comment'+(m.commentCount>1?'s':'')+' in Todoist</div>');
   if(m.url) parts.push('<div class="d-row"><a href="'+escapeHtml(m.url)+'" target="_blank" rel="noopener">Open in Todoist ↗</a></div>');
-  return '<div class="tdetails">'+parts.join('')+'</div>';
+  return '<div class="tdetails">'+subtaskHtml(t)+parts.join('')+'</div>';
+}
+/* ---------- Todoist sub-tasks (lazy-loaded checklist on expand) ---------- */
+const subtaskCache={}; const subtaskLoading=new Set();
+async function loadSubtasks(localId){
+  const t=state.tasks.find(x=>x.id===localId); if(!t||!t.todoistId) return;
+  if(subtaskCache[t.todoistId]!==undefined||subtaskLoading.has(t.todoistId)) return;
+  if(!tdConnected()||!navigator.onLine){ subtaskCache[t.todoistId]=[]; return; }
+  subtaskLoading.add(t.todoistId);
+  try{ const kids=await tdGetAll('/tasks?parent_id='+encodeURIComponent(t.todoistId));
+    subtaskCache[t.todoistId]=kids.map(k=>({id:k.id,content:k.content,done:!!k.checked||!!k.is_completed})); }
+  catch(e){ subtaskCache[t.todoistId]=[]; }
+  subtaskLoading.delete(t.todoistId);
+  if(expandedTasks.has(localId)) render();
+}
+function subtaskHtml(t){
+  if(!t.todoistId) return '';
+  const subs=subtaskCache[t.todoistId];
+  if(subs===undefined) return '<div class="d-row d-subs-load">Loading sub-tasks…</div>';
+  if(!subs.length) return '';
+  return '<div class="d-subs"><b>Sub-tasks</b>'+subs.map(s=>
+    '<label class="d-sub'+(s.done?' done':'')+'"><input type="checkbox" class="subtask-cb" data-sid="'+s.id+'"'+(s.done?' checked':'')+'><span>'+escapeHtml(s.content)+'</span></label>').join('')+'</div>';
+}
+function toggleSubtask(parentTdId,subId,checked){
+  const subs=subtaskCache[parentTdId]; if(subs){ const s=subs.find(x=>x.id===subId); if(s)s.done=checked; }
+  enqueueTd({kind:checked?'close':'reopen',todoistId:subId});
 }
 
 /* ---------- reflect / close / rollover ---------- */
