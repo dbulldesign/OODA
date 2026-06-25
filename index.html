@@ -61,6 +61,22 @@
   .tpl-sub{font-size:12px;color:var(--ink-soft)}
   .tpl-apply,.tpl-del{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12.5px;cursor:pointer}
   .tpl-del{color:var(--over,#c33);border-color:var(--over,#c33);padding:5px 9px}
+  .rev-range{display:flex;gap:6px;margin-bottom:12px}
+  .rev-range button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:6px 12px;cursor:pointer;font-family:var(--display);font-size:13px}
+  .rev-range button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .rev-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .rev-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+  .rev-card .rv-n{font-size:22px;font-weight:700;font-family:var(--display);line-height:1.1}
+  .rev-card .rv-l{font-size:12px;color:var(--ink-soft);margin-top:2px}
+  .rev-h{font-size:13px;font-weight:600;margin:10px 0 6px}
+  .rev-bar{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+  .rev-bar .rb-nm{flex:0 0 34%;display:flex;align-items:center;gap:6px;min-width:0}
+  .rev-bar .rb-nm span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rev-bar .rb-track{flex:1;height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden}
+  .rev-bar .rb-fill{height:100%;border-radius:6px}
+  .rev-bar .rb-v{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .rev-acc{font-size:13px;margin-top:4px}
+  .rev-empty{color:var(--ink-soft);font-size:13px;padding:8px 0}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);
@@ -632,7 +648,7 @@
   </div>
 
   <div class="tools">
-    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
+    <span><a id="todoistBtn">Todoist</a> · <a id="cloudBtn">Device sync</a> · <a id="secBtn">Lock keys</a> · <a id="dispBtn">Display</a> · <a id="reviewBtn">Review</a> · <a id="tplBtn">Templates</a> · <a id="carryBtn">Carry overdue</a> · <a id="editCh">Edit channels</a> · <a id="exportCsv">Export CSV</a> · <a id="exportJson">Export JSON</a></span>
     <span id="storeState"></span>
   </div>
 
@@ -868,6 +884,19 @@
       <kbd>?</kbd><span>This help</span>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="kbdDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="revDialog">
+  <div class="dlg-in">
+    <h3>Review</h3>
+    <div class="rev-range" id="revRange">
+      <button data-r="7" class="on">7 days</button>
+      <button data-r="30">30 days</button>
+      <button data-r="0">All time</button>
+    </div>
+    <div class="rev-body" id="revBody"></div>
+    <div class="dlg-actions"><span></span><button class="primary" id="revDone">Done</button></div>
   </div>
 </dialog>
 
@@ -2021,6 +2050,59 @@ async function carryOverdue(){
   if(tk===dayKey()) toast(msg);
   else toastAction(msg,'View today',async()=>{ await gotoDate(new Date()); });
 }
+/* ---------- review dashboard (stats across days) ---------- */
+let reviewRange=7;
+function openReviewDialog(){ if(locked()){ showUnlock(); return; } document.getElementById('revDialog').showModal(); renderReview(reviewRange); }
+async function renderReview(days){
+  reviewRange=days;
+  document.querySelectorAll('#revRange button').forEach(b=>b.classList.toggle('on',+b.dataset.r===days));
+  const body=document.getElementById('revBody'); body.innerHTML='<div class="rev-empty">Crunching…</div>';
+  const today=new Date(); today.setHours(12,0,0,0);
+  const todayStr=dayKeyFor(today).slice(4);
+  const cutoff=new Date(today); cutoff.setDate(cutoff.getDate()-(days-1));
+  const cutoffStr=dayKeyFor(cutoff).slice(4);
+  const keys=(await slist('day:')).sort();
+  let totalTasks=0,doneTasks=0,trackedMs=0,estSum=0,actSum=0,estCount=0,activeDays=0;
+  const byCh={}; const doneDays=new Set();
+  for(const k of keys){
+    const ds=k.slice(4); if(ds>todayStr) continue; if(days>0 && ds<cutoffStr) continue;
+    const rec = k===dayKey()? {tasks:state.tasks} : await sget(k);
+    const tasks=(rec&&rec.tasks)||[]; if(!tasks.length) continue;
+    activeDays++;
+    tasks.forEach(t=>{ totalTasks++; const act=(t.actualMs||0);
+      if(t.done){ doneTasks++; doneDays.add(ds); }
+      trackedMs+=act; if(act>0) byCh[t.channelId]=(byCh[t.channelId]||0)+act;
+      if(t.done && t.estimateMin>0 && act>0){ estSum+=t.estimateMin*60000; actSum+=act; estCount++; }
+    });
+  }
+  // streak: consecutive days with a completion, ending today (or yesterday if today's empty)
+  let streak=0, cur=new Date(today);
+  if(!doneDays.has(dayKeyFor(cur).slice(4))) cur.setDate(cur.getDate()-1);
+  while(doneDays.has(dayKeyFor(cur).slice(4))){ streak++; cur.setDate(cur.getDate()-1); }
+  if(!totalTasks){ body.innerHTML='<div class="rev-empty">No tasks recorded in this window yet.</div>'; return; }
+  const rate=Math.round(doneTasks/totalTasks*100);
+  const hrs=(trackedMs/3600000); const hLabel=hrs>=1?hrs.toFixed(1).replace(/\.0$/,'')+'h':Math.round(trackedMs/60000)+'m';
+  let acc='';
+  if(estCount){ const pct=Math.round(actSum/estSum*100);
+    acc='<div class="rev-h">Estimate accuracy</div><div class="rev-acc">Across '+estCount+' completed task'+(estCount===1?'':'s')+
+      ' with an estimate, you tracked <b>'+pct+'%</b> of the time you planned — '+
+      (pct>115?'you tend to <b>under-estimate</b>.':pct<85?'you tend to <b>over-estimate</b>.':'estimates are well-calibrated. 🎯')+'</div>'; }
+  // channel breakdown by tracked time
+  const chRows=state.channels.map(c=>({c,ms:byCh[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
+  const maxMs=chRows.reduce((m,x)=>Math.max(m,x.ms),1);
+  let chHtml='';
+  if(chRows.length){ chHtml='<div class="rev-h">Time by channel</div>'+chRows.map(x=>
+    '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="background:'+x.c.color+'"></span><span class="t">'+escapeHtml(x.c.name)+'</span></span>'+
+    '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/maxMs*100)+'%;background:'+x.c.color+'"></span></span>'+
+    '<span class="rb-v">'+minFmt(x.ms)+'</span></div>').join(''); }
+  body.innerHTML=
+    '<div class="rev-cards">'+
+      '<div class="rev-card"><div class="rv-n">'+doneTasks+'/'+totalTasks+'</div><div class="rv-l">tasks completed ('+rate+'%)</div></div>'+
+      '<div class="rev-card"><div class="rv-n">'+hLabel+'</div><div class="rv-l">time tracked</div></div>'+
+      '<div class="rev-card"><div class="rv-n">'+streak+'🔥</div><div class="rv-l">day streak with a win</div></div>'+
+      '<div class="rev-card"><div class="rv-n">'+activeDays+'</div><div class="rv-l">active day'+(activeDays===1?'':'s')+'</div></div>'+
+    '</div>'+acc+chHtml;
+}
 /* ---------- day templates (save / apply a day shape) ---------- */
 function openTemplatesDialog(){
   if(locked()){ showUnlock(); return; }
@@ -3023,6 +3105,9 @@ document.getElementById('reflectText').addEventListener('blur',saveReflection);
 document.getElementById('closeBtn').addEventListener('click',closeDay);
 document.getElementById('rolloverBtn').addEventListener('click',rollover);
 document.getElementById('carryBtn').addEventListener('click',carryOverdue);
+document.getElementById('reviewBtn').addEventListener('click',openReviewDialog);
+document.getElementById('revDone').addEventListener('click',()=>document.getElementById('revDialog').close());
+document.getElementById('revRange').addEventListener('click',e=>{ const b=e.target.closest('button[data-r]'); if(b) renderReview(+b.dataset.r); });
 document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
 document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
 document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
