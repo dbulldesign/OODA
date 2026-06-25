@@ -187,9 +187,12 @@ travel; the GitHub token and the gist id stay local to each device.
   **pull** happens on page load and each time you return to the tab (skipped
   while a timer is running). You can also **Push**/**Pull** on demand from the
   dialog.
-- Conflict policy is **last-write-wins**, so avoid editing the same day on two
-  devices at the exact same moment. For typical phone-then-laptop use it's
-  seamless.
+- Conflict policy is a **per-day merge**: each day record (and the config)
+  carries an `updatedAt` stamp, and on pull the **newer** copy of each day wins
+  rather than the whole dataset being overwritten. So editing *different* days on
+  two devices both survive; if a device held newer days than the cloud it pushes
+  the merged result back so both converge. Editing the **same** day on two
+  devices at once still resolves to the most recently saved version of that day.
 - The gist is **private**, but treat it like any synced data — anyone with the
   token and id could read it. Use **Disconnect** to stop syncing on a device.
 
