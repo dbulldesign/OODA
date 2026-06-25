@@ -90,7 +90,9 @@ footer shows which mode is active).
     into open slots with parameters (start from now or day start, order, break
     length, default length, stop at capacity). **Drag a block back onto the
     Unscheduled list to remove it from the calendar.** Scheduling also works from
-    the editor's **Schedule at** field.
+    the editor's **Schedule at** field, and the editor has an **↩ Unschedule**
+    button to send a task back to Unscheduled. Tapping an event in Day / Week /
+    Month opens its details. Over-capacity is flagged in **orange**.
   - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the
