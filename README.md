@@ -26,7 +26,13 @@ footer shows which mode is active).
   whole minute when a task is completed), estimates vs. actuals, and
   over-estimate warnings.
 - **Search** the task list, and completed tasks drop into a collapsed
-  **Completed** section at the bottom so the list stays focused.
+  **Completed** section at the bottom so the list stays focused. With a search
+  active, **All days** searches your whole history and jumps you to any day a
+  match lives on.
+- **Select** (in the list controls) turns on checkboxes for **bulk actions** —
+  select-all, move to tomorrow / a date, complete, or delete many tasks at once.
+- **Undo** — deleting, completing, or moving a task (individually or in bulk)
+  shows a toast with **Undo** so a mistaken tap is one click to reverse.
 - **Move a task to another day** — pick a date in the editor, or use **Move to
   tomorrow** in a task's ⋯ menu.
 - A shutdown note, carry-unfinished-to-tomorrow rollover, CSV/JSON export, and a
