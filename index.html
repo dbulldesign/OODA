@@ -256,6 +256,29 @@
   .ctl-sp{flex:1}
   .ctlsel{border:1px solid var(--line-strong);border-radius:8px;padding:7px 9px;font-size:13px;background:var(--surface);color:var(--ink);max-width:46%}
   .ctlsearch{border:1px solid var(--line-strong);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--surface);color:var(--ink);flex:1 1 120px;min-width:90px;font-family:var(--display)}
+  .layout-seg{display:flex;border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;flex:0 0 auto}
+  .layout-seg button{border:0;background:var(--surface);color:var(--ink-soft);font-size:14px;padding:6px 10px;cursor:pointer;line-height:1}
+  .layout-seg button.on{background:var(--ink);color:var(--surface)}
+  /* board (kanban by channel) */
+  .board{display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px}
+  .bd-col{flex:0 0 250px;min-width:250px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:9px;display:flex;flex-direction:column;gap:8px}
+  .bd-col.drop{outline:2px dashed var(--now);outline-offset:-2px}
+  .bd-hd{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink)}
+  .bd-hd .dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+  .bd-hd .bd-ct{margin-left:auto;font-size:11px;color:var(--ink-faint);font-weight:500}
+  .bd-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:9px 10px;cursor:grab;touch-action:none;
+    box-shadow:0 1px 2px rgba(0,0,0,.05)}
+  .bd-card.dragging{opacity:.4}
+  .bd-card.running{border-color:var(--now);box-shadow:inset 3px 0 0 var(--now)}
+  .bd-card.done{opacity:.55}
+  .bd-top{display:flex;align-items:flex-start;gap:8px}
+  .bd-top .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;margin-top:3px}
+  .bd-nm{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .bd-card.done .bd-nm{text-decoration:line-through}
+  .bd-card .check{flex:0 0 auto;width:28px;height:28px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .bd-card .check.done{background:#3F7A56;border-color:#3F7A56;color:#fff}
+  .bd-meta-line{font-family:var(--mono);font-size:11.5px;color:var(--ink-soft);margin-top:5px}
+  .bd-empty{font-size:12px;color:var(--ink-faint);padding:6px 2px}
   /* completed section */
   .completed{margin-top:2px}
   .comp-head{display:flex;align-items:center;gap:7px;width:100%;border:0;background:none;cursor:pointer;
@@ -494,9 +517,14 @@
     </select>
     <select id="filterSel" class="ctlsel" title="Filter tasks"></select>
     <input id="searchInp" class="ctlsearch" type="search" placeholder="Search…" autocomplete="off">
+    <div class="layout-seg" id="layoutSeg" title="List / board layout">
+      <button data-l="list" class="on" title="List">▤</button>
+      <button data-l="board" title="Board">▦</button>
+    </div>
   </div>
 
   <ul class="tasks" id="taskList"></ul>
+  <div class="board" id="boardView" style="display:none"></div>
   <div class="completed" id="completedWrap" style="display:none">
     <button class="comp-head" id="compHead"><span class="comp-caret">▸</span> <span id="compLabel">Completed</span></button>
     <ul class="tasks" id="completedList" style="display:none"></ul>
@@ -771,7 +799,7 @@ const CHEV='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentCol
 const EDIT='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
 const DOTS='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>';
 const expandedTasks=new Set();
-let viewMode='list', sortMode='manual', filterKey='all', calSel=null, lastCanvas=null, searchQuery='', showCompleted=false;
+let viewMode='list', sortMode='manual', filterKey='all', calSel=null, lastCanvas=null, searchQuery='', showCompleted=false, listLayout='list';
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -1015,6 +1043,7 @@ function setView(v){
   document.getElementById('sortSel').style.display=hideCtl?'none':'';
   document.getElementById('filterSel').style.display=hideCtl?'none':'';
   document.getElementById('searchInp').style.display=hideCtl?'none':'';
+  document.getElementById('layoutSeg').style.display=hideCtl?'none':'';
   render();
 }
 function render(){
@@ -1031,6 +1060,14 @@ function render(){
   if(monthView){ renderMonth(); renderArc(); renderNow(); renderPhase(); return; }
   if(weekView){ renderWeek(); renderArc(); renderNow(); renderPhase(); return; }
   if(dayView){ renderDay(); renderArc(); renderNow(); renderPhase(); return; }
+  // list view — flat list or board (kanban by channel)
+  const board=document.getElementById('boardView');
+  if(listLayout==='board'){
+    list.style.display='none'; board.style.display='flex';
+    document.getElementById('completedWrap').style.display='none';
+    renderBoard(); renderArc(); renderNow(); renderPhase(); return;
+  }
+  list.style.display=''; board.style.display='none';
   list.innerHTML='';
   const all=sortedTasks();
   const active=all.filter(t=>!t.done), done=all.filter(t=>t.done);
@@ -1076,6 +1113,56 @@ function taskRow(t){
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
   return li;
+}
+/* ---------- board (kanban by channel) ---------- */
+function renderBoard(){
+  const bv=document.getElementById('boardView'); bv.innerHTML='';
+  const tasks=sortedTasks().filter(t=>!t.done);
+  state.channels.forEach(c=>{
+    const col=document.createElement('div'); col.className='bd-col'; col.dataset.ch=c.id;
+    const items=tasks.filter(t=>t.channelId===c.id);
+    const hd=document.createElement('div'); hd.className='bd-hd';
+    hd.innerHTML='<span class="dot" style="background:'+c.color+'"></span>'+escapeHtml(c.name)+'<span class="bd-ct">'+items.length+'</span>';
+    col.appendChild(hd);
+    if(!items.length){ const e=document.createElement('div'); e.className='bd-empty'; e.textContent='—'; col.appendChild(e); }
+    items.forEach(t=>col.appendChild(boardCard(t)));
+    bv.appendChild(col);
+  });
+}
+function boardCard(t){
+  const ch=chById(t.channelId); const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000;
+  const el=document.createElement('div'); el.className='bd-card'+(t.running?' running':'')+(t.done?' done':''); el.dataset.id=t.id;
+  const times=(t.todoistId?'TD · ':'')+(t.scheduledMin!=null?hmFromMin(t.scheduledMin)+' · ':'')+(t.estimateMin?t.estimateMin+'m · ':'')+
+    '<span'+(over?' style="color:var(--over)"':'')+'>'+durFmt(act)+'</span>';
+  el.innerHTML='<div class="bd-top"><span class="dot" style="background:'+ch.color+'"></span>'+
+      '<span class="bd-nm">'+escapeHtml(t.name)+'</span>'+
+      '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button></div>'+
+    taskMetaHtml(t)+
+    '<div class="bd-meta-line">'+times+'</div>';
+  el.querySelector('.check').addEventListener('click',e=>{ e.stopPropagation(); toggleDone(t.id); });
+  el.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; startBoardDrag(e,t,el); });
+  return el;
+}
+function startBoardDrag(e,t,el){
+  let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  function colAt(x,y){ for(const c of document.querySelectorAll('#boardView .bd-col')){ const r=c.getBoundingClientRect();
+    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
+  function mark(c){ document.querySelectorAll('#boardView .bd-col').forEach(x=>x.classList.toggle('drop',x===c&&c&&c.dataset.ch!==t.channelId)); }
+  function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
+    if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; el.classList.add('dragging');
+      ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
+    if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; mark(colAt(ev.clientX,ev.clientY)); } }
+  async function up(ev){ el.removeEventListener('pointermove',mv); el.removeEventListener('pointerup',up); el.removeEventListener('pointercancel',up);
+    try{ el.releasePointerCapture(ev.pointerId); }catch(_){}
+    if(ghost) ghost.remove(); document.querySelectorAll('#boardView .bd-col').forEach(x=>x.classList.remove('drop'));
+    if(!moved){ openTaskEditor(t.id); return; }
+    const c=colAt(ev.clientX,ev.clientY);
+    if(c && c.dataset.ch!==t.channelId){ const tt=state.tasks.find(x=>x.id===t.id);
+      if(tt){ tt.channelId=c.dataset.ch; await saveDay(); render(); toast('Moved to '+chById(c.dataset.ch).name); } }
+  }
+  el.addEventListener('pointermove',mv); el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+  e.preventDefault();
 }
 /* task action overflow menu */
 function closeMenu(){ const m=document.getElementById('taskMenu'); if(m)m.remove();
@@ -2427,6 +2514,10 @@ document.getElementById('vbList').addEventListener('click',()=>setView('list'));
 document.getElementById('vbDay').addEventListener('click',()=>setView('day'));
 document.getElementById('vbWeek').addEventListener('click',()=>setView('week'));
 document.getElementById('vbMonth').addEventListener('click',()=>setView('month'));
+document.getElementById('layoutSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-l]'); if(!b)return;
+  listLayout=b.getAttribute('data-l'); try{localStorage.setItem(LS_PREFIX+'_layout',listLayout);}catch(_){}
+  document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  if(viewMode!=='list') setView('list'); else render(); });
 document.getElementById('dPrev').addEventListener('click',()=>shiftDay(-1));
 document.getElementById('dNext').addEventListener('click',()=>shiftDay(1));
 document.getElementById('dToday').addEventListener('click',()=>gotoDate(new Date()));
@@ -2489,7 +2580,9 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{ applyTheme(preferredTheme()); loadDisplay(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
-  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); }catch(e){}
+  try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
+    document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x.getAttribute('data-l')===listLayout)); }catch(e){}
+  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); else render(); }catch(e){}
   if(locked()){
     showUnlock();   // keys are encrypted — prompt before any sync
   } else if(syncOn() && navigator.onLine){
