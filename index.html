@@ -848,6 +848,7 @@
   <div class="dlg-in">
     <h3>Display</h3>
     <label class="td-check"><input type="checkbox" id="dispWide"> Fill the screen (wide layout)</label>
+    <label class="td-check"><input type="checkbox" id="dispNotify"> Remind me 5 min before each scheduled block</label>
     <div class="td-field">
       <label>Text &amp; UI size</label>
       <div class="disp-sizes" id="dispSizes">
@@ -1029,7 +1030,7 @@ async function loadDay(){
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   const rt=document.getElementById('reflectText'); if(rt) rt.value=state.reflection;
 }
-async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); render(); }
+async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); render(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 function shiftDay(n){ const d=new Date(viewDate); d.setDate(d.getDate()+n); gotoDate(d); }
 function fmtDateLong(){ return new Date().toLocaleDateString(undefined,{weekday:'long',month:'long',day:'numeric'}); }
 function uid(){ return Math.random().toString(36).slice(2,9); }
@@ -1097,7 +1098,7 @@ async function reloadState(){
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
   await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[]}); schedulePush(); }
-async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
+async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 
 /* ---------- task ops ---------- */
 /* ---------- quick-add natural-language parsing ----------
@@ -2996,7 +2997,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; markSizes(); buildFxChoices(); markFx(); document.getElementById('dispDialog').showModal(); }
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
@@ -3034,6 +3035,36 @@ const FX_OPTIONS=[
   {id:'balloons',label:'Balloons 🎈'},
   {id:'none',label:'None'}
 ];
+/* ---------- block-start reminders (browser notifications) ---------- */
+let notifyOn=false, notifyTimers=[];
+function loadNotify(){ try{ notifyOn=localStorage.getItem(LS_PREFIX+'_notify')==='1'; }catch(e){} }
+async function setNotify(on){
+  if(on){
+    if(!('Notification' in window)){ toast('Notifications aren’t supported in this browser.'); notifyOn=false; }
+    else { let perm=Notification.permission; if(perm==='default') perm=await Notification.requestPermission();
+      if(perm==='granted'){ notifyOn=true; toast('Reminders on — a heads-up 5 min before each block.'); }
+      else { notifyOn=false; toast('Notifications are blocked — enable them in your browser settings.'); } }
+  } else { notifyOn=false; }
+  try{ localStorage.setItem(LS_PREFIX+'_notify',notifyOn?'1':'0'); }catch(e){}
+  const cb=document.getElementById('dispNotify'); if(cb) cb.checked=notifyOn;
+  scheduleNotifications();
+}
+function clearNotifyTimers(){ notifyTimers.forEach(id=>clearTimeout(id)); notifyTimers=[]; }
+function fireNotify(title,body,tag){
+  try{ if(navigator.serviceWorker&&navigator.serviceWorker.controller){ navigator.serviceWorker.ready.then(r=>r.showNotification(title,{body,tag,icon:'icons/icon-192.png'})).catch(()=>{ new Notification(title,{body,tag}); }); }
+    else new Notification(title,{body,tag}); }catch(e){}
+}
+function scheduleNotifications(){
+  clearNotifyTimers();
+  if(!notifyOn || !('Notification' in window) || Notification.permission!=='granted') return;
+  if(!isSameDay(viewDate,new Date())) return;       // state.tasks holds today only when viewing today
+  const now=Date.now();
+  state.tasks.forEach(t=>{ if(t.done||t.scheduledMin==null) return;
+    const at=new Date(); at.setHours(0,0,0,0); at.setMinutes(t.scheduledMin);
+    const lead=at.getTime()-5*60000;
+    if(lead>now+1500){ const id=setTimeout(()=>fireNotify('OODA — up next','“'+t.name+'” at '+hmFromMin(t.scheduledMin),'ooda-'+t.id), lead-now);
+      notifyTimers.push(id); } });
+}
 let fxMode='confetti';
 function loadFx(){ try{ fxMode=localStorage.getItem(LS_PREFIX+'_fx')||'confetti'; }catch(e){} }
 function setFx(v){ fxMode=v; try{ localStorage.setItem(LS_PREFIX+'_fx',v); }catch(e){} markFx(); if(v!=='none') celebrate(null); }
@@ -3133,6 +3164,7 @@ document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
+document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -3266,7 +3298,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadFx(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadFx(); loadNotify(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
@@ -3295,6 +3327,7 @@ window.addEventListener('offline',updateConnUI);
   // resist eviction on iOS / Safari and in installed PWAs
   if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
   startAutoSync();   // periodic background Todoist + cloud sync
+  scheduleNotifications();   // arm block-start reminders for today
 })();
 </script>
 </body>
