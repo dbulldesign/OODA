@@ -295,6 +295,26 @@
   .wk-item .wk-t{font-family:var(--mono);font-size:10.5px;color:var(--now)}
   .wk-item .wk-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .wk-col.drop{outline:2px dashed var(--now);outline-offset:-2px;background:var(--now-soft)}
+  /* month view */
+  .mo-title{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px;font-size:15px;font-weight:650}
+  .mo-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
+  .mo-dow{text-align:center;font-size:10.5px;text-transform:uppercase;color:var(--ink-faint);letter-spacing:.05em}
+  .mo-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .mo-cell{min-height:84px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+  .mo-cell.out{opacity:.4}
+  .mo-cell.today{border-color:var(--now)}
+  .mo-cell.sel{box-shadow:inset 0 0 0 2px var(--line-strong)}
+  .mo-cell.today.sel{box-shadow:inset 0 0 0 2px var(--now)}
+  .mo-cell.drop{outline:2px dashed var(--now);outline-offset:-2px;background:var(--now-soft)}
+  .mo-dnum{font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;align-self:flex-start;padding:0 2px;border-radius:4px}
+  .mo-cell.today .mo-dnum{color:var(--now)}
+  .mo-item{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink);background:var(--surface-2);border-radius:4px;padding:1px 4px;cursor:grab;touch-action:none;white-space:nowrap;overflow:hidden}
+  .mo-item.dragging{opacity:.4}
+  .mo-item .cdot{width:6px;height:6px;border-radius:2px;flex:0 0 auto}
+  .mo-item .mo-nm{overflow:hidden;text-overflow:ellipsis}
+  .mo-item.done{opacity:.5;text-decoration:line-through}
+  .mo-more{font-size:10px;color:var(--ink-faint);padding-left:2px}
+  @media (max-width:560px){ .mo-cell{min-height:60px;padding:3px} .mo-item .mo-nm{display:none} .mo-item{padding:2px;gap:0;justify-content:center} }
 
   /* task action overflow menu */
   .menu{position:fixed;z-index:9990;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
@@ -462,6 +482,7 @@
       <button id="vbList" class="vtab on">List</button>
       <button id="vbDay" class="vtab">Day</button>
       <button id="vbWeek" class="vtab">Week</button>
+      <button id="vbMonth" class="vtab">Month</button>
     </div>
     <span class="ctl-sp"></span>
     <select id="sortSel" class="ctlsel" title="Sort tasks">
@@ -482,6 +503,7 @@
   </div>
   <div class="cal" id="calView" style="display:none"></div>
   <div class="week" id="weekView" style="display:none"></div>
+  <div class="month" id="monthView" style="display:none"></div>
   <div class="empty" id="emptyState">No tasks yet. Add what you intend to do today — be a little ruthless.</div>
 
   <div class="reflect">
@@ -988,6 +1010,7 @@ function setView(v){
   document.getElementById('vbList').classList.toggle('on',v==='list');
   document.getElementById('vbDay').classList.toggle('on',v==='day');
   document.getElementById('vbWeek').classList.toggle('on',v==='week');
+  document.getElementById('vbMonth').classList.toggle('on',v==='month');
   const hideCtl = v!=='list';
   document.getElementById('sortSel').style.display=hideCtl?'none':'';
   document.getElementById('filterSel').style.display=hideCtl?'none':'';
@@ -996,13 +1019,16 @@ function setView(v){
 }
 function render(){
   buildFilterOptions();
-  const list=document.getElementById('taskList'), cal=document.getElementById('calView'), week=document.getElementById('weekView');
-  const dayView = viewMode==='day', weekView = viewMode==='week';
-  list.style.display = (dayView||weekView)?'none':'';
+  const list=document.getElementById('taskList'), cal=document.getElementById('calView'), week=document.getElementById('weekView'), month=document.getElementById('monthView');
+  const dayView = viewMode==='day', weekView = viewMode==='week', monthView = viewMode==='month';
+  const notList = dayView||weekView||monthView;
+  list.style.display = notList?'none':'';
   cal.style.display = dayView?'':'none';
   week.style.display = weekView?'':'none';
-  document.getElementById('emptyState').style.display=(state.tasks.length||dayView||weekView)?'none':'block';
-  if(dayView||weekView){ document.getElementById('completedWrap').style.display='none'; }
+  month.style.display = monthView?'':'none';
+  document.getElementById('emptyState').style.display=(state.tasks.length||notList)?'none':'block';
+  if(notList){ document.getElementById('completedWrap').style.display='none'; }
+  if(monthView){ renderMonth(); renderArc(); renderNow(); renderPhase(); return; }
   if(weekView){ renderWeek(); renderArc(); renderNow(); renderPhase(); return; }
   if(dayView){ renderDay(); renderArc(); renderNow(); renderPhase(); return; }
   list.innerHTML='';
@@ -1454,26 +1480,62 @@ async function renderWeek(){
   wk.appendChild(row);
 }
 // drag a task from one week-day column to another
-function startWeekDrag(e,t,srcKey,itemEl){
+function startWeekDrag(e,t,srcKey,itemEl){ startDayDrag(e,t,srcKey,itemEl,'#weekView .wk-col'); }
+// drag a task item from one day-cell/column to another (week or month grids)
+function startDayDrag(e,t,srcKey,itemEl,cellSel){
   let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
   try{ itemEl.setPointerCapture(e.pointerId); }catch(_){}
-  function colAt(x,y){ for(const c of document.querySelectorAll('#weekView .wk-col')){ const r=c.getBoundingClientRect();
+  function cellAt(x,y){ for(const c of document.querySelectorAll(cellSel)){ const r=c.getBoundingClientRect();
     if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
-  function mark(c){ document.querySelectorAll('#weekView .wk-col').forEach(x=>x.classList.toggle('drop',x===c&&c&&c.dataset.key!==srcKey)); }
+  function mark(c){ document.querySelectorAll(cellSel).forEach(x=>x.classList.toggle('drop',x===c&&c&&c.dataset.key&&c.dataset.key!==srcKey)); }
   function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
     if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; itemEl.classList.add('dragging');
       ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
-    if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; mark(colAt(ev.clientX,ev.clientY)); } }
+    if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; mark(cellAt(ev.clientX,ev.clientY)); } }
   async function up(ev){ itemEl.removeEventListener('pointermove',mv); itemEl.removeEventListener('pointerup',up); itemEl.removeEventListener('pointercancel',up);
     try{ itemEl.releasePointerCapture(ev.pointerId); }catch(_){}
-    if(ghost) ghost.remove(); document.querySelectorAll('#weekView .wk-col').forEach(x=>x.classList.remove('drop'));
+    if(ghost) ghost.remove(); document.querySelectorAll(cellSel).forEach(x=>x.classList.remove('drop'));
     if(!moved) return;
-    const c=colAt(ev.clientX,ev.clientY);
-    if(c && c.dataset.key!==srcKey){ const ok=await moveTaskBetweenDays(srcKey,t.id,c.dataset.key);
-      if(ok){ renderWeek(); if(isSameDay(viewDate,new Date())) updateConnUI(); toast('Moved to '+c.querySelector('.wk-dow').textContent+' '+c.querySelector('.wk-dom').textContent); } }
+    const c=cellAt(ev.clientX,ev.clientY);
+    if(c && c.dataset.key && c.dataset.key!==srcKey){ const ok=await moveTaskBetweenDays(srcKey,t.id,c.dataset.key);
+      if(ok){ render(); updateConnUI(); toast('Moved to '+new Date(c.dataset.key.slice(4)+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})); } }
   }
   itemEl.addEventListener('pointermove',mv); itemEl.addEventListener('pointerup',up); itemEl.addEventListener('pointercancel',up);
   e.preventDefault();
+}
+async function renderMonth(){
+  const mv=document.getElementById('monthView'); mv.innerHTML='';
+  const base=new Date(viewDate); base.setDate(1); base.setHours(12,0,0,0);
+  const month=base.getMonth();
+  const gridStart=startOfWeek(base);
+  const days=[]; for(let i=0;i<42;i++){ const d=new Date(gridStart); d.setDate(d.getDate()+i); days.push(d); }
+  const recs=await Promise.all(days.map(d=>sget(dayKeyFor(d))));
+  const title=document.createElement('div'); title.className='mo-title';
+  title.innerHTML='<button class="dnav" id="moPrev">‹</button><span>'+base.toLocaleDateString(undefined,{month:'long',year:'numeric'})+'</span><button class="dnav" id="moNext">›</button>';
+  mv.appendChild(title);
+  title.querySelector('#moPrev').addEventListener('click',()=>{ const d=new Date(base); d.setMonth(d.getMonth()-1); gotoDate(d); });
+  title.querySelector('#moNext').addEventListener('click',()=>{ const d=new Date(base); d.setMonth(d.getMonth()+1); gotoDate(d); });
+  const dow=document.createElement('div'); dow.className='mo-head';
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(n=>{ const e=document.createElement('div'); e.className='mo-dow'; e.textContent=n; dow.appendChild(e); });
+  mv.appendChild(dow);
+  const grid=document.createElement('div'); grid.className='mo-grid';
+  days.forEach((d,i)=>{
+    const tasks=(recs[i]&&recs[i].tasks)||[];
+    const cell=document.createElement('div'); cell.dataset.key=dayKeyFor(d);
+    cell.className='mo-cell'+(d.getMonth()!==month?' out':'')+(isSameDay(d,new Date())?' today':'')+(isSameDay(d,viewDate)?' sel':'');
+    const dn=document.createElement('div'); dn.className='mo-dnum'; dn.textContent=d.getDate();
+    dn.addEventListener('click',()=>{ gotoDate(d).then(()=>setView('day')); });
+    cell.appendChild(dn);
+    const sorted=tasks.slice().sort((a,b)=>((a.scheduledMin==null?1e9:a.scheduledMin)-(b.scheduledMin==null?1e9:b.scheduledMin)));
+    sorted.slice(0,3).forEach(t=>{ const ch=chById(t.channelId); const it=document.createElement('div'); it.className='mo-item'+(t.done?' done':''); it.dataset.id=t.id;
+      it.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="mo-nm">'+escapeHtml(t.name)+'</span>';
+      it.addEventListener('pointerdown',e=>startDayDrag(e,t,dayKeyFor(d),it,'#monthView .mo-cell'));
+      cell.appendChild(it); });
+    if(sorted.length>3){ const more=document.createElement('div'); more.className='mo-more'; more.textContent='+'+(sorted.length-3)+' more';
+      more.addEventListener('click',()=>{ gotoDate(d).then(()=>setView('day')); }); cell.appendChild(more); }
+    grid.appendChild(cell);
+  });
+  mv.appendChild(grid);
 }
 function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
@@ -2364,6 +2426,7 @@ document.getElementById('exportJson').addEventListener('click',exportJson);
 document.getElementById('vbList').addEventListener('click',()=>setView('list'));
 document.getElementById('vbDay').addEventListener('click',()=>setView('day'));
 document.getElementById('vbWeek').addEventListener('click',()=>setView('week'));
+document.getElementById('vbMonth').addEventListener('click',()=>setView('month'));
 document.getElementById('dPrev').addEventListener('click',()=>shiftDay(-1));
 document.getElementById('dNext').addEventListener('click',()=>shiftDay(1));
 document.getElementById('dToday').addEventListener('click',()=>gotoDate(new Date()));
@@ -2426,7 +2489,7 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{ applyTheme(preferredTheme()); loadDisplay(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
-  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week') setView(v); }catch(e){}
+  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); }catch(e){}
   if(locked()){
     showUnlock();   // keys are encrypted — prompt before any sync
   } else if(syncOn() && navigator.onLine){
