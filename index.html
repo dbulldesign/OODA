@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>OODA — plan, track, close out</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -34,6 +34,10 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0}
+  /* native-app feel on iOS: no pinch / double-tap zoom, no text auto-resize,
+     no tap-highlight flash, and no rubber-band overscroll on the page */
+  html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}
+  body{-webkit-tap-highlight-color:transparent}
   body{
     font-family:var(--display); color:var(--ink);
     background:var(--paper);
@@ -588,6 +592,13 @@
     if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
   }catch(e){} })();
+  // native-app feel: block iOS pinch-to-zoom and double-tap-to-zoom
+  (function(){
+    document.addEventListener('gesturestart',function(e){ e.preventDefault(); }, {passive:false});
+    document.addEventListener('gesturechange',function(e){ e.preventDefault(); }, {passive:false});
+    // stop multi-touch pinch zoom (double-tap zoom is handled by touch-action:manipulation)
+    document.addEventListener('touchmove',function(e){ if(e.touches&&e.touches.length>1) e.preventDefault(); }, {passive:false});
+  })();
 </script>
 </head>
 <body>
