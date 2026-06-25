@@ -154,6 +154,10 @@
     @keyframes celebrate{0%{transform:scale(1)}30%{transform:scale(1.015);box-shadow:0 6px 22px rgba(63,122,86,.28)}100%{transform:scale(1)}}
   }
   .icon{width:14px;height:14px;display:block}
+  .task.kbd{box-shadow:inset 3px 0 0 var(--accent,#3F7A56);background:var(--surface-2)}
+  .kbd-keys{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin:4px 0 2px}
+  .kbd-keys kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line-strong);
+    border-bottom-width:2px;border-radius:5px;padding:1px 7px;font-size:12px;justify-self:start}
   /* lively icons — springy hover / press micro-interactions everywhere */
   @media (prefers-reduced-motion:no-preference){
     button .icon{transition:transform .2s cubic-bezier(.34,1.56,.5,1)}
@@ -551,7 +555,8 @@
   </div>
 
   <div class="add">
-    <input class="name" id="addName" placeholder="What needs doing?" autocomplete="off">
+    <input class="name" id="addName" placeholder="What needs doing?  (try: report tomorrow 2pm ~45m #Work @errand p1)" autocomplete="off"
+      title="Quick-add: #project, @label, p1–p4, a time (2pm, noon), a day (today, tomorrow, mon, next week), and ~45m / 1h for the estimate.">
     <select id="addChannel"></select>
     <input class="est" id="addEst" type="text" inputmode="decimal" placeholder="30m / 1h" title="Task length: 30m, 1h 15m, 1:15, or 1.5 hours">
     <button id="addBtn">Add</button>
@@ -834,6 +839,27 @@
   </div>
 </dialog>
 
+<dialog id="kbdDialog">
+  <div class="dlg-in">
+    <h3>Keyboard shortcuts</h3>
+    <div class="kbd-keys">
+      <kbd>n</kbd><span>New task (focus the add box)</span>
+      <kbd>/</kbd><span>Search</span>
+      <kbd>j</kbd><span>Move selection down</span>
+      <kbd>k</kbd><span>Move selection up</span>
+      <kbd>space</kbd><span>Start / pause the selected task</span>
+      <kbd>x</kbd><span>Complete / reopen the selected task</span>
+      <kbd>e</kbd><span>Edit the selected task</span>
+      <kbd>d</kbd><span>Delete the selected task (with Undo)</span>
+      <kbd>[</kbd><span>Previous day</span>
+      <kbd>]</kbd><span>Next day</span>
+      <kbd>t</kbd><span>Jump to today</span>
+      <kbd>?</kbd><span>This help</span>
+    </div>
+    <div class="dlg-actions"><span></span><button class="primary" id="kbdDone">Done</button></div>
+  </div>
+</dialog>
+
 <dialog id="fillDialog">
   <div class="dlg-in">
     <h3>Fill my day</h3>
@@ -1021,21 +1047,71 @@ async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} 
 async function saveDay(){ await sset(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); }
 
 /* ---------- task ops ---------- */
+/* ---------- quick-add natural-language parsing ----------
+   Type things like:  Draft report tomorrow 2pm ~45m #Work @errand p1
+   Tokens: ~<dur> or a bare 45m/1h/1:30 estimate · #project · @label ·
+   p1–p4 · a time (2pm, 9:30am, noon, at 15:00) · a day (today, tonight,
+   tomorrow, mon–sun, next <day>, next week). Everything else is the name. */
+const DOW={sun:0,sunday:0,mon:1,monday:1,tue:2,tues:2,tuesday:2,wed:3,weds:3,wednesday:3,thu:4,thur:4,thurs:4,thursday:4,fri:5,friday:5,sat:6,saturday:6};
+function nextDow(target,from){ const d=new Date(from); d.setHours(12,0,0,0); const add=(target-d.getDay()+7)%7; d.setDate(d.getDate()+add); return d; }
+function parseQuickAdd(raw){
+  let s=' '+raw.replace(/\s+/g,' ').trim()+' ';
+  const r={name:'',estimateMin:0,priority:1,labels:[],projectName:'',dueDate:null,scheduledMin:null,dueString:'',hadTime:false};
+  const due=[];
+  const take=re=>{ const mm=s.match(re); if(mm){ s=s.slice(0,mm.index)+' '+s.slice(mm.index+mm[0].length); } return mm; };
+  let m;
+  if(m=take(/\s~\s*([0-9][0-9hm:.\s]*[hm0-9])(?=\s)/i)){ r.estimateMin=durationToMin(m[1])||0; }
+  if(!r.estimateMin && (m=take(/\s(\d+(?:\.\d+)?\s*h(?:\s*\d+\s*m)?|\d+\s*m)(?=\s)/i))){ r.estimateMin=durationToMin(m[1])||0; }
+  if(m=take(/\sp([1-4])(?=\s)/i)){ r.priority=5-(+m[1]); }                 // p1 → Todoist priority 4 (highest)
+  while(m=take(/\s@([A-Za-z0-9_\-]+)(?=\s)/)){ r.labels.push(m[1]); }
+  if(m=take(/\s#([A-Za-z0-9_\-]+)(?=\s)/)){ r.projectName=m[1]; }
+  if(m=take(/\s(?:at\s)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?=\s)/i)){ let h=(+m[1])%12; if(/pm/i.test(m[3]))h+=12; r.scheduledMin=h*60+(m[2]?+m[2]:0); r.hadTime=true; due.push(m[0].trim()); }
+  else if(m=take(/\snoon(?=\s)/i)){ r.scheduledMin=720; r.hadTime=true; due.push('noon'); }
+  else if(m=take(/\smidnight(?=\s)/i)){ r.scheduledMin=0; r.hadTime=true; due.push('midnight'); }
+  else if(m=take(/\s(?:at\s)?(\d{1,2}):([0-5]\d)(?=\s)/i)){ r.scheduledMin=((+m[1])%24)*60+(+m[2]); r.hadTime=true; due.push(m[1]+':'+m[2]); }
+  if(m=take(/\stoday(?=\s)/i)){ r.dueDate=new Date(); due.unshift('today'); }
+  else if(m=take(/\stonight(?=\s)/i)){ r.dueDate=new Date(); if(!r.hadTime)r.scheduledMin=19*60; due.unshift('tonight'); }
+  else if(m=take(/\s(?:tomorrow|tmrw|tmw)(?=\s)/i)){ const d=new Date(); d.setDate(d.getDate()+1); r.dueDate=d; due.unshift('tomorrow'); }
+  else if(m=take(/\snext week(?=\s)/i)){ const d=new Date(); d.setDate(d.getDate()+7); r.dueDate=d; due.unshift('next week'); }
+  else if(m=take(/\s(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues|tue|weds|wed|thurs|thur|thu|fri|sat)(?=\s)/i)){
+    const target=DOW[m[2].toLowerCase()];
+    if(target!=null){ const d=nextDow(target,new Date()); if(m[1])d.setDate(d.getDate()+7); r.dueDate=d; due.unshift((m[1]?'next ':'')+m[2].toLowerCase()); }
+  }
+  r.dueString=due.join(' ').trim();
+  r.name=s.replace(/\s+/g,' ').trim();
+  return r;
+}
+// add a brand-new task to any day's record (current day stays in state.tasks)
+async function addTaskToDay(key,t){
+  if(key===dayKey()){ state.tasks.unshift(t); await saveDay(); }
+  else { const rec=await sget(key)||{date:key.slice(4),tasks:[],reflection:'',closed:false}; rec.tasks=rec.tasks||[]; rec.tasks.unshift(t); await sset(key,rec); schedulePush(); }
+}
 async function addTask(){
   const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
-  const name=nameEl.value.trim(); if(!name)return;
-  const estMin=hoursToMin(estEl.value);
-  const t={id:uid(),name,channelId:document.getElementById('addChannel').value,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null};
-  state.tasks.unshift(t);
+  const rawName=nameEl.value.trim(); if(!rawName)return;
+  const p=parseQuickAdd(rawName);
+  const name=p.name||rawName;
+  const estMin = p.estimateMin || hoursToMin(estEl.value);
+  const channelId = p.projectName ? matchChannel(p.projectName) : document.getElementById('addChannel').value;
+  const t={id:uid(),name,channelId,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
+    scheduledMin:(p.scheduledMin!=null?snap(p.scheduledMin):null)};
+  if(p.labels.length||p.priority>1||p.dueDate||p.projectName){
+    t.todoistMeta={projectId:'',projectName:p.projectName||'',section:'',labels:p.labels.slice(),priority:p.priority,
+      due:p.dueDate?{date:dayKeyFor(p.dueDate).slice(4),datetime:'',string:p.dueString,recurring:false}:null,
+      description:'',rawContent:name,url:'',commentCount:0};
+  }
+  const targetKey = p.dueDate ? dayKeyFor(p.dueDate) : dayKey();
   nameEl.value=''; estEl.value=''; nameEl.focus();
-  autoCreateInTodoist(t);
-  await saveDay(); render();
+  autoCreateInTodoist(t,p);
+  if(targetKey===dayKey()){ state.tasks.unshift(t); await saveDay(); render(); }
+  else { await addTaskToDay(targetKey,t); render(); toast('Added to '+fmtDateRel(p.dueDate)); }
 }
 // queue a Todoist create for a brand-new local task when auto-create is on
-function autoCreateInTodoist(t){
+function autoCreateInTodoist(t,p){
   if(!tdConnected() || state.todoist.autocreate===false || t.todoistId) return;
-  const payload={content:t.name, priority:1, labels:[]};
+  const payload={content:t.name, priority:(p&&p.priority)||1, labels:(p&&p.labels&&p.labels.slice())||[]};
   if(t.estimateMin>0){ payload.duration=t.estimateMin; payload.duration_unit='minute'; }
+  if(p&&p.dueString){ payload.due_string=p.dueString; }
   enqueueTd({kind:'create',taskLocalId:t.id,payload});
 }
 async function toggleRun(id){
@@ -1179,6 +1255,7 @@ function render(){
     cl.style.display=openComp?'':'none'; cl.innerHTML='';
     if(openComp) done.forEach(t=>cl.appendChild(taskRow(t)));
   } else { cw.style.display='none'; }
+  if(typeof refreshKbd==='function') refreshKbd();
   renderArc(); renderNow(); renderPhase();
 }
 function taskRow(t){
@@ -2865,6 +2942,37 @@ document.getElementById('compHead').addEventListener('click',()=>{ showCompleted
 document.getElementById('selBtn').addEventListener('click',()=>toggleSelectMode());
 document.getElementById('searchAllBtn').addEventListener('click',e=>{ searchAll=!searchAll; e.currentTarget.classList.toggle('on',searchAll); render(); });
 document.getElementById('bulkBar').addEventListener('click',e=>{ const b=e.target.closest('button[data-b]'); if(b) bulkAction(b.getAttribute('data-b')); });
+/* ---------- keyboard shortcuts ---------- */
+let kbdId=null;
+function kbdRows(){ return [...document.querySelectorAll('#taskList .task')]; }
+function refreshKbd(){ const rows=kbdRows(); if(kbdId && !rows.some(e=>e.dataset.id===kbdId)) kbdId=null;
+  rows.forEach(e=>e.classList.toggle('kbd',e.dataset.id===kbdId)); }
+function moveKbd(dir){ const rows=kbdRows(); if(!rows.length){ kbdId=null; return; }
+  let i=rows.findIndex(e=>e.dataset.id===kbdId);
+  i = i<0 ? (dir>0?0:rows.length-1) : Math.min(rows.length-1,Math.max(0,i+dir));
+  kbdId=rows[i].dataset.id; refreshKbd(); rows[i].scrollIntoView({block:'nearest'}); }
+function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
+document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
+document.addEventListener('keydown',e=>{
+  const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable);
+  if(e.key==='Escape'){ if(typing&&t.blur)t.blur(); return; }
+  if(typing||e.metaKey||e.ctrlKey||e.altKey) return;
+  if(document.querySelector('dialog[open]')) return;            // don't hijack keys inside modals
+  switch(e.key){
+    case 'n': e.preventDefault(); document.getElementById('addName').focus(); break;
+    case '/': { const s=document.getElementById('searchInp'); if(s&&s.style.display!=='none'){ e.preventDefault(); s.focus(); } break; }
+    case 'j': e.preventDefault(); moveKbd(1); break;
+    case 'k': e.preventDefault(); moveKbd(-1); break;
+    case ' ': if(kbdId){ e.preventDefault(); toggleRun(kbdId); } break;
+    case 'x': case 'Enter': if(kbdId){ e.preventDefault(); toggleDone(kbdId); } break;
+    case 'e': if(kbdId){ e.preventDefault(); openTaskEditor(kbdId); } break;
+    case 'd': if(kbdId){ e.preventDefault(); removeTask(kbdId); } break;
+    case '[': e.preventDefault(); shiftDay(-1); break;
+    case ']': e.preventDefault(); shiftDay(1); break;
+    case 't': e.preventDefault(); gotoDate(new Date()); break;
+    case '?': e.preventDefault(); showShortcuts(); break;
+  }
+});
 document.getElementById('todoistBtn').addEventListener('click',openTdDialog);
 document.getElementById('syncBtn').addEventListener('click',doManualSync);
 document.getElementById('tdSave').addEventListener('click',saveTodoist);
