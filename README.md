@@ -64,8 +64,12 @@ footer shows which mode is active).
   ▶ start and ✓ done buttons.
 - **Light / dark mode** toggle (🌙/☀️ in the header) with an animated circular
   reveal; remembers your choice and defaults to your system preference.
-- A **confetti + pop** celebration when you complete a task (and an extra burst
-  when the whole day is done). Respects `prefers-reduced-motion`.
+- A **full-screen celebration** when you complete a task (and an extra burst
+  when the whole day is done). Pick the style in **Display** → *Completion
+  celebration*: **Confetti**, **Fireworks**, **Party 🎉**, **Stars ✨**,
+  **Balloons 🎈**, or **None** — tap one to preview. Icons across the app have
+  springy hover/press micro-animations (the running ▶ pulses). Everything
+  respects `prefers-reduced-motion`.
 
 ## Todoist sync
 
