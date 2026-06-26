@@ -28,6 +28,12 @@ footer shows which mode is active).
   Todoist when auto-create is on). Typing **`#`** pops a **project picker** —
   your Todoist projects and channels drop down and filter as you type; pick one
   to insert it (multi-word names supported).
+- **Command palette** — **⌘K / Ctrl+K** opens a fuzzy launcher for actions
+  (sync, views, Fill my day, Settings, Review…) and to jump to any of today's
+  tasks. **Right-click** a task row or calendar block for its action menu.
+- **Sync activity log** — a running record of Todoist and cloud syncs (and
+  merge outcomes); open it from **Settings → Sync log** or by tapping the
+  last-synced text in the header.
 - **Keyboard shortcuts** (press `?` for the list): `n` new, `/` search,
   `j`/`k` move the selection, `space` start/pause, `x` complete, `e` edit,
   `d` delete (with Undo), `[`/`]` previous/next day, `t` today.

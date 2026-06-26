@@ -349,6 +349,24 @@
   }
   /* view transitions (cross-fade); respects reduced-motion via JS guard */
   ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
+  /* command palette */
+  dialog.cmdk{max-width:560px;width:92%;top:12vh;margin-top:0;border-radius:14px}
+  dialog.cmdk::backdrop{background:rgba(31,42,44,.4)}
+  .cmdk-in{padding:0}
+  #cmdkInput{width:100%;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);
+    font-size:17px;padding:16px 18px;font-family:var(--display);outline:none}
+  .cmdk-list{max-height:52vh;overflow:auto;padding:6px}
+  .cmdk-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer}
+  .cmdk-item .ck-l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cmdk-item .ck-h{font-size:11px;color:var(--ink-faint);border:1px solid var(--line);border-radius:5px;padding:1px 6px;text-transform:lowercase}
+  .cmdk-item.on,.cmdk-item:hover{background:var(--surface-2)}
+  .cmdk-empty{padding:14px;color:var(--ink-soft);font-size:13px}
+  .cmdk-foot{padding:8px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-faint)}
+  /* sync log */
+  .synclog{max-height:50vh;overflow:auto;display:flex;flex-direction:column;gap:2px;margin:2px 0 8px;font-size:13px}
+  .synclog .sl-row{display:flex;gap:10px;padding:7px 4px;border-top:1px solid var(--line)}
+  .synclog .sl-t{color:var(--ink-faint);font-family:var(--mono);font-size:11.5px;flex:none;width:62px}
+  .synclog .sl-empty{color:var(--ink-soft);padding:8px 0}
   .dlg-actions button.danger{color:var(--over);border-color:var(--line-strong)}
   .addch{border:1px dashed var(--line-strong);background:none;width:100%;border-radius:8px;padding:8px;font-size:13px;color:var(--ink-soft);cursor:pointer;margin-top:4px}
 
@@ -1036,6 +1054,22 @@
   </div>
 </dialog>
 
+<dialog id="cmdkDialog" class="cmdk">
+  <div class="cmdk-in">
+    <input id="cmdkInput" type="text" placeholder="Type a command or task…" autocomplete="off" spellcheck="false">
+    <div class="cmdk-list" id="cmdkList"></div>
+    <div class="cmdk-foot">↑↓ to move · ↵ to run · esc to close</div>
+  </div>
+</dialog>
+
+<dialog id="syncLogDialog">
+  <div class="dlg-in">
+    <h3>Sync activity</h3>
+    <div class="synclog" id="syncLogList"></div>
+    <div class="dlg-actions"><span></span><button class="primary" id="syncLogDone">Done</button></div>
+  </div>
+</dialog>
+
 <dialog id="kbdDialog">
   <div class="dlg-in">
     <h3>Keyboard shortcuts</h3>
@@ -1051,6 +1085,7 @@
       <kbd>[</kbd><span>Previous day</span>
       <kbd>]</kbd><span>Next day</span>
       <kbd>t</kbd><span>Jump to today</span>
+      <kbd>⌘K</kbd><span>Command palette (⌘K / Ctrl+K)</span>
       <kbd>?</kbd><span>This help</span>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="kbdDone">Done</button></div>
@@ -1079,6 +1114,7 @@
         <button id="todoistBtn">Todoist</button>
         <button id="cloudBtn">Device sync</button>
         <button id="secBtn">Lock keys</button>
+        <button id="syncLogBtn">Sync log</button>
       </div>
     </div>
     <div class="set-group">
@@ -1576,6 +1612,7 @@ function taskRow(t){
   li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
+  li.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
   if(expandedTasks.has(t.id) && t.todoistId){
     loadSubtasks(t.id);
     li.querySelectorAll('.subtask-cb').forEach(cb=>cb.addEventListener('change',e=>{ e.stopPropagation();
@@ -1727,9 +1764,11 @@ function openTaskMenu(id,anchor){
     '<button data-a="tomorrow">→ Move to tomorrow</button>'+
     '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
   document.body.appendChild(m);
-  const r=anchor.getBoundingClientRect(); const mw=170;
-  m.style.top=(r.bottom+6)+'px';
-  m.style.left=Math.max(8,Math.min(r.right-mw,innerWidth-mw-8))+'px';
+  const mw=180; let top,left;
+  if(anchor && anchor.getBoundingClientRect){ const r=anchor.getBoundingClientRect(); top=r.bottom+6; left=r.right-mw; }
+  else if(anchor){ top=anchor.y; left=anchor.x; }      // {x,y} coords (right-click)
+  m.style.top=Math.max(8,Math.min(top,innerHeight-12))+'px';
+  m.style.left=Math.max(8,Math.min(left,innerWidth-mw-8))+'px';
   m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
     if(a==='edit') openTaskEditor(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
@@ -2015,6 +2054,7 @@ function renderDay(){
     const pin=b.querySelector('.cb-pin');
     pin.addEventListener('pointerdown',e=>e.stopPropagation());
     pin.addEventListener('click',e=>{ e.stopPropagation(); togglePin(t.id); });
+    b.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
     canvas.appendChild(b);
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
@@ -2521,7 +2561,7 @@ async function syncTodoist(silent){
     state.todoist.lastSync=Date.now();
     await saveConfig(); await saveDay(); render(); updateTdLink(); updateConnUI();
     const summary='Todoist: '+added+' added'+(updated?', '+updated+' updated':'')+(added+updated===0?' — nothing new':'');
-    setTdStatus(lastSyncLabel(),'ok');
+    setTdStatus(lastSyncLabel(),'ok'); logSync(summary);
     if(!silent)toast(summary);
   }catch(e){
     setTdStatus('Sync failed — '+e.message,'err');
@@ -2960,7 +3000,7 @@ async function pushGist(silent){
     else { body.description='OODA device-sync data'; body.public=false;
       g=await ghFetch('/gists',{method:'POST',body:JSON.stringify(body)});
       sync.gistId=g.id; const f=document.getElementById('ghGist'); if(f)f.value=g.id; }
-    sync.lastPush=Date.now(); saveSync(); setDirty(false); setSyncStatus(syncStatusLabel(),'ok');
+    sync.lastPush=Date.now(); saveSync(); setDirty(false); setSyncStatus(syncStatusLabel(),'ok'); logSync('Cloud — pushed your data');
     if(!silent)toast('Pushed to cloud.');
   }catch(e){ setSyncStatus('Push failed — '+e.message,'err'); if(!silent)toast('Cloud push failed: '+e.message); }
   finally{ endNet(); }
@@ -3003,6 +3043,7 @@ async function pullGist(silent){
     sync.lastPull=Date.now(); saveSync();
     await reloadState(); await loadHistory();
     setSyncStatus(syncStatusLabel(),'ok'); updateConnUI();
+    logSync('Cloud — '+(changed?'merged latest'+(localNewer?' (pushed local changes back)':''):'already up to date'));
     if(!silent)toast(changed?'Merged latest from cloud.':'Already up to date.');
     // if this device held newer days than the cloud, push the merged result back so both converge
     if(localNewer){ pulling=false; pushGist(true); }
@@ -3675,6 +3716,62 @@ function moveKbd(dir){ const rows=kbdRows(); if(!rows.length){ kbdId=null; retur
   kbdId=rows[i].dataset.id; refreshKbd(); rows[i].scrollIntoView({block:'nearest'}); }
 function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
 document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
+/* ---------- command palette (⌘K / Ctrl+K) ---------- */
+let cmdkAll=[], cmdkItems=[], cmdkIndex=0;
+function cmdkCommands(){ return [
+  {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
+  {label:'Sync now',hint:'sync',run:()=>doManualSync()},
+  {label:'Go to Today',hint:'nav',run:()=>gotoDate(new Date())},
+  {label:'Previous day',hint:'nav',run:()=>navStep(-1)},
+  {label:'Next day',hint:'nav',run:()=>navStep(1)},
+  {label:'View: List',hint:'view',run:()=>setView('list')},
+  {label:'View: Day',hint:'view',run:()=>setView('day')},
+  {label:'View: Week',hint:'view',run:()=>setView('week')},
+  {label:'View: Month',hint:'view',run:()=>setView('month')},
+  {label:'Fill my day',hint:'plan',run:()=>openFillDialog()},
+  {label:'Carry overdue',hint:'plan',run:()=>carryOverdue()},
+  {label:'Templates',hint:'plan',run:()=>openTemplatesDialog()},
+  {label:'Review',hint:'insight',run:()=>openReviewDialog()},
+  {label:'Settings',hint:'open',run:()=>openSettings()},
+  {label:'Todoist…',hint:'open',run:()=>openTdDialog()},
+  {label:'Device sync…',hint:'open',run:()=>openSyncDialog()},
+  {label:'Sync activity log',hint:'open',run:()=>openSyncLog()},
+  {label:'Edit channels',hint:'open',run:()=>openChDialog()},
+  {label:'Toggle theme',hint:'view',run:()=>toggleTheme()},
+  {label:'Keyboard shortcuts',hint:'help',run:()=>showShortcuts()},
+];}
+function openCmdk(){
+  if(document.getElementById('cmdkDialog').open) return;
+  cmdkAll=cmdkCommands().map(c=>({...c,kind:'cmd'}));
+  state.tasks.forEach(t=>cmdkAll.push({label:(t.done?'✓ ':'')+t.name,hint:'task',kind:'task',run:()=>openTaskEditor(t.id)}));
+  const inp=document.getElementById('cmdkInput'); inp.value=''; cmdkFilter('');
+  document.getElementById('cmdkDialog').showModal(); setTimeout(()=>inp.focus(),20);
+}
+function cmdkFilter(q){ q=(q||'').toLowerCase().trim();
+  cmdkItems = !q ? cmdkAll.slice(0,50) : cmdkAll.filter(c=>c.label.toLowerCase().includes(q)).slice(0,50);
+  cmdkIndex=0; cmdkRender(); }
+function cmdkRender(){ const list=document.getElementById('cmdkList');
+  list.innerHTML = cmdkItems.length ? cmdkItems.map((c,i)=>'<div class="cmdk-item'+(i===cmdkIndex?' on':'')+'" data-i="'+i+'"><span class="ck-l">'+escapeHtml(c.label)+'</span><span class="ck-h">'+(c.hint||c.kind)+'</span></div>').join('') : '<div class="cmdk-empty">No matches</div>';
+  const on=list.querySelector('.cmdk-item.on'); if(on) on.scrollIntoView({block:'nearest'}); }
+function cmdkRun(i){ const c=cmdkItems[i]; if(!c)return; document.getElementById('cmdkDialog').close(); setTimeout(()=>{ try{ c.run(); }catch(e){} },10); }
+document.getElementById('cmdkInput').addEventListener('input',e=>cmdkFilter(e.target.value));
+document.getElementById('cmdkInput').addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); cmdkIndex=Math.min(cmdkItems.length-1,cmdkIndex+1); cmdkRender(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); cmdkIndex=Math.max(0,cmdkIndex-1); cmdkRender(); }
+  else if(e.key==='Enter'){ e.preventDefault(); cmdkRun(cmdkIndex); }
+});
+document.getElementById('cmdkList').addEventListener('click',e=>{ const it=e.target.closest('.cmdk-item[data-i]'); if(it) cmdkRun(+it.dataset.i); });
+document.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); openCmdk(); } });
+/* ---------- sync activity log ---------- */
+const syncLog=[];
+function logSync(msg){ if(!msg)return; syncLog.unshift({t:Date.now(),msg}); if(syncLog.length>60)syncLog.length=60; }
+function openSyncLog(){ const box=document.getElementById('syncLogList');
+  box.innerHTML = syncLog.length ? syncLog.map(e=>'<div class="sl-row"><span class="sl-t">'+new Date(e.t).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'})+'</span><span>'+escapeHtml(e.msg)+'</span></div>').join('') : '<div class="sl-empty">No sync activity yet — sync to see it here.</div>';
+  document.getElementById('syncLogDialog').showModal(); }
+document.getElementById('syncLogDone').addEventListener('click',()=>document.getElementById('syncLogDialog').close());
+document.getElementById('syncMeta').addEventListener('click',openSyncLog);
+document.getElementById('syncMeta').style.cursor='pointer';
+document.getElementById('syncLogBtn').addEventListener('click',openSyncLog);
 document.addEventListener('keydown',e=>{
   const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable);
   if(e.key==='Escape'){ if(typing&&t.blur)t.blur(); return; }
