@@ -206,6 +206,9 @@
   .now{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius);
     padding:16px 18px;margin:14px 0 18px;display:flex;align-items:center;gap:16px;position:relative;overflow:hidden}
   .now.active{border-color:var(--now);background:var(--now-soft)}
+  .now-prog{position:absolute;left:0;bottom:0;height:3px;width:0;background:var(--now);opacity:0;transition:width .9s linear,opacity .2s,background .2s}
+  .now.active .now-prog{opacity:1}
+  .now-prog.over{background:var(--over)}
   .now .pulse{width:14px;height:14px;border-radius:50%;background:var(--line-strong);flex:0 0 auto}
   .now.active .pulse{background:var(--now)}
   @media (prefers-reduced-motion:no-preference){
@@ -505,7 +508,13 @@
     .task:hover .go,.task:hover .check,.task:hover .menu-btn,.task .go.running,.task .check.done{opacity:1}
   }
   /* view transitions (cross-fade); respects reduced-motion via JS guard */
-  ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.26s}
+  @media (prefers-reduced-motion:no-preference){
+    ::view-transition-old(root){animation:vt-out .24s cubic-bezier(.4,0,.2,1) both}
+    ::view-transition-new(root){animation:vt-in .28s cubic-bezier(.4,0,.2,1) both}
+    @keyframes vt-out{to{opacity:0;transform:translateY(-6px) scale(.994)}}
+    @keyframes vt-in{from{opacity:0;transform:translateY(10px) scale(.994)}}
+  }
   /* command palette */
   dialog.cmdk{max-width:560px;width:92%;top:12vh;margin-top:0;border-radius:14px}
   dialog.cmdk::backdrop{background:rgba(31,42,44,.4)}
@@ -738,8 +747,21 @@
   .cal-rz{position:absolute;left:0;right:0;bottom:0;height:11px;cursor:ns-resize;touch-action:none}
   .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
   .cal-block{touch-action:none;cursor:grab}
+  @media (prefers-reduced-motion:no-preference){
+    .cal-block{transition:top .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1),box-shadow .15s ease,filter .15s ease}
+    .cal-block:hover{filter:brightness(1.06)}
+    .cal-block.dragging,.cal-block.flip,.cal-block.dc-ghost{transition:none}
+    .cal-chip{transition:transform .14s ease,box-shadow .14s ease,background .14s ease}
+    .cal-chip:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.14)}
+    .task{transition:background-color .15s ease}
+    .menu button{transition:background .12s ease}
+    .aa-btn,.btn-mini,.theme-btn,.vtab{transition:transform .12s ease,background .14s ease,color .14s ease}
+    .aa-btn:active,.btn-mini:active{transform:scale(.94)}
+  }
   .cal-block.dragging{cursor:grabbing}
   .cal-block.running{outline:2px solid var(--now);outline-offset:1px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}
+  @media (prefers-reduced-motion:no-preference){ .cal-block.running{animation:runpulse 2.2s ease-in-out infinite}
+    @keyframes runpulse{0%,100%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}50%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 6px var(--now-soft)}} }
   .cal-block.dragging{opacity:.95;box-shadow:0 12px 28px rgba(0,0,0,.32);z-index:6;transform:scale(1.035);
     transition:transform .14s cubic-bezier(.34,1.56,.5,1),box-shadow .14s ease}
   @media (prefers-reduced-motion:no-preference){
@@ -975,6 +997,7 @@
     <div class="clock" id="nowClock">0:00:00</div>
     <button class="stop now-start" id="nowStart" title="Start a timer now — name it later">▶ Start timer</button>
     <button class="stop" id="nowStop" style="display:none">Stop</button>
+    <div class="now-prog" id="nowProg"></div>
   </div>
 
   <div class="arc-card">
@@ -2492,6 +2515,10 @@ function renderNow(){
     document.getElementById('nowClock').textContent=clockFmt(liveActual(t));
     document.getElementById('nowStop').style.display='block';
     document.getElementById('nowStart').style.display='none';
+    const prog=document.getElementById('nowProg');
+    if(prog){ const estMs=(t.estimateMin||0)*60000, act=liveActual(t);
+      const pct=estMs?Math.min(100,act/estMs*100):0;
+      prog.style.width=pct+'%'; prog.classList.toggle('over',estMs>0&&act>estMs); }
   } else {
     card.classList.remove('active');
     whatEl.style.display=''; inp.style.display='none';
@@ -2500,6 +2527,7 @@ function renderNow(){
     document.getElementById('nowClock').textContent='0:00:00';
     document.getElementById('nowStop').style.display='none';
     document.getElementById('nowStart').style.display='block';
+    const prog=document.getElementById('nowProg'); if(prog) prog.style.width='0%';
   }
   updateMiniStrip();
 }
@@ -2680,9 +2708,12 @@ function doFill(){
   saveDay(); document.getElementById('fillDialog').close(); render();
   toast(n? ('Placed '+n+' task'+(n===1?'':'s')+'.') : 'No room to place tasks — free up time or extend the day.');
 }
+function reduceMotion(){ return matchMedia('(prefers-reduced-motion: reduce)').matches; }
 function renderDay(){
   const cal=document.getElementById('calView');
   const prevScroll=(()=>{ const s=cal.querySelector('.cal-scroll'); return s?s.scrollTop:null; })();
+  // capture current block positions so they can glide (FLIP) to their new spots
+  const prevPos={}; cal.querySelectorAll('.cal-block[data-id]').forEach(el=>{ prevPos[el.dataset.id]={top:parseFloat(el.style.top)||0,height:parseFloat(el.style.height)||0}; });
   cal.innerHTML='';
   const START=calStart(), END=calEnd();
   const sched=state.tasks.filter(t=>t.scheduledMin!=null);
@@ -2775,6 +2806,13 @@ function renderDay(){
     pin.addEventListener('click',e=>{ e.stopPropagation(); togglePin(t.id); });
     b.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
     canvas.appendChild(b);
+    // FLIP: if this block moved/resized since last render, start it at the old
+    // spot and let CSS glide it to the new one (skipped during a live drag)
+    const pp=prevPos[t.id];
+    if(pp && !calDragging && !reduceMotion() && (Math.abs(pp.top-top)>1 || Math.abs(pp.height-h)>1)){
+      b.classList.add('flip'); b.style.top=pp.top+'px'; b.style.height=pp.height+'px';
+      requestAnimationFrame(()=>{ b.classList.remove('flip'); b.style.top=top+'px'; b.style.height=h+'px'; });
+    }
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
   if(nowMin>=START&&nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
