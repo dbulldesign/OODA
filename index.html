@@ -305,6 +305,22 @@
     padding:10px 18px;border-radius:8px;font-size:13.5px;opacity:0;pointer-events:none;transition:.25s;max-width:90%;text-align:center;z-index:1000}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .toast.has-action{pointer-events:auto}   /* so the Undo button is clickable */
+  /* focus mode — distraction-free current task */
+  #focusView{position:fixed;inset:0;z-index:9995;display:flex;align-items:center;justify-content:center;
+    background:var(--paper);padding:24px}
+  html.glass #focusView{background:transparent}
+  .focus-exit{position:fixed;top:calc(16px + env(safe-area-inset-top));right:16px;border:1px solid var(--line-strong);
+    background:var(--surface);color:var(--ink-soft);border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer}
+  .focus-card{max-width:560px;width:100%;text-align:center;display:flex;flex-direction:column;align-items:center;gap:14px}
+  .focus-ch{display:inline-flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-soft)}
+  .focus-ch .dot{width:11px;height:11px;border-radius:50%}
+  .focus-name{font-size:clamp(24px,5vw,40px);font-weight:680;line-height:1.15;letter-spacing:-.02em}
+  .focus-clock{font-family:var(--mono);font-size:clamp(40px,10vw,72px);font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--accent)}
+  .focus-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .focus-acts button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:10px;
+    padding:11px 20px;font-size:14px;cursor:pointer;font-family:var(--display)}
+  .focus-acts button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .focus-next{font-size:13px;color:var(--ink-soft);margin-top:6px}
   /* bottom tab bar + FAB + sticky mini-strip (mobile only; shown in the media query) */
   .tabbar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:900;
     background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:saturate(1.4) blur(12px);
@@ -956,6 +972,20 @@
   <button id="updateDismiss" title="Dismiss">✕</button>
 </div>
 <div id="glassbg" aria-hidden="true"></div>
+<div id="focusView" style="display:none">
+  <button class="focus-exit" id="focusExit">✕ Exit focus</button>
+  <div class="focus-card">
+    <div class="focus-ch" id="focusCh"></div>
+    <div class="focus-name" id="focusName">Nothing tracking</div>
+    <div class="focus-clock" id="focusClock">0:00:00</div>
+    <div class="focus-acts">
+      <button id="focusStop">Pause</button>
+      <button class="primary" id="focusDone">Complete</button>
+      <button id="focusNextBtn">Next ›</button>
+    </div>
+    <div class="focus-next" id="focusNext"></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <div id="confetti" aria-hidden="true"></div>
 
@@ -2080,6 +2110,31 @@ function renderNow(){
   updateMiniStrip();
 }
 function haptic(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
+/* ---------- focus mode (distraction-free current task) ---------- */
+let focusOpen=false;
+function focusTarget(){
+  const run=state.tasks.find(x=>x.id===state.activeId && x.running); if(run) return run;
+  const inc=state.tasks.filter(x=>!x.done).sort((a,b)=>((a.scheduledMin==null?1e9:a.scheduledMin)-(b.scheduledMin==null?1e9:b.scheduledMin)));
+  return inc[0]||null;
+}
+function nextAfter(t){ return state.tasks.filter(x=>!x.done && x.id!==(t&&t.id))
+  .sort((a,b)=>((a.scheduledMin==null?1e9:a.scheduledMin)-(b.scheduledMin==null?1e9:b.scheduledMin)))[0]||null; }
+function openFocus(){ focusOpen=true; document.getElementById('focusView').style.display='flex'; renderFocus(); }
+function closeFocus(){ focusOpen=false; document.getElementById('focusView').style.display='none'; }
+function renderFocus(){ if(!focusOpen) return; const t=focusTarget();
+  const nameEl=document.getElementById('focusName'),clockEl=document.getElementById('focusClock'),chEl=document.getElementById('focusCh'),
+    stop=document.getElementById('focusStop'),done=document.getElementById('focusDone'),nextEl=document.getElementById('focusNext'),nextBtn=document.getElementById('focusNextBtn');
+  if(!t){ nameEl.textContent='All clear 🎉'; clockEl.textContent='0:00:00'; chEl.textContent=''; stop.style.display='none'; done.style.display='none'; nextBtn.style.display='none'; nextEl.textContent='Nothing left to do.'; return; }
+  const ch=chById(t.channelId);
+  chEl.innerHTML='<span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(taskProjectLabel(t));
+  nameEl.textContent=t.name||'Untitled'; clockEl.textContent=clockFmt(liveActual(t));
+  stop.style.display=''; done.style.display=''; stop.textContent=t.running?'Pause':'Start';
+  const nx=nextAfter(t); nextBtn.style.display=nx?'':'none';
+  nextEl.textContent = nx? ('Next: '+nx.name) : 'Last one — finish strong.';
+}
+async function focusStartStop(){ const t=focusTarget(); if(t){ await toggleRun(t.id); renderFocus(); } }
+async function focusComplete(){ const t=focusTarget(); if(t){ await toggleDone(t.id); renderFocus(); } }
+async function focusNext(){ const nx=nextAfter(focusTarget()); if(nx){ if(!nx.running) await toggleRun(nx.id); renderFocus(); } }
 function updateMiniStrip(){
   const strip=document.getElementById('miniStrip'); if(!strip)return;
   const t=state.tasks.find(x=>x.id===state.activeId && x.running);
@@ -2098,7 +2153,7 @@ function renderPhase(){
   set('ph-reflect',allDone);
   function set(id,on){ document.getElementById(id).classList.toggle('on',!!on); }
 }
-function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); } },1000); }
+function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); if(focusOpen) renderFocus(); } },1000); }
 /* periodic background sync — pull Todoist + cloud every few minutes */
 let autoSyncTimer=null;
 function startAutoSync(){ clearInterval(autoSyncTimer); autoSyncTimer=setInterval(autoSyncTick, 5*60*1000); }
@@ -4151,6 +4206,10 @@ acMenuEl().addEventListener('pointerdown',e=>{ const it=e.target.closest('.ac-it
 document.getElementById('addEst').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
 document.getElementById('nowStart').addEventListener('click',startAdHocTimer);
+document.getElementById('focusExit').addEventListener('click',closeFocus);
+document.getElementById('focusStop').addEventListener('click',focusStartStop);
+document.getElementById('focusDone').addEventListener('click',focusComplete);
+document.getElementById('focusNextBtn').addEventListener('click',focusNext);
 (function(){ const inp=document.getElementById('nowNameInp');
   inp.addEventListener('keydown',e=>{ if(e.key==='Enter' && !acOpen()){ e.preventDefault(); inp.blur(); } });
   inp.addEventListener('blur',async()=>{ if(!state.activeId) return; const t=state.tasks.find(x=>x.id===state.activeId);
@@ -4224,6 +4283,7 @@ const SHORTCUTS=[
   ['↑ / ↓','Day view: move the selected block (⇧ to resize)'],
   ['[ / ]','Previous / next — day, week, or month'],
   ['t','Jump to today'],
+  ['f','Focus mode (distraction-free current task)'],
   ['?','Open this guide'],
 ];
 function renderShortcutKeys(el){ if(!el)return; el.innerHTML=SHORTCUTS.map(s=>'<kbd>'+escapeHtml(s[0])+'</kbd><span>'+escapeHtml(s[1])+'</span>').join(''); }
@@ -4329,6 +4389,7 @@ let cmdkAll=[], cmdkItems=[], cmdkIndex=0;
 function cmdkCommands(){ return [
   {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
   {label:'Start timer now',hint:'track',run:()=>startAdHocTimer()},
+  {label:'Focus mode',hint:'focus',run:()=>openFocus()},
   {label:'Sync now',hint:'sync',run:()=>doManualSync()},
   {label:'Go to Today',hint:'nav',run:()=>gotoDate(new Date())},
   {label:'Previous day',hint:'nav',run:()=>navStep(-1)},
@@ -4385,9 +4446,11 @@ document.getElementById('syncMeta').style.cursor='pointer';
 document.getElementById('syncLogBtn').addEventListener('click',openSyncLog);
 document.addEventListener('keydown',e=>{
   const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable);
+  if(focusOpen){ if(e.key==='Escape'){ e.preventDefault(); closeFocus(); } else if(e.key===' '){ e.preventDefault(); focusStartStop(); } else if(e.key==='x'){ e.preventDefault(); focusComplete(); } return; }
   if(e.key==='Escape'){ if(typing&&t.blur)t.blur(); return; }
   if(typing||e.metaKey||e.ctrlKey||e.altKey) return;
   if(document.querySelector('dialog[open]')) return;            // don't hijack keys inside modals
+  if(e.key==='f'){ e.preventDefault(); openFocus(); return; }
   // Day view: arrow-move / resize the selected block (falls through for nav keys)
   if((viewMode==='day'||viewMode==='multi') && handleDayKey(e)){ e.preventDefault(); return; }
   switch(e.key){
