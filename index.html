@@ -1105,7 +1105,7 @@
     <textarea id="reflectText" placeholder="Today I…"></textarea>
     <div class="row">
       <button class="primary" id="closeBtn">Close out day</button>
-      <button id="rolloverBtn">Carry unfinished to tomorrow</button>
+      <button id="rolloverBtn">Carry unfinished forward</button>
     </div>
   </div>
 
@@ -3500,10 +3500,30 @@ async function buildEstIndex(){
   }catch(e){}
 }
 function suggestEstimate(name,ch){ const k=(name||'').trim().toLowerCase(); return estIndex.byName[k]||estIndex.byCh[ch]||0; }
+// the next working day after `from` (skips Saturday & Sunday → Friday rolls to Monday)
+function nextWorkdayKey(from){
+  const d=new Date(from); d.setHours(12,0,0,0); d.setDate(d.getDate()+1);
+  while(d.getDay()===0||d.getDay()===6) d.setDate(d.getDate()+1);
+  return dayKeyFor(d);
+}
+// move this day's unfinished tasks onto the next working day, right away
 async function rollover(){
-  const carry=state.tasks.filter(t=>!t.done).map(t=>({name:t.name,todoistId:t.todoistId||null}));
-  if(!carry.length){ toast('Nothing unfinished to carry.'); return; }
-  await sset('carry',carry); schedulePush(); toast(carry.length+' task(s) queued for tomorrow.');
+  const unfinished=state.tasks.filter(t=>!t.done);
+  if(!unfinished.length){ toast('Nothing unfinished to carry.'); return; }
+  const dst=nextWorkdayKey(viewDate);
+  const dstRec=await sget(dst)||{date:dst.slice(4),tasks:[],reflection:'',closed:false}; dstRec.tasks=dstRec.tasks||[];
+  const seenTd=new Set(dstRec.tasks.filter(t=>t.todoistId).map(t=>t.todoistId));
+  const seenName=new Set(dstRec.tasks.map(t=>t.name.toLowerCase()));
+  const moved=unfinished.filter(t=>!((t.todoistId&&seenTd.has(t.todoistId))||seenName.has(t.name.toLowerCase())));
+  if(!moved.length){ toast('Those tasks are already on '+fmtDateRel(new Date(dst.slice(4)+'T12:00:00'))+'.'); return; }
+  const movedIds=new Set(moved.map(t=>t.id));
+  moved.forEach(t=>{ t.scheduledMin=null; t.pinned=false; t.running=false; t.startedAt=null; });
+  if(movedIds.has(state.activeId)) state.activeId=null;
+  state.tasks=state.tasks.filter(t=>!movedIds.has(t.id));
+  dstRec.tasks=moved.concat(dstRec.tasks);
+  await ssetDay(dst,dstRec); await saveDay(); render();
+  const dlabel=fmtDateRel(new Date(dst.slice(4)+'T12:00:00'));
+  toastAction('Carried '+moved.length+' unfinished task'+(moved.length===1?'':'s')+' to '+dlabel+'.','Go there →',async()=>{ await gotoDate(new Date(dst.slice(4)+'T12:00:00')); });
 }
 /* pull every unfinished task from days before today onto today */
 async function carryOverdue(){
