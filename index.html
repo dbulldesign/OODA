@@ -46,13 +46,29 @@
       radial-gradient(54vw 54vw at 78% 92%, rgba(194,117,42,.34), transparent 62%),
       radial-gradient(50vw 50vw at 20% 96%, rgba(91,75,158,.32), transparent 62%),
       var(--paper);
-    filter:saturate(1.12)}
+    filter:saturate(1.12);opacity:var(--glass-aurora,1);transition:opacity .25s ease}
+  html.glass.glass-react #glassbg{transition:transform .2s ease-out, opacity .25s ease;will-change:transform}
+  /* alternate background palettes (Settings → Display) */
+  html.glass[data-glasspal="accent"] #glassbg{background:
+    radial-gradient(48vw 48vw at 12% 12%, color-mix(in srgb,var(--accent) 55%,transparent), transparent 62%),
+    radial-gradient(52vw 52vw at 88% 18%, color-mix(in srgb,var(--accent) 34%,transparent), transparent 60%),
+    radial-gradient(56vw 56vw at 70% 96%, color-mix(in srgb,var(--accent) 28%,transparent), transparent 62%),
+    var(--paper)}
+  html.glass[data-glasspal="mono"] #glassbg{background:
+    radial-gradient(50vw 50vw at 16% 12%, rgba(150,160,170,.34), transparent 62%),
+    radial-gradient(54vw 54vw at 86% 90%, rgba(110,120,130,.30), transparent 62%),
+    var(--paper)}
+  html.glass[data-glasspal="sunset"] #glassbg{background:
+    radial-gradient(48vw 48vw at 14% 16%, rgba(225,120,70,.42), transparent 62%),
+    radial-gradient(50vw 50vw at 88% 10%, rgba(214,80,120,.38), transparent 60%),
+    radial-gradient(56vw 56vw at 78% 94%, rgba(150,70,150,.34), transparent 62%),
+    var(--paper)}
   html.glass .now,html.glass .arc-card,html.glass .reflect,html.glass dialog,html.glass .cal-grid,
   html.glass .cal-backlog,html.glass .task,html.glass .completed,html.glass .help-card,html.glass .bd-col,
   html.glass .menu,html.glass .ac-menu,html.glass .sa-results,html.glass .bulk-bar,html.glass .cal-inspector,
   html.glass .rev-card,html.glass .tpl-row{
     background:var(--glass-surface)!important;
-    -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+    -webkit-backdrop-filter:blur(var(--glass-blur,18px)) saturate(1.5);backdrop-filter:blur(var(--glass-blur,18px)) saturate(1.5);
     border:1px solid var(--glass-brd);
     box-shadow:0 8px 30px var(--glass-sh), inset 0 1px 0 var(--glass-hi)}
   /* lighter chrome elements: translucent but no heavy blur for perf */
@@ -102,6 +118,12 @@
   #dispSizes button:nth-child(3){font-size:17px}
   #dispSizes button:nth-child(4){font-size:19px}
   .disp-sizes button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .glass-opts{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:2px 0 4px;background:var(--surface-2)}
+  .glass-opts .grow-row{display:flex;align-items:center;gap:10px;margin:4px 0}
+  .glass-opts .grow-row label{flex:0 0 44px;font-size:12.5px;color:var(--ink-soft)}
+  .glass-opts .grow-row input[type=range]{flex:1;accent-color:var(--accent)}
+  .glass-opts .grow-v{flex:0 0 42px;text-align:right;font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+  .glass-opts .td-mini{font-size:11.5px;color:var(--ink-faint);margin:8px 0 0;line-height:1.4}
   .fx-choices{display:flex;gap:6px;flex-wrap:wrap}
   .fx-choices button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
     padding:6px 12px;cursor:pointer;font-family:var(--display);font-size:13px;line-height:1}
@@ -832,6 +854,13 @@
     document.documentElement.setAttribute('data-theme',s);
     if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
     if(localStorage.getItem('ooda:_glass')==='1') document.documentElement.classList.add('glass');
+    // liquid-glass look (blur / frost / glow / palette) — applied pre-paint to avoid a flash
+    var gb=parseInt(localStorage.getItem('ooda:_gblur')); document.documentElement.style.setProperty('--glass-blur',(gb||gb===0?gb:18)+'px');
+    var gg=localStorage.getItem('ooda:_gglow'); document.documentElement.style.setProperty('--glass-aurora',((gg==null?100:parseInt(gg))/100));
+    var gt=parseInt(localStorage.getItem('ooda:_gtint'));
+    if(gt||gt===0){ var dk=s==='dark'; document.documentElement.style.setProperty('--glass-surface','rgba('+(dk?'38,46,50':'255,255,255')+','+(gt/100)+')'); }
+    document.documentElement.setAttribute('data-glasspal',localStorage.getItem('ooda:_gpal')||'aurora');
+    if(localStorage.getItem('ooda:_greact')==='1' && localStorage.getItem('ooda:_glass')==='1') document.documentElement.classList.add('glass-react');
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
     if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
     var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
@@ -1227,6 +1256,18 @@
     <h3>Display</h3>
     <label class="td-check"><input type="checkbox" id="dispWide"> Fill the screen (wide layout)</label>
     <label class="td-check"><input type="checkbox" id="dispGlass"> Liquid glass theme (frosted surfaces)</label>
+    <div id="glassOpts" class="glass-opts" style="display:none">
+      <div class="grow-row"><label>Blur</label><input type="range" id="glassBlur" min="2" max="34" step="1"><span class="grow-v" id="gbVal"></span></div>
+      <div class="grow-row"><label>Frost</label><input type="range" id="glassTint" min="18" max="85" step="1"><span class="grow-v" id="gtVal"></span></div>
+      <div class="grow-row"><label>Glow</label><input type="range" id="glassGlow" min="0" max="160" step="5"><span class="grow-v" id="ggVal"></span></div>
+      <div class="td-field" style="margin-top:8px"><label>Background palette</label>
+        <div class="disp-sizes" id="glassPaletteSeg">
+          <button type="button" data-gp="aurora">Aurora</button><button type="button" data-gp="accent">Accent</button>
+          <button type="button" data-gp="mono">Mono</button><button type="button" data-gp="sunset">Sunset</button>
+        </div></div>
+      <label class="td-check" style="margin-top:8px"><input type="checkbox" id="glassReact"> React to cursor (parallax on desktop)</label>
+      <p class="td-mini">Web pages can’t see your desktop or other windows behind the browser, so the glass can’t literally show what’s behind it — these controls tune the in-app frosted look and how its colours move.</p>
+    </div>
     <label class="td-check"><input type="checkbox" id="dispNotify"> Remind me 5 min before each scheduled block</label>
     <div class="td-field">
       <label>Text &amp; UI size</label>
@@ -4114,13 +4155,59 @@ function preferredTheme(){
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme',theme);
   const b=document.getElementById('themeBtn'); if(b) b.textContent = theme==='dark'?'☀️':'🌙';
+  if(typeof applyGlassVars==='function') applyGlassVars();   // surface tint is theme-aware
 }
 /* ---------- display: wide layout + UI scale ---------- */
 let dispWide=false, dispScale=1;
-function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; glassOn=localStorage.getItem(LS_PREFIX+'_glass')==='1'; }catch(e){} }
+function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; glassOn=localStorage.getItem(LS_PREFIX+'_glass')==='1'; }catch(e){} loadGlassOpts(); }
 let glassOn=false;
-function applyGlass(){ document.documentElement.classList.toggle('glass',glassOn); }
-function setGlass(v){ glassOn=v; try{localStorage.setItem(LS_PREFIX+'_glass',v?'1':'0');}catch(e){} applyGlass(); }
+/* ---------- liquid-glass appearance controls ---------- */
+let glassBlur=18, glassTint=52, glassGlow=100, glassPalette='aurora', glassReact=false;
+function loadGlassOpts(){ try{
+  const gb=parseInt(localStorage.getItem(LS_PREFIX+'_gblur')); if(!isNaN(gb)) glassBlur=gb;
+  const gt=parseInt(localStorage.getItem(LS_PREFIX+'_gtint')); if(!isNaN(gt)) glassTint=gt;
+  const gg=localStorage.getItem(LS_PREFIX+'_gglow'); if(gg!=null) glassGlow=parseInt(gg);
+  glassPalette=localStorage.getItem(LS_PREFIX+'_gpal')||'aurora';
+  glassReact=localStorage.getItem(LS_PREFIX+'_greact')==='1';
+}catch(e){} }
+function applyGlass(){ document.documentElement.classList.toggle('glass',glassOn); applyGlassVars(); }
+// push the glass settings into CSS variables (surface tint is theme-aware)
+function applyGlassVars(){
+  const r=document.documentElement.style;
+  r.setProperty('--glass-blur',glassBlur+'px');
+  r.setProperty('--glass-aurora',(glassGlow/100).toFixed(2));
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  r.setProperty('--glass-surface','rgba('+(dark?'38,46,50':'255,255,255')+','+(glassTint/100).toFixed(2)+')');
+  document.documentElement.setAttribute('data-glasspal',glassPalette);
+  const react=glassReact&&glassOn;
+  document.documentElement.classList.toggle('glass-react',react);
+  const bg=document.getElementById('glassbg'); if(bg&&!react) bg.style.transform='';
+}
+function setGlass(v){ glassOn=v; try{localStorage.setItem(LS_PREFIX+'_glass',v?'1':'0');}catch(e){} applyGlass();
+  const o=document.getElementById('glassOpts'); if(o) o.style.display=v?'block':'none'; }
+function setGlassBlur(v){ glassBlur=v; try{localStorage.setItem(LS_PREFIX+'_gblur',String(v));}catch(e){} applyGlassVars(); markGlassOpts(); }
+function setGlassTint(v){ glassTint=v; try{localStorage.setItem(LS_PREFIX+'_gtint',String(v));}catch(e){} applyGlassVars(); markGlassOpts(); }
+function setGlassGlow(v){ glassGlow=v; try{localStorage.setItem(LS_PREFIX+'_gglow',String(v));}catch(e){} applyGlassVars(); markGlassOpts(); }
+function setGlassPalette(v){ glassPalette=v; try{localStorage.setItem(LS_PREFIX+'_gpal',v);}catch(e){} applyGlassVars(); markGlassOpts(); }
+function setGlassReact(v){ glassReact=v; try{localStorage.setItem(LS_PREFIX+'_greact',v?'1':'0');}catch(e){} applyGlassVars(); }
+function markGlassOpts(){
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el&&el.value!=val) el.value=val; };
+  set('glassBlur',glassBlur); set('glassTint',glassTint); set('glassGlow',glassGlow);
+  const t=(id,txt)=>{ const el=document.getElementById(id); if(el) el.textContent=txt; };
+  t('gbVal',glassBlur+'px'); t('gtVal',glassTint+'%'); t('ggVal',glassGlow+'%');
+  const rc=document.getElementById('glassReact'); if(rc) rc.checked=glassReact;
+  document.querySelectorAll('#glassPaletteSeg button').forEach(b=>b.classList.toggle('on',b.dataset.gp===glassPalette));
+}
+// cursor parallax: drift the aurora as the pointer moves (the closest the web can
+// get to "reacting to what's behind the window" — pages are sandboxed from the OS)
+let glassRAF=0;
+function glassPointerMove(e){
+  if(!(glassReact&&glassOn)) return;
+  if(glassRAF) return;
+  const x=(e.clientX/innerWidth-.5), y=(e.clientY/innerHeight-.5);
+  glassRAF=requestAnimationFrame(()=>{ glassRAF=0; const bg=document.getElementById('glassbg');
+    if(bg) bg.style.transform='translate('+(x*-28).toFixed(1)+'px,'+(y*-28).toFixed(1)+'px) scale(1.07)'; });
+}
 /* density + accent color */
 let density='comfortable', accent='';
 function loadDensityAccent(){ try{ density=localStorage.getItem(LS_PREFIX+'_density')||'comfortable'; accent=localStorage.getItem(LS_PREFIX+'_accent')||''; }catch(e){} }
@@ -4192,6 +4279,7 @@ function buildFxChoices(){
 }
 function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); markCapDisplay(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
+  const go=document.getElementById('glassOpts'); if(go) go.style.display=glassOn?'block':'none'; markGlassOpts();
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
@@ -4423,6 +4511,12 @@ document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
 document.getElementById('dispGlass').addEventListener('change',e=>setGlass(e.target.checked));
+document.getElementById('glassBlur').addEventListener('input',e=>setGlassBlur(parseInt(e.target.value)));
+document.getElementById('glassTint').addEventListener('input',e=>setGlassTint(parseInt(e.target.value)));
+document.getElementById('glassGlow').addEventListener('input',e=>setGlassGlow(parseInt(e.target.value)));
+document.getElementById('glassReact').addEventListener('change',e=>setGlassReact(e.target.checked));
+document.getElementById('glassPaletteSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-gp]'); if(b) setGlassPalette(b.dataset.gp); });
+window.addEventListener('pointermove',glassPointerMove,{passive:true});
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
@@ -4613,7 +4707,7 @@ function helpCards(){
       visual:'<div style="border:1px solid var(--line-strong);border-radius:8px;width:90%;background:var(--surface)"><div style="font-size:10px;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink-faint)">⌘K  Type a command…</div><div style="font-size:9.5px;padding:5px 8px;background:var(--surface-2)">Fill my day</div></div>'},
     {title:'Review & routines',body:'<b>Review</b> shows completion rate, time-by-channel, estimate accuracy and a streak over 7/30 days. Set a task to <b>repeat</b> (daily / weekdays / weekly) and it reappears on its days. Save a day’s shape as a <b>Template</b>, <b>Carry overdue</b> onto today, and end with a <b>Shutdown</b> note + carry-to-tomorrow.',
       visual:'<svg width="64" height="40" viewBox="0 0 64 40" fill="none"><rect x="6" y="20" width="9" height="16" fill="#3F7A56"/><rect x="20" y="12" width="9" height="24" fill="#2E6B9E"/><rect x="34" y="24" width="9" height="12" fill="#C2752A"/><rect x="48" y="8" width="9" height="28" fill="#5B4B9E"/></svg>'},
-    {title:'Make it yours',body:'<b>Display</b> settings: light / dark, an <b>accent color</b>, <b>density</b> (compact / comfortable), text & UI size, a fill-the-screen wide mode, and the <b>completion celebration</b> (confetti, fireworks, party, stars, balloons).',
+    {title:'Make it yours',body:'<b>Display</b> settings: light / dark, an <b>accent color</b>, <b>density</b> (compact / comfortable), text & UI size, a fill-the-screen wide mode, a <b>liquid-glass</b> theme you can tune (blur, frost, glow, palette, cursor parallax), and the <b>completion celebration</b> (confetti, fireworks, party, stars, balloons).',
       visual:'<div style="display:flex;gap:6px">'+['#3F7A56','#2E6B9E','#C2752A','#B14233','#5B4B9E'].map(c=>'<span style="width:18px;height:18px;border-radius:50%;background:'+c+'"></span>').join('')+'</div>'},
     {title:'Offline & updates',body:'OODA works fully <b>offline</b> and installs as an app; Todoist changes queue and flush when you’re back online. When a new version ships you’ll see an <b>Update & reload</b> banner; the version shows in the footer.',
       visual:'<div style="font-size:10px;background:var(--ink);color:var(--surface);border-radius:8px;padding:6px 8px;display:flex;gap:6px;align-items:center">New version <span style="background:var(--surface);color:var(--ink);border-radius:5px;padding:2px 6px;font-weight:600;font-size:9px">Update</span></div>'},
