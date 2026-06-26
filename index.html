@@ -565,7 +565,7 @@
   :root[data-theme="dark"] .theme-toggle{background:color-mix(in srgb,var(--accent) 30%,var(--surface-2))}
   :root[data-theme="dark"] .theme-toggle .tt-knob{transform:translateX(22px)}
   /* cross-fade the colours when toggling light/dark instead of a circular wipe */
-  html.theme-anim,html.theme-anim *{transition:background-color .34s ease,color .34s ease,border-color .34s ease,box-shadow .34s ease,fill .34s ease!important}
+  html.theme-anim,html.theme-anim *{transition:background-color .65s ease,color .65s ease,border-color .65s ease,box-shadow .65s ease,fill .65s ease!important}
   /* header connection status pills */
   .conn-stat{display:flex;gap:6px;align-items:center}
   .cstat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);background:var(--surface);
@@ -4469,7 +4469,7 @@ function toggleTheme(){
   // cross-fade the colours between light and dark (the knob slides via CSS)
   if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
     document.documentElement.classList.add('theme-anim');
-    clearTimeout(themeAnimT); themeAnimT=setTimeout(()=>document.documentElement.classList.remove('theme-anim'),420);
+    clearTimeout(themeAnimT); themeAnimT=setTimeout(()=>document.documentElement.classList.remove('theme-anim'),750);
   }
   applyTheme(next);
   try{ localStorage.setItem(LS_PREFIX+'_theme',next); }catch(e){}
