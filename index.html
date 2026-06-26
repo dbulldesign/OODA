@@ -229,6 +229,15 @@
 
   /* day arc / capacity */
   .arc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:15px 18px;margin-bottom:18px}
+  .goal-bar{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .goal-track{flex:1;height:8px;border-radius:5px;background:var(--surface-2);border:1px solid var(--line);overflow:hidden}
+  .goal-fill{height:100%;width:0;background:var(--accent);border-radius:5px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+  .goal-fill.met{background:#3F9A56}
+  .goal-txt{font-size:12px;color:var(--ink-soft);white-space:nowrap}
+  .goal-set{display:flex;align-items:center;gap:8px}
+  .goal-set select,.goal-set input{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;padding:7px 8px;font-size:13px;font-family:var(--display)}
+  .goal-set input{width:64px}
+  .goal-unit{font-size:12.5px;color:var(--ink-soft)}
   .arc-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--ink-soft);margin-bottom:9px}
   .arc-head b{color:var(--ink);font-weight:600}
   .arc-head .cap-set{display:flex;align-items:center;gap:6px}
@@ -1019,6 +1028,10 @@
       <span id="capLabel"></span>
     </div>
     <div class="legend" id="legend"></div>
+    <div class="goal-bar" id="goalBar" style="display:none">
+      <div class="goal-track"><div class="goal-fill" id="goalFill"></div></div>
+      <span class="goal-txt" id="goalTxt"></span>
+    </div>
   </div>
 
   <div class="add">
@@ -1525,6 +1538,15 @@
         <button id="carryBtn">Carry overdue</button>
         <button id="editCh">Edit channels</button>
       </div>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Daily goal</div>
+      <div class="goal-set">
+        <select id="goalType"><option value="off">No goal</option><option value="tasks">Tasks completed</option><option value="hours">Hours tracked</option></select>
+        <input id="goalValue" type="number" min="1" max="24" step="1" value="5">
+        <span id="goalUnit" class="goal-unit"></span>
+      </div>
+      <p class="td-hint">A progress bar appears under the capacity arc; hit it to build a 🔥 streak.</p>
     </div>
     <div class="set-group">
       <div class="set-h">Appearance</div>
@@ -2499,6 +2521,7 @@ function renderArc(){
     const tr=document.getElementById('capRingTrk'); tr.setAttribute('stroke-dasharray',C2); tr.setAttribute('stroke-dashoffset',C2*(1-tPct));
     document.getElementById('capRingTxt').textContent=Math.round(pPct*100)+'%';
   }
+  renderGoal();
 }
 function renderNow(){
   const card=document.getElementById('nowCard');
@@ -4719,6 +4742,46 @@ function setSoundVol(v){ soundVol=v; try{localStorage.setItem(LS_PREFIX+'_soundv
   const l=document.getElementById('soundVolVal'); if(l) l.textContent=Math.round(v*100)+'%'; if(soundOn) playSound('start'); }
 function markSound(){ const c=document.getElementById('dispSound'); if(c) c.checked=soundOn;
   const w=document.getElementById('soundVolWrap'); if(w) w.style.display=soundOn?'flex':'none'; }
+/* ---------- daily goal & streak ---------- */
+let goalType='off', goalValue=5, goalStreak=0, goalLastMet='';
+function loadGoal(){ try{
+  goalType=localStorage.getItem(LS_PREFIX+'_goaltype')||'off';
+  goalValue=parseFloat(localStorage.getItem(LS_PREFIX+'_goalval'))||5;
+  goalStreak=parseInt(localStorage.getItem(LS_PREFIX+'_goalstreak'))||0;
+  goalLastMet=localStorage.getItem(LS_PREFIX+'_goallastmet')||'';
+}catch(e){} }
+function saveGoalStreak(){ try{ localStorage.setItem(LS_PREFIX+'_goalstreak',String(goalStreak)); localStorage.setItem(LS_PREFIX+'_goallastmet',goalLastMet); }catch(e){} }
+function setGoalType(v){ goalType=v; try{localStorage.setItem(LS_PREFIX+'_goaltype',v);}catch(e){} updateGoalUnit(); renderGoal(); }
+function setGoalValue(v){ goalValue=Math.max(1,v||1); try{localStorage.setItem(LS_PREFIX+'_goalval',String(goalValue));}catch(e){} renderGoal(); }
+function updateGoalUnit(){ const u=document.getElementById('goalUnit'); if(u) u.textContent=goalType==='hours'?'hours':(goalType==='tasks'?'tasks':''); }
+function goalProgress(){
+  if(goalType==='off') return null;
+  if(goalType==='tasks') return {cur:state.tasks.filter(t=>t.done).length, target:goalValue, unit:'tasks', met:state.tasks.filter(t=>t.done).length>=goalValue};
+  let ms=0; state.tasks.forEach(t=>ms+=liveActual(t)); const h=ms/3600000;
+  return {cur:h, target:goalValue, unit:'hours', met:h>=goalValue};
+}
+function renderGoal(){
+  const bar=document.getElementById('goalBar'); if(!bar) return;
+  const p=goalProgress();
+  if(!p){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  const fill=document.getElementById('goalFill'); fill.style.width=Math.min(100,p.target?p.cur/p.target*100:0)+'%'; fill.classList.toggle('met',p.met);
+  const cur=goalType==='hours'?p.cur.toFixed(1).replace(/\.0$/,'')+'h':Math.floor(p.cur);
+  const tgt=goalType==='hours'?p.target+'h':p.target;
+  document.getElementById('goalTxt').textContent=cur+' / '+tgt+(goalStreak>0?(' · 🔥 '+goalStreak):'')+(p.met?' ✓':'');
+  checkGoal(p);
+}
+function checkGoal(p){
+  if(!p||!p.met) return;
+  if(!isSameDay(viewDate,new Date())) return;          // only the real today builds the streak
+  const today=dayKeyFor(new Date()).slice(4);
+  if(goalLastMet===today) return;                      // already counted today
+  const yd=new Date(); yd.setDate(yd.getDate()-1); const yKey=dayKeyFor(yd).slice(4);
+  goalStreak=(goalLastMet===yKey)?goalStreak+1:1;
+  goalLastMet=today; saveGoalStreak();
+  if(!reduceMotion()) celebrate(null); playSound('goal');
+  toast('Daily goal reached! 🔥 '+goalStreak+'-day streak');
+}
 // short pleasant tones; types: complete (rising arpeggio), start (single blip), break (two-tone)
 function playSound(type){
   if(!soundOn) return;
@@ -4865,7 +4928,11 @@ async function initServiceWorker(){
 }
 /* ---------- wire up ---------- */
 showVersion();
-function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION; document.getElementById('settingsDialog').showModal(); }
+function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION;
+  const gt=document.getElementById('goalType'); if(gt) gt.value=goalType;
+  const gv=document.getElementById('goalValue'); if(gv) gv.value=goalValue;
+  updateGoalUnit();
+  document.getElementById('settingsDialog').showModal(); }
 document.getElementById('settingsBtn').addEventListener('click',openSettings);
 document.getElementById('settingsDone').addEventListener('click',()=>document.getElementById('settingsDialog').close());
 // clicking any action in Settings closes it so its own dialog / flow takes over
@@ -4904,6 +4971,8 @@ document.getElementById('paletteSeg').addEventListener('click',e=>{ const b=e.ta
 document.getElementById('accentPicker').addEventListener('input',e=>setAccent(e.target.value));
 document.getElementById('dispSound').addEventListener('change',e=>setSound(e.target.checked));
 document.getElementById('soundVol').addEventListener('input',e=>setSoundVol(parseFloat(e.target.value)));
+document.getElementById('goalType').addEventListener('change',e=>setGoalType(e.target.value));
+document.getElementById('goalValue').addEventListener('input',e=>setGoalValue(parseFloat(e.target.value)));
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -5310,7 +5379,7 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
   try{ applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadPalette,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,
+  [loadDisplay,loadDensityAccent,loadPalette,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,
    applyDisplay,applyDensityAccent,applyPalette,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
