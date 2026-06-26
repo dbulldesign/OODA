@@ -178,6 +178,9 @@
   .arc .seg{position:absolute;top:0;height:100%;transition:width .5s cubic-bezier(.4,0,.2,1),left .5s cubic-bezier(.4,0,.2,1)}
   .arc .tracked{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,rgba(31,42,44,.22)0,rgba(31,42,44,.22)4px,transparent 4px,transparent 8px);transition:width .5s cubic-bezier(.4,0,.2,1)}
   .arc .overzone{position:absolute;top:0;right:0;height:100%;background:repeating-linear-gradient(45deg,var(--cap-over-soft)0,var(--cap-over-soft)5px,transparent 5px,transparent 10px)}
+  #capRing{width:96px;height:96px;display:block;margin:6px auto 2px}
+  #capRing circle{transition:stroke-dashoffset .5s cubic-bezier(.4,0,.2,1)}
+  html.cap-ring .arc{display:none}
   .arc-foot{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-faint);margin-top:7px}
   .arc-foot .warn{color:var(--cap-over);font-weight:600}
 
@@ -879,6 +882,12 @@
     <div class="arc" id="arc">
       <div class="overzone" id="overzone" style="display:none"></div>
     </div>
+    <svg id="capRing" viewBox="0 0 80 80" style="display:none">
+      <circle cx="40" cy="40" r="32" fill="none" stroke="var(--surface-2)" stroke-width="9"/>
+      <circle id="capRingFill" cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="9" stroke-linecap="round" transform="rotate(-90 40 40)"/>
+      <circle id="capRingTrk" cx="40" cy="40" r="21" fill="none" stroke="var(--ink-soft)" stroke-width="5" stroke-linecap="round" transform="rotate(-90 40 40)" opacity=".55"/>
+      <text id="capRingTxt" x="40" y="45" text-anchor="middle" font-size="16" font-weight="700" fill="var(--ink)"></text>
+    </svg>
     <div class="arc-foot">
       <span id="arcMsg">Plan your day — estimates fill the bar.</span>
       <span id="capLabel"></span>
@@ -1216,6 +1225,13 @@
       <div class="disp-sizes" id="blockColorSeg">
         <button type="button" data-bc="channel">Channel</button>
         <button type="button" data-bc="priority">Priority</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Capacity display</label>
+      <div class="disp-sizes" id="capDispSeg">
+        <button type="button" data-cd="bar">Bar</button>
+        <button type="button" data-cd="ring">Ring</button>
       </div>
     </div>
     <div class="td-field">
@@ -2112,6 +2128,16 @@ function renderArc(){
     const d=document.createElement('span'); d.className='ch';
     d.innerHTML='<span class="dot" style="background:'+c.color+'"></span>'+c.name+' '+minFmt(byCh[c.id]);
     leg.appendChild(d); });
+  // optional capacity ring (vs the bar)
+  const ring=capDisplay==='ring';
+  document.getElementById('arc').style.display=ring?'none':'';
+  const rs=document.getElementById('capRing'); rs.style.display=ring?'block':'none';
+  if(ring){ const C1=2*Math.PI*32, C2=2*Math.PI*21;
+    const pPct=capMs?Math.min(1,plannedMs/capMs):0, tPct=capMs?Math.min(1,trackedMs/capMs):0;
+    const f=document.getElementById('capRingFill'); f.setAttribute('stroke-dasharray',C1); f.setAttribute('stroke-dashoffset',C1*(1-pPct)); f.setAttribute('stroke',plannedMs>capMs?'var(--cap-over)':'var(--accent)');
+    const tr=document.getElementById('capRingTrk'); tr.setAttribute('stroke-dasharray',C2); tr.setAttribute('stroke-dashoffset',C2*(1-tPct));
+    document.getElementById('capRingTxt').textContent=Math.round(pPct*100)+'%';
+  }
 }
 function renderNow(){
   const card=document.getElementById('nowCard');
@@ -2757,6 +2783,10 @@ function blockBg(t){ return blockColorBy==='priority' ? prioColor(t) : chById(t.
 function loadBlockColor(){ try{ blockColorBy=localStorage.getItem(LS_PREFIX+'_blockcolor')||'channel'; }catch(e){} }
 function setBlockColor(v){ blockColorBy=v; try{localStorage.setItem(LS_PREFIX+'_blockcolor',v);}catch(e){} markBlockColor(); if(viewMode==='day') renderCal(); }
 function markBlockColor(){ document.querySelectorAll('#blockColorSeg button').forEach(b=>b.classList.toggle('on',b.dataset.bc===blockColorBy)); }
+let capDisplay='bar';
+function loadCapDisplay(){ try{ capDisplay=localStorage.getItem(LS_PREFIX+'_capdisp')||'bar'; }catch(e){} }
+function setCapDisplay(v){ capDisplay=v; try{localStorage.setItem(LS_PREFIX+'_capdisp',v);}catch(e){} markCapDisplay(); renderArc(); }
+function markCapDisplay(){ document.querySelectorAll('#capDispSeg button').forEach(b=>b.classList.toggle('on',b.dataset.cd===capDisplay)); }
 // animate a number element toward a target (hours), respecting reduced-motion
 function animateNum(el,to){ if(!el)return; const fmt=v=>(Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'')+'h';
   const from=parseFloat(el.dataset.v||'0'); el.dataset.v=to;
@@ -3982,7 +4012,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); buildDetailFields(); markDetailFields(); markDetailsMode();
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); markCapDisplay(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
@@ -4221,6 +4251,7 @@ document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.ta
 document.getElementById('fxIntInput').addEventListener('input',e=>setFxInt(parseFloat(e.target.value)));
 document.getElementById('fxWhenSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-w]'); if(b) setFxWhen(b.dataset.w); });
 document.getElementById('blockColorSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-bc]'); if(b) setBlockColor(b.dataset.bc); });
+document.getElementById('capDispSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-cd]'); if(b) setCapDisplay(b.dataset.cd); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -4624,7 +4655,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadBlockColor(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadBlockColor(); loadCapDisplay(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
