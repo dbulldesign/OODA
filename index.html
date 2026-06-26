@@ -1163,6 +1163,13 @@
       </div>
     </div>
     <div class="td-field">
+      <label>Color calendar blocks by</label>
+      <div class="disp-sizes" id="blockColorSeg">
+        <button type="button" data-bc="channel">Channel</button>
+        <button type="button" data-bc="priority">Priority</button>
+      </div>
+    </div>
+    <div class="td-field">
       <label>Accent color</label>
       <div class="accent-row" id="accentRow"></div>
     </div>
@@ -2030,8 +2037,8 @@ function renderArc(){
   if(plannedMs>capMs){ oz.style.display='block'; oz.style.width=((plannedMs-capMs)/scale*100)+'%'; }
   else oz.style.display='none';
 
-  document.getElementById('plannedH').textContent=(plannedMs/3600000).toFixed(1).replace(/\.0$/,'')+'h';
-  document.getElementById('trackedH').textContent=(trackedMs/3600000).toFixed(1).replace(/\.0$/,'')+'h';
+  animateNum(document.getElementById('plannedH'),plannedMs/3600000);
+  animateNum(document.getElementById('trackedH'),trackedMs/3600000);
   document.getElementById('capLabel').textContent=state.capacityHours+'h day';
   const msg=document.getElementById('arcMsg');
   if(plannedMs>capMs){ msg.innerHTML='<span class="warn">Over capacity — defer something.</span>'; }
@@ -2288,7 +2295,7 @@ function renderDay(){
     const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
     const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':''); b.dataset.id=t.id;
-    b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
+    b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
@@ -2388,7 +2395,7 @@ async function renderMulti(){
       const top=(sm-START)*PXM, dur=blockDur(t), h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),16);
       const info=lay[t.id]||{col:0,cols:1};
       const b=document.createElement('div'); b.className='cal-block mini'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(key===dayKey()&&t.id===daySel?' sel':''); b.dataset.id=t.id;
-      b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
+      b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
       b.style.left='calc('+(info.col/info.cols*100)+'% + 1px)'; b.style.width='calc('+(100/info.cols)+'% - 3px)'; b.style.right='auto';
       b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span></div><span class="cb-s">'+hmFromMin(t.scheduledMin)+' · '+escapeHtml(taskProjectLabel(t))+'</span>';
       b.addEventListener('contextmenu',e=>{ e.preventDefault(); if(key===dayKey()) openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); else openMultiEditor(key,t.id); });
@@ -2656,6 +2663,19 @@ function fmtDue(due){
   return { label, over:isOverdue(due), recurring:!!due.recurring, raw:due.string||'' };
 }
 function prioLabel(p){ return p===4?'P1':p===3?'P2':p===2?'P3':''; }
+let blockColorBy='channel';
+function prioColor(t){ const p=(t.todoistMeta&&t.todoistMeta.priority)||1; return p===4?'#B14233':p===3?'#C2752A':p===2?'#2E6B9E':'#7A746B'; }
+function blockBg(t){ return blockColorBy==='priority' ? prioColor(t) : chById(t.channelId).color; }
+function loadBlockColor(){ try{ blockColorBy=localStorage.getItem(LS_PREFIX+'_blockcolor')||'channel'; }catch(e){} }
+function setBlockColor(v){ blockColorBy=v; try{localStorage.setItem(LS_PREFIX+'_blockcolor',v);}catch(e){} markBlockColor(); if(viewMode==='day') renderCal(); }
+function markBlockColor(){ document.querySelectorAll('#blockColorSeg button').forEach(b=>b.classList.toggle('on',b.dataset.bc===blockColorBy)); }
+// animate a number element toward a target (hours), respecting reduced-motion
+function animateNum(el,to){ if(!el)return; const fmt=v=>(Math.round(v*10)/10).toFixed(1).replace(/\.0$/,'')+'h';
+  const from=parseFloat(el.dataset.v||'0'); el.dataset.v=to;
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(to-from)<0.05){ el.textContent=fmt(to); return; }
+  const start=performance.now(),dur=420;
+  (function step(now){ const p=Math.min(1,(now-start)/dur); const v=from+(to-from)*(1-Math.pow(1-p,3)); el.textContent=fmt(v); if(p<1)requestAnimationFrame(step); })(performance.now());
+}
 function extractLinks(text){
   const out=[], used=new Set(); if(!text) return out;
   let m; const md=/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
@@ -3809,7 +3829,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode();
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
@@ -4047,6 +4067,7 @@ document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.ta
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
 document.getElementById('fxIntInput').addEventListener('input',e=>setFxInt(parseFloat(e.target.value)));
 document.getElementById('fxWhenSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-w]'); if(b) setFxWhen(b.dataset.w); });
+document.getElementById('blockColorSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-bc]'); if(b) setBlockColor(b.dataset.bc); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -4436,7 +4457,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadBlockColor(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
