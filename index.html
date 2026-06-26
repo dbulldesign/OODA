@@ -555,6 +555,17 @@
     border-radius:20px;width:30px;height:30px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1}
   .theme-btn:hover{background:var(--surface-2);color:var(--ink)}
   .settings-btn{font-size:15px}
+  /* light/dark toggle switch */
+  .theme-toggle{border:1px solid var(--line-strong);background:var(--surface-2);border-radius:999px;
+    width:50px;height:28px;padding:2px;cursor:pointer;position:relative;display:inline-flex;align-items:center;flex:0 0 auto}
+  .theme-toggle:hover{background:var(--surface)}
+  .theme-toggle .tt-knob{width:22px;height:22px;border-radius:50%;background:var(--surface);
+    box-shadow:0 1px 3px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;
+    transition:transform .28s cubic-bezier(.4,0,.2,1)}
+  :root[data-theme="dark"] .theme-toggle{background:color-mix(in srgb,var(--accent) 30%,var(--surface-2))}
+  :root[data-theme="dark"] .theme-toggle .tt-knob{transform:translateX(22px)}
+  /* cross-fade the colours when toggling light/dark instead of a circular wipe */
+  html.theme-anim,html.theme-anim *{transition:background-color .34s ease,color .34s ease,border-color .34s ease,box-shadow .34s ease,fill .34s ease!important}
   /* header connection status pills */
   .conn-stat{display:flex;gap:6px;align-items:center}
   .cstat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);background:var(--surface);
@@ -918,7 +929,7 @@
         <span id="ph-plan">Plan</span>
         <span id="ph-work">Work</span>
         <span id="ph-reflect">Reflect</span>
-        <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
+        <button class="theme-toggle" id="themeBtn" role="switch" title="Toggle light / dark" aria-label="Toggle light / dark"><span class="tt-knob" id="themeKnob">☀️</span></button>
         <button class="theme-btn" id="helpBtn" title="Help & guide">?</button>
         <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
       </div>
@@ -4322,7 +4333,8 @@ function preferredTheme(){
 }
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme',theme);
-  const b=document.getElementById('themeBtn'); if(b) b.textContent = theme==='dark'?'☀️':'🌙';
+  const k=document.getElementById('themeKnob'); if(k) k.textContent = theme==='dark'?'🌙':'☀️';
+  const b=document.getElementById('themeBtn'); if(b) b.setAttribute('aria-checked', theme==='dark'?'true':'false');
   if(typeof applyGlassVars==='function') applyGlassVars();   // surface tint is theme-aware
 }
 /* ---------- display: wide layout + UI scale ---------- */
@@ -4451,28 +4463,16 @@ function openDispDialog(){ document.getElementById('dispWide').checked=dispWide;
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
+let themeAnimT=null;
 function toggleTheme(){
   const next = document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
-  // animate the swap: spin/scale the button and ripple the background
-  const b=document.getElementById('themeBtn');
-  if(b && !matchMedia('(prefers-reduced-motion: reduce)').matches){
-    b.animate([{transform:'rotate(0) scale(1)'},{transform:'rotate(180deg) scale(.6)'},{transform:'rotate(360deg) scale(1)'}],{duration:450,easing:'ease'});
-    themeRipple(b, next);
+  // cross-fade the colours between light and dark (the knob slides via CSS)
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    document.documentElement.classList.add('theme-anim');
+    clearTimeout(themeAnimT); themeAnimT=setTimeout(()=>document.documentElement.classList.remove('theme-anim'),420);
   }
   applyTheme(next);
   try{ localStorage.setItem(LS_PREFIX+'_theme',next); }catch(e){}
-}
-// circular reveal of the incoming theme from the toggle button
-function themeRipple(btn,next){
-  const r=btn.getBoundingClientRect();
-  const x=r.left+r.width/2, y=r.top+r.height/2;
-  const far=Math.hypot(Math.max(x,innerWidth-x),Math.max(y,innerHeight-y));
-  const ov=document.createElement('div');
-  const bg = next==='dark' ? '#15191B' : '#EBE8E0';
-  ov.style.cssText='position:fixed;inset:0;z-index:9998;pointer-events:none;background:'+bg+';clip-path:circle(0px at '+x+'px '+y+'px)';
-  document.body.appendChild(ov);
-  ov.animate([{clipPath:'circle(0px at '+x+'px '+y+'px)'},{clipPath:'circle('+far+'px at '+x+'px '+y+'px)'}],{duration:480,easing:'ease-in-out'})
-    .onfinish=()=>ov.remove();
 }
 
 /* ---------- celebration (confetti + pop) ---------- */
