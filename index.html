@@ -34,6 +34,36 @@
     --accent:#5FA37A;
     --todoist:#F06A5C;
   }
+  :root{ --glass-surface:rgba(255,255,255,.52); --glass-2:rgba(255,255,255,.34); --glass-brd:rgba(255,255,255,.55); --glass-hi:rgba(255,255,255,.65); --glass-sh:rgba(31,42,44,.14); }
+  :root[data-theme="dark"]{ --glass-surface:rgba(38,46,50,.46); --glass-2:rgba(48,56,60,.32); --glass-brd:rgba(255,255,255,.14); --glass-hi:rgba(255,255,255,.16); --glass-sh:rgba(0,0,0,.4); }
+  #glassbg{display:none}
+  /* ---------- liquid glass theme ---------- */
+  html.glass body{background:transparent}
+  html.glass #glassbg{display:block;position:fixed;inset:0;z-index:-1;
+    background:
+      radial-gradient(42vw 42vw at 10% 14%, color-mix(in srgb,var(--accent) 42%,transparent), transparent 62%),
+      radial-gradient(46vw 46vw at 90% 8%, rgba(46,107,158,.40), transparent 60%),
+      radial-gradient(54vw 54vw at 78% 92%, rgba(194,117,42,.34), transparent 62%),
+      radial-gradient(50vw 50vw at 20% 96%, rgba(91,75,158,.32), transparent 62%),
+      var(--paper);
+    filter:saturate(1.12)}
+  html.glass .now,html.glass .arc-card,html.glass .reflect,html.glass dialog,html.glass .cal-grid,
+  html.glass .cal-backlog,html.glass .task,html.glass .completed,html.glass .help-card,html.glass .bd-col,
+  html.glass .menu,html.glass .ac-menu,html.glass .sa-results,html.glass .bulk-bar,html.glass .cal-inspector,
+  html.glass .rev-card,html.glass .tpl-row{
+    background:var(--glass-surface)!important;
+    -webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);
+    border:1px solid var(--glass-brd);
+    box-shadow:0 8px 30px var(--glass-sh), inset 0 1px 0 var(--glass-hi)}
+  /* lighter chrome elements: translucent but no heavy blur for perf */
+  html.glass .add input.name,html.glass .ctlsel,html.glass .ctlsearch,html.glass .sync-btn,html.glass .cstat,
+  html.glass .vtab,html.glass .btn-mini,html.glass .theme-btn,html.glass .add select,html.glass .add input.est,
+  html.glass .set-grid button,html.glass .day-span,html.glass .disp-sizes button{
+    background:var(--glass-2);border-color:var(--glass-brd)}
+  html.glass .now.active{background:var(--glass-surface)}
+  html.glass .task.running{background:var(--glass-surface)}
+  html.glass .viewtabs{border-color:var(--glass-brd);background:transparent}
+  html.glass header,html.glass .listctl{background:transparent}
   *{box-sizing:border-box}
   html,body{margin:0}
   /* native-app feel on iOS: no pinch / double-tap zoom, no text auto-resize,
@@ -748,6 +778,7 @@
     if(!s) s=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
     document.documentElement.setAttribute('data-theme',s);
     if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
+    if(localStorage.getItem('ooda:_glass')==='1') document.documentElement.classList.add('glass');
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
     if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
     var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
@@ -919,6 +950,7 @@
   <button id="updateBtn">Update &amp; reload</button>
   <button id="updateDismiss" title="Dismiss">✕</button>
 </div>
+<div id="glassbg" aria-hidden="true"></div>
 <div class="toast" id="toast"></div>
 <div id="confetti" aria-hidden="true"></div>
 
@@ -1111,6 +1143,7 @@
   <div class="dlg-in">
     <h3>Display</h3>
     <label class="td-check"><input type="checkbox" id="dispWide"> Fill the screen (wide layout)</label>
+    <label class="td-check"><input type="checkbox" id="dispGlass"> Liquid glass theme (frosted surfaces)</label>
     <label class="td-check"><input type="checkbox" id="dispNotify"> Remind me 5 min before each scheduled block</label>
     <div class="td-field">
       <label>Text &amp; UI size</label>
@@ -3703,7 +3736,10 @@ function applyTheme(theme){
 }
 /* ---------- display: wide layout + UI scale ---------- */
 let dispWide=false, dispScale=1;
-function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; }catch(e){} }
+function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; glassOn=localStorage.getItem(LS_PREFIX+'_glass')==='1'; }catch(e){} }
+let glassOn=false;
+function applyGlass(){ document.documentElement.classList.toggle('glass',glassOn); }
+function setGlass(v){ glassOn=v; try{localStorage.setItem(LS_PREFIX+'_glass',v?'1':'0');}catch(e){} applyGlass(); }
 /* density + accent color */
 let density='comfortable', accent='';
 function loadDensityAccent(){ try{ density=localStorage.getItem(LS_PREFIX+'_density')||'comfortable'; accent=localStorage.getItem(LS_PREFIX+'_accent')||''; }catch(e){} }
@@ -3764,6 +3800,7 @@ function applyViewTransition(fn){
 function applyDisplay(){
   document.documentElement.classList.toggle('wide',dispWide);
   document.documentElement.style.zoom = dispScale===1? '' : String(dispScale);
+  applyGlass();
 }
 function markSizes(){ document.querySelectorAll('#dispSizes button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.s)===dispScale)); }
 function buildFxChoices(){
@@ -3772,7 +3809,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode();
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
@@ -4004,6 +4041,7 @@ document.getElementById('themeBtn').addEventListener('click',toggleTheme);
 document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
+document.getElementById('dispGlass').addEventListener('change',e=>setGlass(e.target.checked));
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
