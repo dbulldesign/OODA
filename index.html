@@ -595,6 +595,7 @@
   .cal-block:hover .cb-pin{opacity:.85}
   .cal-block .cb-pin.on{opacity:1;background:rgba(0,0,0,.34)}
   .cal-block.pinned{border-color:rgba(255,255,255,.85);box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 1.5px rgba(255,255,255,.5)}
+  .cal-block.sel{outline:2.5px solid var(--accent);outline-offset:1px;z-index:5}
   .cal-now{position:absolute;left:46px;right:0;height:0;border-top:2px solid var(--over);z-index:3}
   .cal-now::before{content:'';position:absolute;left:0;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--over)}
 
@@ -1085,6 +1086,7 @@
       <kbd>[</kbd><span>Previous day</span>
       <kbd>]</kbd><span>Next day</span>
       <kbd>t</kbd><span>Jump to today</span>
+      <kbd>↑↓</kbd><span>Day view: move the selected block (⇧ to resize)</span>
       <kbd>⌘K</kbd><span>Command palette (⌘K / Ctrl+K)</span>
       <kbd>?</kbd><span>This help</span>
     </div>
@@ -1205,6 +1207,7 @@ const expandedTasks=new Set();
 let viewMode='list', sortMode='manual', filterKey='all', calSel=null, lastCanvas=null, searchQuery='', showCompleted=false, listLayout='list';
 let selectMode=false; const selected=new Set();      // bulk selection
 let searchAll=false;                                 // search across every stored day
+let daySel=null;                                     // keyboard-selected calendar block (Day view)
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -1974,7 +1977,9 @@ function doFill(){
   toast(n? ('Placed '+n+' task'+(n===1?'':'s')+'.') : 'No room to place tasks — free up time or extend the day.');
 }
 function renderDay(){
-  const cal=document.getElementById('calView'); cal.innerHTML='';
+  const cal=document.getElementById('calView');
+  const prevScroll=(()=>{ const s=cal.querySelector('.cal-scroll'); return s?s.scrollTop:null; })();
+  cal.innerHTML='';
   const START=calStart(), END=calEnd();
   const sched=state.tasks.filter(t=>t.scheduledMin!=null);
   const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
@@ -2041,7 +2046,7 @@ function renderDay(){
     const dur=blockDur(t);
     const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
-    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':''); b.dataset.id=t.id;
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':''); b.dataset.id=t.id;
     b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
@@ -2061,7 +2066,8 @@ function renderDay(){
   if(nowMin>=START&&nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
   scroll.appendChild(canvas); grid.appendChild(scroll); body.appendChild(grid); cal.appendChild(body);
   lastCanvas=canvas;
-  requestAnimationFrame(()=>{ scroll.scrollTop = (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
+  requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null) ? prevScroll
+    : (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
 }
 async function quickAddAt(mins){
   const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,
@@ -2108,7 +2114,7 @@ function attachBlockDrag(b,t,START,END){
     if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
     if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!moved){ if(m==='move') openTaskEditor(t.id); return; }
+    if(!moved){ daySel=t.id; if(m==='move') openTaskEditor(t.id); return; }
     if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); haptic(12); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
@@ -3716,6 +3722,32 @@ function moveKbd(dir){ const rows=kbdRows(); if(!rows.length){ kbdId=null; retur
   kbdId=rows[i].dataset.id; refreshKbd(); rows[i].scrollIntoView({block:'nearest'}); }
 function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
 document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
+/* ---------- Day view: keyboard-select a block, move/resize with arrows ---------- */
+function dayBlocks(){ return scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin); }
+function daySelMove(dir){ const arr=dayBlocks(); if(!arr.length){ daySel=null; return; }
+  let i=arr.findIndex(t=>t.id===daySel);
+  i = i<0 ? (dir>0?0:arr.length-1) : Math.min(arr.length-1,Math.max(0,i+dir));
+  daySel=arr[i].id; renderDay();
+  const el=document.querySelector('.cal-block[data-id="'+daySel+'"]'); if(el) el.scrollIntoView({block:'nearest'}); }
+function daySelShift(deltaMin){ const t=state.tasks.find(x=>x.id===daySel); if(!t)return;
+  t.scheduledMin=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(t.scheduledMin+deltaMin)));
+  pushTimeToTodoist(t); maybeAutoArrange(); saveDay(); renderDay(); }
+function daySelResize(deltaMin){ const t=state.tasks.find(x=>x.id===daySel); if(!t)return;
+  t.estimateMin=Math.max(SNAP,(t.estimateMin||SNAP)+deltaMin); maybeAutoArrange(); saveDay(); renderDay(); }
+function handleDayKey(e){
+  switch(e.key){
+    case 'j': daySelMove(1); return true;
+    case 'k': daySelMove(-1); return true;
+    case 'ArrowDown': e.shiftKey?daySelResize(SNAP):daySelShift(SNAP); return true;
+    case 'ArrowUp': e.shiftKey?daySelResize(-SNAP):daySelShift(-SNAP); return true;
+    case 'Enter': case 'e': if(daySel) openTaskEditor(daySel); return true;
+    case ' ': if(daySel) toggleRun(daySel); return true;
+    case 'x': if(daySel) toggleDone(daySel); return true;
+    case 'd': if(daySel) removeTask(daySel); return true;
+    case 'Escape': if(daySel){ daySel=null; renderDay(); return true; } return false;
+  }
+  return false;
+}
 /* ---------- command palette (⌘K / Ctrl+K) ---------- */
 let cmdkAll=[], cmdkItems=[], cmdkIndex=0;
 function cmdkCommands(){ return [
@@ -3777,6 +3809,8 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){ if(typing&&t.blur)t.blur(); return; }
   if(typing||e.metaKey||e.ctrlKey||e.altKey) return;
   if(document.querySelector('dialog[open]')) return;            // don't hijack keys inside modals
+  // Day view: arrow-move / resize the selected block (falls through for nav keys)
+  if((viewMode==='day'||viewMode==='multi') && handleDayKey(e)){ e.preventDefault(); return; }
   switch(e.key){
     case 'n': e.preventDefault(); document.getElementById('addName').focus(); break;
     case '/': { const s=document.getElementById('searchInp'); if(s&&s.style.display!=='none'){ e.preventDefault(); s.focus(); } break; }
