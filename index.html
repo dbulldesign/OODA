@@ -889,7 +889,6 @@
   </div>
 
   <div class="tools">
-    <a id="settingsLink">⚙ Settings</a>
     <input type="file" id="backupFile" accept="application/json,.json" style="display:none">
     <span class="meta-line"><span id="storeState"></span><span id="appVer" class="app-ver" title="App version"></span></span>
   </div>
@@ -3967,7 +3966,6 @@ async function initServiceWorker(){
 showVersion();
 function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION; document.getElementById('settingsDialog').showModal(); }
 document.getElementById('settingsBtn').addEventListener('click',openSettings);
-document.getElementById('settingsLink').addEventListener('click',openSettings);
 document.getElementById('settingsDone').addEventListener('click',()=>document.getElementById('settingsDialog').close());
 // clicking any action in Settings closes it so its own dialog / flow takes over
 document.getElementById('settingsDialog').addEventListener('click',e=>{ if(e.target.closest('.set-grid button')) document.getElementById('settingsDialog').close(); });
