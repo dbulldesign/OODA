@@ -106,6 +106,10 @@ footer shows which mode is active).
     the editor's **Schedule at** field, and the editor has an **↩ Unschedule**
     button to send a task back to Unscheduled. Tapping an event in Day / Week /
     Month opens its details. Over-capacity is flagged in **orange**.
+  - **3-day** (toggle in the Day header, *1 day / 3 days*): the same time-grid
+    across three day columns sharing one axis. Drag a block up/down to change its
+    time or **across columns to change its day**, drag to Unscheduled to remove
+    it, tap an empty slot to add, and tap a column header to jump to that day.
   - **Week**: a 7-day overview of each day's tasks and scheduled times; tap a day
     to jump in and plan it.
 - Each task row has a **⋯ menu** (Edit / schedule, Details, Delete) next to the

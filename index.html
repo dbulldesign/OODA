@@ -596,6 +596,28 @@
   .cal-block .cb-pin.on{opacity:1;background:rgba(0,0,0,.34)}
   .cal-block.pinned{border-color:rgba(255,255,255,.85);box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 1.5px rgba(255,255,255,.5)}
   .cal-block.sel{outline:2.5px solid var(--accent);outline-offset:1px;z-index:5}
+  /* day-span toggle + multi-day grid */
+  .day-span{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;margin-right:8px}
+  .day-span button{border:0;background:var(--surface);color:var(--ink-soft);font-size:12px;padding:5px 9px;cursor:pointer;font-family:var(--display)}
+  .day-span button.on{background:var(--ink);color:var(--surface)}
+  .multi-head{display:flex;gap:0;margin-bottom:4px}
+  .multi-head .multi-axis-sp{width:46px;flex:none}
+  .multi-dh{flex:1;min-width:0;border:0;background:none;border-bottom:2px solid transparent;color:var(--ink-soft);
+    font-size:12px;padding:4px 2px;cursor:pointer;display:flex;gap:4px;align-items:baseline;justify-content:center}
+  .multi-dh .md-dom{font-weight:700;color:var(--ink)}
+  .multi-dh.today{color:var(--accent)}.multi-dh.today .md-dom{color:var(--accent)}
+  .multi-dh.sel{border-bottom-color:var(--accent)}
+  .multi-body{position:relative;display:flex}
+  .multi-axis{width:46px;flex:none;position:relative}
+  .multi-hl{position:absolute;left:0;right:4px;text-align:right;font-size:10.5px;color:var(--ink-faint);transform:translateY(-50%)}
+  .multi-col{flex:1;min-width:0;position:relative;border-left:1px solid var(--line)}
+  .multi-col.drop{background:var(--now-soft)}
+  .multi-canvas{position:absolute;inset:0}
+  .cal-hour.pl{left:0;right:0;padding-left:0}
+  .multi-canvas .cal-half{left:0}
+  .cal-block.mini{font-size:11px;padding:2px 5px;left:1px;right:1px}
+  .cal-block.mini .cb-row{line-height:1.15}
+  .cal-block.mini .cb-s{font-size:9.5px;opacity:.92}
   .cal-now{position:absolute;left:46px;right:0;height:0;border-top:2px solid var(--over);z-index:3}
   .cal-now::before{content:'';position:absolute;left:0;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--over)}
 
@@ -1208,6 +1230,7 @@ let viewMode='list', sortMode='manual', filterKey='all', calSel=null, lastCanvas
 let selectMode=false; const selected=new Set();      // bulk selection
 let searchAll=false;                                 // search across every stored day
 let daySel=null;                                     // keyboard-selected calendar block (Day view)
+let dayCols=1;                                        // Day view: 1 day or a 3-day multi-column grid
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -1557,7 +1580,7 @@ function render(){
   if(notList){ document.getElementById('completedWrap').style.display='none'; }
   if(monthView){ renderMonth(); renderArc(); renderNow(); renderPhase(); return; }
   if(weekView){ renderWeek(); renderArc(); renderNow(); renderPhase(); return; }
-  if(dayView){ renderDay(); renderArc(); renderNow(); renderPhase(); return; }
+  if(dayView){ if(dayCols>1) renderMulti(); else renderDay(); renderArc(); renderNow(); renderPhase(); return; }
   // list view — flat list or board (kanban by channel)
   const board=document.getElementById('boardView');
   if(listLayout==='board'){
@@ -1991,9 +2014,11 @@ function renderDay(){
       (schedMin>capMin?'<span class="warn">over by '+((schedMin-capMin)/60).toFixed(1).replace(/\.0$/,'')+'h</span>':'')+'</div>'+
       '<div class="cal-cap-bar"><div class="cal-cap-fill'+(schedMin>capMin?' over':'')+'" style="width:'+pct+'%"></div></div></div>'+
     '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>'+
-    '<div class="cal-arrange"><label class="aa-toggle"><input type="checkbox" id="aaToggle"'+(state.autoArrange?' checked':'')+'> Auto-arrange</label>'+
+    '<div class="cal-arrange"><span class="day-span" id="daySpan"><button data-c="1" class="on">1 day</button><button data-c="3">3 days</button></span>'+
+      '<label class="aa-toggle"><input type="checkbox" id="aaToggle"'+(state.autoArrange?' checked':'')+'> Auto-arrange</label>'+
       '<button id="tidyBtn" class="aa-btn">Tidy day</button></div>';
   cal.appendChild(head);
+  head.querySelector('#daySpan').addEventListener('click',e=>{ const b=e.target.closest('button[data-c]'); if(b) setDayCols(+b.dataset.c); });
   head.querySelector('#dayStartInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayStartH=Math.floor(m/60); if(state.dayStartH>=state.dayEndH)state.dayStartH=state.dayEndH-1; saveConfig(); renderDay(); } });
   head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderDay(); } });
   head.querySelector('#aaToggle').addEventListener('change',e=>{ state.autoArrange=e.target.checked; saveConfig(); if(state.autoArrange){ reflowCascade(); saveDay(); } renderDay(); toast(state.autoArrange?'Auto-arrange on — new tasks reflow the day.':'Auto-arrange off.'); });
@@ -2068,6 +2093,144 @@ function renderDay(){
   lastCanvas=canvas;
   requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null) ? prevScroll
     : (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
+}
+function setDayCols(n){ dayCols=n; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
+/* ---------- multi-day (N-day) time grid ---------- */
+async function dayAwareUpdate(keyStr,id,fn){
+  if(keyStr===dayKey()){ const t=state.tasks.find(x=>x.id===id); if(t){ fn(t); await saveDay(); } }
+  else { const rec=await sget(keyStr); if(rec&&rec.tasks){ const t=rec.tasks.find(x=>x.id===id); if(t){ fn(t); await ssetDay(keyStr,rec); } } }
+}
+async function renderMulti(){
+  const cal=document.getElementById('calView');
+  const prevScroll=(()=>{ const s=cal.querySelector('.cal-scroll'); return s?s.scrollTop:null; })();
+  cal.innerHTML='';
+  const START=calStart(), END=calEnd();
+  const sched=state.tasks.filter(t=>t.scheduledMin!=null);
+  const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
+  const schedMin=sched.filter(t=>!t.done).reduce((s,t)=>s+blockDur(t),0);
+  const capMin=state.capacityHours*60, pct=capMin?Math.min(100,schedMin/capMin*100):0;
+  // header (capacity for the first day) + controls + day-span toggle
+  const head=document.createElement('div'); head.className='cal-head';
+  head.innerHTML='<div class="cal-cap"><div class="cal-cap-row"><span><b>'+(schedMin/60).toFixed(1).replace(/\.0$/,'')+'h</b> scheduled · '+state.capacityHours+'h capacity</span>'+
+      (schedMin>capMin?'<span class="warn">over by '+((schedMin-capMin)/60).toFixed(1).replace(/\.0$/,'')+'h</span>':'')+'</div>'+
+      '<div class="cal-cap-bar"><div class="cal-cap-fill'+(schedMin>capMin?' over':'')+'" style="width:'+pct+'%"></div></div></div>'+
+    '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>'+
+    '<div class="cal-arrange"><span class="day-span" id="daySpan"><button data-c="1">1 day</button><button data-c="3" class="on">3 days</button></span>'+
+      '<label class="aa-toggle"><input type="checkbox" id="aaToggle"'+(state.autoArrange?' checked':'')+'> Auto-arrange</label>'+
+      '<button id="tidyBtn" class="aa-btn">Tidy day</button></div>';
+  cal.appendChild(head);
+  head.querySelector('#daySpan').addEventListener('click',e=>{ const b=e.target.closest('button[data-c]'); if(b) setDayCols(+b.dataset.c); });
+  head.querySelector('#dayStartInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayStartH=Math.floor(m/60); if(state.dayStartH>=state.dayEndH)state.dayStartH=state.dayEndH-1; saveConfig(); renderMulti(); } });
+  head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderMulti(); } });
+  head.querySelector('#aaToggle').addEventListener('change',e=>{ state.autoArrange=e.target.checked; saveConfig(); if(state.autoArrange){ reflowCascade(); saveDay(); } renderMulti(); });
+  head.querySelector('#tidyBtn').addEventListener('click',()=>{ compactDay(); saveDay(); renderMulti(); });
+  // backlog (first day) — also a drop target to unschedule
+  const bl=document.createElement('div'); bl.className='cal-backlog'; lastBacklog=bl;
+  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled · '+viewDate.toLocaleDateString(undefined,{weekday:'short'})+'</h4>'+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div>';
+  const fb=bl.querySelector('#fillBtn'); if(fb) fb.addEventListener('click',openFillDialog);
+  const chips=document.createElement('div'); chips.className='cal-chips';
+  if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
+  back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button'); c.className='cal-chip';
+    c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+(t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
+    c.addEventListener('pointerdown',e=>startMultiChipDrag(e,t,c)); chips.appendChild(c); });
+  bl.appendChild(chips);
+  const body=document.createElement('div'); body.className='cal-body'; body.appendChild(bl);
+  // build N day columns
+  const N=dayCols; const days=[]; for(let i=0;i<N;i++){ const d=new Date(viewDate); d.setDate(d.getDate()+i); d.setHours(12,0,0,0); days.push(d); }
+  const colTasks=await Promise.all(days.map((d,i)=> i===0 ? Promise.resolve(state.tasks) : sget(dayKeyFor(d)).then(r=>(r&&r.tasks)||[]) ));
+  const grid=document.createElement('div'); grid.className='cal-grid';
+  const colHead=document.createElement('div'); colHead.className='multi-head';
+  colHead.innerHTML='<div class="multi-axis-sp"></div>';
+  days.forEach(d=>{ const h=document.createElement('button'); h.className='multi-dh'+(isSameDay(d,new Date())?' today':'')+(isSameDay(d,viewDate)?' sel':'');
+    h.innerHTML='<span class="md-dow">'+d.toLocaleDateString(undefined,{weekday:'short'})+'</span> <span class="md-dom">'+d.getDate()+'</span>';
+    h.addEventListener('click',()=>gotoDate(d)); colHead.appendChild(h); });
+  grid.appendChild(colHead);
+  const scroll=document.createElement('div'); scroll.className='cal-scroll';
+  const mbody=document.createElement('div'); mbody.className='multi-body'; mbody.style.height=((END-START)*PXM)+'px';
+  const axis=document.createElement('div'); axis.className='multi-axis';
+  for(let mm=START; mm<=END; mm+=60){ const lab=document.createElement('div'); lab.className='multi-hl'; lab.style.top=((mm-START)*PXM)+'px'; lab.textContent=hmFromMin(mm); axis.appendChild(lab); }
+  mbody.appendChild(axis);
+  const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
+  days.forEach((d,ci)=>{
+    const key=dayKeyFor(d); const col=document.createElement('div'); col.className='multi-col'; col.dataset.key=key;
+    const canvas=document.createElement('div'); canvas.className='multi-canvas';
+    for(let mm=START; mm<=END; mm+=60){ const y=(mm-START)*PXM; const hr=document.createElement('div'); hr.className='cal-hour pl'; hr.style.top=y+'px'; canvas.appendChild(hr);
+      if(mm<END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); } }
+    if(isSameDay(d,new Date()) && nowMin>=START && nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
+    canvas.addEventListener('click',e=>{ if(e.target!==canvas && !e.target.classList.contains('cal-hour') && !e.target.classList.contains('cal-half')) return;
+      const r=canvas.getBoundingClientRect(); let mins=snap(START+(e.clientY-r.top)/PXM); mins=Math.max(START,Math.min(END-SNAP,mins));
+      multiQuickAdd(d,key,mins,ci===0); });
+    const blocks=colTasks[ci].filter(t=>t.scheduledMin!=null);
+    const items=blocks.map(t=>{ const s=Math.max(START,Math.min(END,t.scheduledMin)); return {t,s,e:s+blockDur(t)}; });
+    const lay=layoutOverlap(items);
+    blocks.forEach(t=>{ const ch=chById(t.channelId); const sm=Math.max(START,Math.min(END,t.scheduledMin));
+      const top=(sm-START)*PXM, dur=blockDur(t), h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),16);
+      const info=lay[t.id]||{col:0,cols:1};
+      const b=document.createElement('div'); b.className='cal-block mini'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(key===dayKey()&&t.id===daySel?' sel':''); b.dataset.id=t.id;
+      b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
+      b.style.left='calc('+(info.col/info.cols*100)+'% + 1px)'; b.style.width='calc('+(100/info.cols)+'% - 3px)'; b.style.right='auto';
+      b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span></div><span class="cb-s">'+hmFromMin(t.scheduledMin)+'</span>';
+      b.addEventListener('contextmenu',e=>{ e.preventDefault(); if(key===dayKey()) openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); else openMultiEditor(key,t.id); });
+      attachMultiDrag(b,t,key,START,END);
+      canvas.appendChild(b); });
+    col.appendChild(canvas); mbody.appendChild(col);
+  });
+  scroll.appendChild(mbody); grid.appendChild(scroll); body.appendChild(grid); cal.appendChild(body);
+  requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null)?prevScroll : (nowMin>=START&&nowMin<=END)?Math.max(0,(nowMin-START)*PXM-140):0; });
+}
+async function multiQuickAdd(dateObj,key,mins,isDay0){
+  const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:mins};
+  if(isDay0){ state.tasks.unshift(t); await saveDay(); render(); openTaskEditor(t.id); setTimeout(()=>{ const i=document.getElementById('teTitle'); if(i){i.focus();i.select();} },60); }
+  else { await addTaskToDay(key,t); renderMulti(); toast('Added to '+dateObj.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})); }
+}
+async function openMultiEditor(key,id){ if(key===dayKey()){ daySel=id; openTaskEditor(id); } else { await gotoDate(new Date(key.slice(4)+'T12:00:00')); openTaskEditor(id); } }
+// drag a multi-grid block: vertical = time, across columns = day, onto backlog = unschedule
+function attachMultiDrag(b,t,srcKey,START,END){
+  let moved=false,ghost=null,downX=0,downY=0;
+  function colAt(x,y){ for(const c of document.querySelectorAll('#calView .multi-col')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
+  function overBacklog(x,y){ if(!lastBacklog)return false; const r=lastBacklog.getBoundingClientRect(); return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom; }
+  function down(e){ downX=e.clientX; downY=e.clientY; moved=false; try{b.setPointerCapture(e.pointerId);}catch(_){ } e.preventDefault(); e.stopPropagation(); }
+  function mv(e){ const dx=e.clientX-downX, dy=e.clientY-downY;
+    if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; b.classList.add('dragging'); ghost=document.createElement('div'); ghost.className='cal-ghost'; document.body.appendChild(ghost); }
+    if(moved){ const c=colAt(e.clientX,e.clientY); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.toggle('drop',x===c));
+      if(lastBacklog) lastBacklog.classList.toggle('drop',overBacklog(e.clientX,e.clientY));
+      let label=t.name; if(c){ const cv=c.querySelector('.multi-canvas'); const r=cv.getBoundingClientRect(); let mins=Math.max(START,Math.min(END-SNAP,snap(START+(e.clientY-r.top)/PXM))); label=hmFromMin(mins)+' · '+t.name; }
+      ghost.textContent=overBacklog(e.clientX,e.clientY)?'release to unschedule':label; ghost.style.left=e.clientX+'px'; ghost.style.top=e.clientY+'px'; } }
+  async function up(e){ b.removeEventListener('pointermove',mv); b.removeEventListener('pointerup',up); b.removeEventListener('pointercancel',up);
+    try{b.releasePointerCapture(e.pointerId);}catch(_){ }
+    if(ghost) ghost.remove(); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.remove('drop')); if(lastBacklog) lastBacklog.classList.remove('drop');
+    b.classList.remove('dragging');
+    if(!moved){ openMultiEditor(srcKey,t.id); return; }
+    if(overBacklog(e.clientX,e.clientY)){ await dayAwareUpdate(srcKey,t.id,x=>{ x.scheduledMin=null; x.pinned=false; }); renderMulti(); toast('Unscheduled.'); return; }
+    const c=colAt(e.clientX,e.clientY); if(!c){ renderMulti(); return; }
+    const dstKey=c.dataset.key; const cv=c.querySelector('.multi-canvas'); const r=cv.getBoundingClientRect();
+    let mins=Math.max(START,Math.min(END-SNAP,snap(START+(e.clientY-r.top)/PXM)));
+    if(dstKey===srcKey){ await dayAwareUpdate(srcKey,t.id,x=>{ x.scheduledMin=mins; }); haptic(12); }
+    else { const ok=await moveTaskBetweenDays(srcKey,t.id,dstKey); if(ok){ await dayAwareUpdate(dstKey,t.id,x=>{ x.scheduledMin=mins; }); haptic(12); } }
+    renderMulti();
+  }
+  b.addEventListener('pointerdown',down); b.addEventListener('pointermove',mv); b.addEventListener('pointerup',up); b.addEventListener('pointercancel',up);
+}
+function startMultiChipDrag(e,t,chip){
+  let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
+  try{ chip.setPointerCapture(e.pointerId); }catch(_){ }
+  function colAt(x,y){ for(const c of document.querySelectorAll('#calView .multi-col')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
+  function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
+    if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
+    if(moved&&ghost){ const c=colAt(ev.clientX,ev.clientY); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.toggle('drop',x===c)); ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; } }
+  async function up(ev){ chip.removeEventListener('pointermove',mv); chip.removeEventListener('pointerup',up); chip.removeEventListener('pointercancel',up);
+    try{ chip.releasePointerCapture(ev.pointerId); }catch(_){ } if(ghost) ghost.remove();
+    document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.remove('drop'));
+    if(!moved){ return; }
+    const c=colAt(ev.clientX,ev.clientY); if(!c) return;
+    const dstKey=c.dataset.key, cv=c.querySelector('.multi-canvas'), r=cv.getBoundingClientRect();
+    let mins=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(calStart()+(ev.clientY-r.top)/PXM)));
+    if(dstKey===dayKey()){ const tt=state.tasks.find(x=>x.id===t.id); if(tt){ tt.scheduledMin=mins; await saveDay(); } }
+    else { await moveTaskBetweenDays(dayKey(),t.id,dstKey); await dayAwareUpdate(dstKey,t.id,x=>{ x.scheduledMin=mins; }); }
+    haptic(12); renderMulti(); toast('Scheduled for '+hmFromMin(mins));
+  }
+  chip.addEventListener('pointermove',mv); chip.addEventListener('pointerup',up); chip.addEventListener('pointercancel',up);
+  e.preventDefault();
 }
 async function quickAddAt(mins){
   const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,
@@ -3723,17 +3886,18 @@ function moveKbd(dir){ const rows=kbdRows(); if(!rows.length){ kbdId=null; retur
 function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
 document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
 /* ---------- Day view: keyboard-select a block, move/resize with arrows ---------- */
+function renderCal(){ if(dayCols>1) renderMulti(); else renderDay(); }
 function dayBlocks(){ return scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin); }
 function daySelMove(dir){ const arr=dayBlocks(); if(!arr.length){ daySel=null; return; }
   let i=arr.findIndex(t=>t.id===daySel);
   i = i<0 ? (dir>0?0:arr.length-1) : Math.min(arr.length-1,Math.max(0,i+dir));
-  daySel=arr[i].id; renderDay();
+  daySel=arr[i].id; renderCal();
   const el=document.querySelector('.cal-block[data-id="'+daySel+'"]'); if(el) el.scrollIntoView({block:'nearest'}); }
 function daySelShift(deltaMin){ const t=state.tasks.find(x=>x.id===daySel); if(!t)return;
   t.scheduledMin=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(t.scheduledMin+deltaMin)));
-  pushTimeToTodoist(t); maybeAutoArrange(); saveDay(); renderDay(); }
+  pushTimeToTodoist(t); maybeAutoArrange(); saveDay(); renderCal(); }
 function daySelResize(deltaMin){ const t=state.tasks.find(x=>x.id===daySel); if(!t)return;
-  t.estimateMin=Math.max(SNAP,(t.estimateMin||SNAP)+deltaMin); maybeAutoArrange(); saveDay(); renderDay(); }
+  t.estimateMin=Math.max(SNAP,(t.estimateMin||SNAP)+deltaMin); maybeAutoArrange(); saveDay(); renderCal(); }
 function handleDayKey(e){
   switch(e.key){
     case 'j': daySelMove(1); return true;
@@ -3757,7 +3921,8 @@ function cmdkCommands(){ return [
   {label:'Previous day',hint:'nav',run:()=>navStep(-1)},
   {label:'Next day',hint:'nav',run:()=>navStep(1)},
   {label:'View: List',hint:'view',run:()=>setView('list')},
-  {label:'View: Day',hint:'view',run:()=>setView('day')},
+  {label:'View: Day',hint:'view',run:()=>{ setDayCols(1); setView('day'); }},
+  {label:'View: 3-day',hint:'view',run:()=>{ setView('day'); setDayCols(3); }},
   {label:'View: Week',hint:'view',run:()=>setView('week')},
   {label:'View: Month',hint:'view',run:()=>setView('month')},
   {label:'Fill my day',hint:'plan',run:()=>openFillDialog()},
@@ -3891,6 +4056,7 @@ window.addEventListener('offline',updateConnUI);
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
     document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x.getAttribute('data-l')===listLayout)); }catch(e){}
+  try{ dayCols=parseInt(localStorage.getItem(LS_PREFIX+'_daycols'))||1; }catch(e){}
   try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); else render(); }catch(e){}
   if(locked()){
     showUnlock();   // keys are encrypted — prompt before any sync
