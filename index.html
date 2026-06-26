@@ -2255,6 +2255,73 @@ function openTaskMenu(id,anchor){
   });
   setTimeout(()=>{ document.addEventListener('click',menuOutside,true); document.addEventListener('scroll',closeMenu,true); },0);
 }
+/* ---------- app-native right-click menus ----------
+   Right-clicking the app surfaces relevant OODA actions instead of the browser's
+   default menu. Text fields, links and the task/block menus keep their own. */
+function showMenu(items,pos){
+  closeMenu();
+  const m=document.createElement('div'); m.className='menu'; m.id='taskMenu';
+  m.innerHTML=items.map((it,i)=> it.sep? '<div class="sep"></div>'
+    : '<button data-i="'+i+'"'+(it.danger?' class="danger"':'')+'>'+(it.icon?escapeHtml(it.icon)+' ':'')+escapeHtml(it.label)+'</button>').join('');
+  document.body.appendChild(m);
+  const mw=200; m.style.top=Math.max(8,Math.min(pos.y,innerHeight-12))+'px';
+  m.style.left=Math.max(8,Math.min(pos.x,innerWidth-mw-8))+'px';
+  m.addEventListener('click',e=>{ const b=e.target.closest('button[data-i]'); if(!b)return; const it=items[+b.dataset.i]; closeMenu(); if(it&&it.run) it.run(); });
+  setTimeout(()=>{ document.addEventListener('click',menuOutside,true); document.addEventListener('scroll',closeMenu,true); },0);
+}
+function appMenu(){ return [
+  {icon:'＋',label:'New task',run:()=>{ const a=document.getElementById('addName'); if(a){ window.scrollTo({top:0,behavior:'smooth'}); a.focus(); } }},
+  {icon:'⏱',label:'Start timer now',run:()=>startAdHocTimer()},
+  {icon:'◎',label:'Focus mode',run:()=>openFocus()},
+  {sep:true},
+  {icon:'☰',label:'View: List',run:()=>setView('list')},
+  {icon:'▦',label:'View: Day',run:()=>{ setDayCols(1); setView('day'); }},
+  {icon:'▤',label:'View: Week',run:()=>setView('week')},
+  {icon:'▣',label:'View: Month',run:()=>setView('month')},
+  {sep:true},
+  {icon:'⤢',label:'Fill my day',run:()=>openFillDialog()},
+  {icon:'⟳',label:'Sync now',run:()=>doManualSync()},
+  {icon:'▥',label:'Review',run:()=>openReviewDialog()},
+  {sep:true},
+  {icon:'◑',label:'Display & glass…',run:()=>openDispDialog()},
+  {icon:'⚙',label:'Settings',run:()=>openSettings()},
+  {icon:'?',label:'Help & shortcuts',run:()=>openHelp()},
+]; }
+function nowMenu(){
+  const t=state.activeId&&state.tasks.find(x=>x.id===state.activeId);
+  const items=[];
+  if(t){ items.push({icon:'⏸',label:'Stop timer',run:()=>toggleRun(t.id)});
+    items.push({icon:'✓',label:'Complete '+(t.name?'“'+t.name+'”':'task'),run:()=>toggleDone(t.id)});
+    items.push({icon:'◎',label:'Open in Focus mode',run:()=>openFocus()}); }
+  else { items.push({icon:'▶',label:'Start timer now',run:()=>startAdHocTimer()}); }
+  items.push({sep:true});
+  items.push({icon:'＋',label:'New task',run:()=>{ const a=document.getElementById('addName'); if(a) a.focus(); }});
+  return items;
+}
+function calendarMenu(mins){ return [
+  {icon:'＋',label:'Add task at '+hmFromMin(mins),run:()=>quickAddAt(mins)},
+  {icon:'⏱',label:'Start timer now',run:()=>startAdHocTimer()},
+  {sep:true},
+  {icon:'⤢',label:'Fill my day',run:()=>openFillDialog()},
+  {icon:'✦',label:'Tidy day',run:()=>{ compactDay(); saveDay(); renderCal(); toast('Day tidied.'); }},
+  {icon:'⟳',label:'Sync now',run:()=>doManualSync()},
+  {sep:true},
+  {icon:'☰',label:'Back to List',run:()=>setView('list')},
+  {icon:'⚙',label:'Settings',run:()=>openSettings()},
+]; }
+// one global handler — element-level menus (tasks/blocks) run first and bail out here
+document.addEventListener('contextmenu',e=>{
+  // keep the native menu where editing/links matter, and inside open dialogs
+  if(e.target.closest('input,textarea,select,[contenteditable="true"],a,img,dialog')) return;
+  // tasks and calendar blocks have their own context menus already
+  if(e.target.closest('.task[data-id],.cal-block[data-id],.bd-card[data-id]')) return;
+  const canvas=e.target.closest('.cal-canvas,.multi-canvas');
+  if(canvas){ e.preventDefault(); const r=canvas.getBoundingClientRect();
+    let mins=snap(calStart()+(e.clientY-r.top)/PXM); mins=Math.max(calStart(),Math.min(calEnd()-SNAP,mins));
+    showMenu(calendarMenu(mins),{x:e.clientX,y:e.clientY}); return; }
+  if(e.target.closest('#nowCard,.now')){ e.preventDefault(); showMenu(nowMenu(),{x:e.clientX,y:e.clientY}); return; }
+  e.preventDefault(); showMenu(appMenu(),{x:e.clientX,y:e.clientY});
+});
 function renderArc(){
   const arc=document.getElementById('arc');
   arc.querySelectorAll('.seg,.tracked').forEach(e=>e.remove());
@@ -4703,7 +4770,7 @@ function helpCards(){
       visual:'<svg width="56" height="40" viewBox="0 0 56 40" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 30h26a8 8 0 0 0 0-16 11 11 0 0 0-21-3 8 8 0 0 0-5 19z"/><path d="M28 33v-12M24 25l4-4 4 4" stroke="var(--accent)"/></svg>'},
     {title:'On your phone',body:'A thumb-reach <b>bottom tab bar</b> and a floating <b>+</b> to add; a <b>sticky strip</b> shows the running timer and capacity as you scroll; bigger calendar touch targets and light <b>haptics</b> on complete / drag. Zoom is locked for a native feel.',
       visual:'<svg width="34" height="58" viewBox="0 0 34 58" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="30" height="54" rx="5"/><line x1="2" y1="46" x2="32" y2="46"/><circle cx="9" cy="51" r="1.6" fill="currentColor"/><circle cx="17" cy="51" r="1.6" fill="currentColor"/><circle cx="25" cy="51" r="1.6" fill="currentColor"/><circle cx="26" cy="40" r="4" fill="var(--accent)" stroke="none"/></svg>'},
-    {title:'Fast on desktop',body:'Press <kbd>⌘K</kbd> for the <b>command palette</b> (jump to any action or task), <b>right-click</b> a task or block for its menu, hover to reveal row actions, and use the keyboard shortcuts below. <b>Undo</b> appears after delete / complete / move.',
+    {title:'Fast on desktop',body:'Press <kbd>⌘K</kbd> for the <b>command palette</b> (jump to any action or task). <b>Right-click anywhere</b> for app actions — a task or block shows its own menu (incl. <b>▶ Resume timer</b>), the timeline offers add-here / tidy / fill, and empty space opens views, sync, display & settings. Hover to reveal row actions; <b>Undo</b> appears after delete / complete / move.',
       visual:'<div style="border:1px solid var(--line-strong);border-radius:8px;width:90%;background:var(--surface)"><div style="font-size:10px;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink-faint)">⌘K  Type a command…</div><div style="font-size:9.5px;padding:5px 8px;background:var(--surface-2)">Fill my day</div></div>'},
     {title:'Review & routines',body:'<b>Review</b> shows completion rate, time-by-channel, estimate accuracy and a streak over 7/30 days. Set a task to <b>repeat</b> (daily / weekdays / weekly) and it reappears on its days. Save a day’s shape as a <b>Template</b>, <b>Carry overdue</b> onto today, and end with a <b>Shutdown</b> note + carry-to-tomorrow.',
       visual:'<svg width="64" height="40" viewBox="0 0 64 40" fill="none"><rect x="6" y="20" width="9" height="16" fill="#3F7A56"/><rect x="20" y="12" width="9" height="24" fill="#2E6B9E"/><rect x="34" y="24" width="9" height="12" fill="#C2752A"/><rect x="48" y="8" width="9" height="28" fill="#5B4B9E"/></svg>'},
@@ -4739,7 +4806,7 @@ function renderInspector(){
       '<span class="ins-chip"'+(over?' style="color:var(--over)"':'')+'>'+durFmt(act)+' tracked</span></div>'+
     taskMetaHtml(t)+
     '<div class="ins-acts">'+
-      '<button data-a="run">'+(t.running?'⏸ Pause':'▶ Start')+'</button>'+
+      '<button data-a="run">'+(t.running?'⏸ Pause':((t.done||act>0)?'▶ Resume':'▶ Start'))+'</button>'+
       '<button data-a="done">'+(t.done?'↺ Reopen':'✓ Complete')+'</button>'+
       '<button data-a="pin">📌 '+(t.pinned?'Unpin':'Pin')+'</button>'+
       '<button data-a="unsched">↩ Unschedule</button>'+
@@ -4747,7 +4814,7 @@ function renderInspector(){
       '<button data-a="del" class="wide danger">✕ Delete</button>'+
     '</div>';
   box.querySelector('.ins-acts').addEventListener('click',e=>{ const b=e.target.closest('button[data-a]'); if(!b)return; const a=b.dataset.a;
-    if(a==='run') toggleRun(t.id);
+    if(a==='run'){ if(!t.running&&(t.done||act>0)) resumeTask(t.id); else toggleRun(t.id); }
     else if(a==='done') toggleDone(t.id);
     else if(a==='pin') togglePin(t.id);
     else if(a==='unsched'){ t.scheduledMin=null; t.pinned=false; daySel=null; saveDay().then(()=>render()); }
