@@ -679,6 +679,24 @@
     .cal-scroll{max-height:70vh}
     .cal-backlog{position:sticky;top:0}
   }
+  /* three-pane Day view on large screens: Unscheduled | timeline | details */
+  .cal-inspector{display:none;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;position:sticky;top:0}
+  .cal-inspector .ins-empty{color:var(--ink-soft);font-size:13px;line-height:1.5}
+  .cal-inspector .ins-name{font-size:16px;font-weight:650;margin:2px 0 8px;line-height:1.25}
+  .cal-inspector .ins-ch{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);margin-bottom:8px}
+  .cal-inspector .ins-stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .cal-inspector .ins-chip{font-size:11.5px;border:1px solid var(--line-strong);border-radius:6px;padding:2px 8px;color:var(--ink-soft)}
+  .cal-inspector .ins-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+  .cal-inspector .ins-acts button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:9px 8px;font-size:12.5px;cursor:pointer;font-family:var(--display)}
+  .cal-inspector .ins-acts button:hover{background:var(--surface);border-color:var(--ink-soft)}
+  .cal-inspector .ins-acts button.wide{grid-column:1/-1}
+  .cal-inspector .ins-acts button.danger{color:var(--over);border-color:var(--over)}
+  @media (min-width:1200px){
+    html.day-view .wrap{max-width:1200px}
+    html.day-view.wide .wrap{max-width:none}
+    html.day-view .cal-body{grid-template-columns:230px 1fr 300px}
+    html.day-view .cal-inspector{display:block}
+  }
 </style>
 <script>
   // set theme + display prefs before first paint to avoid a flash
@@ -1566,6 +1584,7 @@ function render(){
   week.style.display = weekView?'':'none';
   month.style.display = monthView?'':'none';
   if(notList) document.getElementById('boardView').style.display='none';   // board is a list-only layout
+  document.documentElement.classList.toggle('day-view', dayView);          // enables the 3-pane wide layout
   // bulk-select + search-all controls only make sense in the flat list view
   const flatList = !notList && listLayout!=='board';
   document.getElementById('selBtn').style.display = flatList?'':'none';
@@ -2089,7 +2108,9 @@ function renderDay(){
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
   if(nowMin>=START&&nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
-  scroll.appendChild(canvas); grid.appendChild(scroll); body.appendChild(grid); cal.appendChild(body);
+  scroll.appendChild(canvas); grid.appendChild(scroll); body.appendChild(grid);
+  const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
+  cal.appendChild(body); renderInspector();
   lastCanvas=canvas;
   requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null) ? prevScroll
     : (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
@@ -2175,7 +2196,9 @@ async function renderMulti(){
       canvas.appendChild(b); });
     col.appendChild(canvas); mbody.appendChild(col);
   });
-  scroll.appendChild(mbody); grid.appendChild(scroll); body.appendChild(grid); cal.appendChild(body);
+  scroll.appendChild(mbody); grid.appendChild(scroll); body.appendChild(grid);
+  const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
+  cal.appendChild(body); renderInspector();
   requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null)?prevScroll : (nowMin>=START&&nowMin<=END)?Math.max(0,(nowMin-START)*PXM-140):0; });
 }
 async function multiQuickAdd(dateObj,key,mins,isDay0){
@@ -2200,7 +2223,10 @@ function attachMultiDrag(b,t,srcKey,START,END){
     try{b.releasePointerCapture(e.pointerId);}catch(_){ }
     if(ghost) ghost.remove(); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.remove('drop')); if(lastBacklog) lastBacklog.classList.remove('drop');
     b.classList.remove('dragging');
-    if(!moved){ openMultiEditor(srcKey,t.id); return; }
+    if(!moved){
+      if(inspectorOn() && srcKey===dayKey()){ daySel=t.id; document.querySelectorAll('#calView .cal-block.sel').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); renderInspector(); }
+      else openMultiEditor(srcKey,t.id);
+      return; }
     if(overBacklog(e.clientX,e.clientY)){ await dayAwareUpdate(srcKey,t.id,x=>{ x.scheduledMin=null; x.pinned=false; }); renderMulti(); toast('Unscheduled.'); return; }
     const c=colAt(e.clientX,e.clientY); if(!c){ renderMulti(); return; }
     const dstKey=c.dataset.key; const cv=c.querySelector('.multi-canvas'); const r=cv.getBoundingClientRect();
@@ -2277,7 +2303,10 @@ function attachBlockDrag(b,t,START,END){
     if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
     if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!moved){ daySel=t.id; if(m==='move') openTaskEditor(t.id); return; }
+    if(!moved){ daySel=t.id;
+      if(inspectorOn()){ document.querySelectorAll('#calView .cal-block.sel').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); renderInspector(); }
+      else if(m==='move') openTaskEditor(t.id);
+      return; }
     if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); haptic(12); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
@@ -2288,6 +2317,7 @@ function attachBlockDrag(b,t,START,END){
   b.addEventListener('pointerup',up);
   b.addEventListener('pointercancel',up);
   b.addEventListener('click',e=>e.stopPropagation());  // don't also trigger tap-to-place
+  b.addEventListener('dblclick',e=>{ e.stopPropagation(); openTaskEditor(t.id); });  // edit even in 3-pane select mode
 }
 // drag an unscheduled chip onto the timeline to schedule it in one gesture
 function startChipDrag(e,t,chip){
@@ -3887,6 +3917,36 @@ function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
 document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
 /* ---------- Day view: keyboard-select a block, move/resize with arrows ---------- */
 function renderCal(){ if(dayCols>1) renderMulti(); else renderDay(); }
+function inspectorOn(){ return viewMode==='day' && matchMedia('(min-width:1200px)').matches; }
+function renderInspector(){
+  const box=document.getElementById('calInspector'); if(!box) return;
+  const t=daySel && state.tasks.find(x=>x.id===daySel && x.scheduledMin!=null);
+  if(!t){ box.innerHTML='<div class="ins-empty"><b>Details</b><br>Select a block — click it or use <kbd>j</kbd>/<kbd>k</kbd> — to see and act on it here.</div>'; return; }
+  const ch=chById(t.channelId); const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000;
+  box.innerHTML=
+    '<div class="ins-ch"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+(t.pinned?' · 📌 pinned':'')+'</div>'+
+    '<div class="ins-name">'+escapeHtml(t.name)+'</div>'+
+    '<div class="ins-stats"><span class="ins-chip">⏱ '+hmFromMin(t.scheduledMin)+'</span>'+
+      (t.estimateMin?'<span class="ins-chip">'+t.estimateMin+'m est</span>':'')+
+      '<span class="ins-chip"'+(over?' style="color:var(--over)"':'')+'>'+durFmt(act)+' tracked</span></div>'+
+    taskMetaHtml(t)+
+    '<div class="ins-acts">'+
+      '<button data-a="run">'+(t.running?'⏸ Pause':'▶ Start')+'</button>'+
+      '<button data-a="done">'+(t.done?'↺ Reopen':'✓ Complete')+'</button>'+
+      '<button data-a="pin">📌 '+(t.pinned?'Unpin':'Pin')+'</button>'+
+      '<button data-a="unsched">↩ Unschedule</button>'+
+      '<button data-a="edit" class="wide">✎ Edit / schedule</button>'+
+      '<button data-a="del" class="wide danger">✕ Delete</button>'+
+    '</div>';
+  box.querySelector('.ins-acts').addEventListener('click',e=>{ const b=e.target.closest('button[data-a]'); if(!b)return; const a=b.dataset.a;
+    if(a==='run') toggleRun(t.id);
+    else if(a==='done') toggleDone(t.id);
+    else if(a==='pin') togglePin(t.id);
+    else if(a==='unsched'){ t.scheduledMin=null; t.pinned=false; daySel=null; saveDay().then(()=>render()); }
+    else if(a==='edit') openTaskEditor(t.id);
+    else if(a==='del'){ const id=t.id; daySel=null; removeTask(id); }
+  });
+}
 function dayBlocks(){ return scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin); }
 function daySelMove(dir){ const arr=dayBlocks(); if(!arr.length){ daySel=null; return; }
   let i=arr.findIndex(t=>t.id===daySel);

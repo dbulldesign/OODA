@@ -106,6 +106,10 @@ footer shows which mode is active).
     the editor's **Schedule at** field, and the editor has an **↩ Unschedule**
     button to send a task back to Unscheduled. Tapping an event in Day / Week /
     Month opens its details. Over-capacity is flagged in **orange**.
+    On **large screens** the Day view becomes a **three-pane** layout —
+    Unscheduled · timeline · a **details inspector** for the selected block
+    (click to select, double-click to edit) with Start/Complete/Pin/Unschedule/
+    Edit/Delete actions; `j`/`k` and the arrow keys drive it from the keyboard.
   - **3-day** (toggle in the Day header, *1 day / 3 days*): the same time-grid
     across three day columns sharing one axis. Drag a block up/down to change its
     time or **across columns to change its day**, drag to Unscheduled to remove
