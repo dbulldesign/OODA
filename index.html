@@ -202,6 +202,9 @@
   .chip.prio{font-weight:700;border-color:transparent;color:#fff}
   .chip.prio.p1{background:#B14233}.chip.prio.p2{background:#C2752A}.chip.prio.p3{background:#2E6B9E}
   .chip.chan{color:var(--ink)}.chip.chan .dot{width:7px;height:7px;border-radius:50%}
+  .est-hint{margin-top:5px;border:1px dashed var(--accent);background:var(--surface-2);color:var(--ink);
+    border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
+  .est-hint:hover{background:var(--surface)}
   .tdetails{flex-basis:100%;width:100%;margin:8px 0 1px;padding:10px 12px;border-top:1px dashed var(--line);
     font-size:13px;color:var(--ink-soft);display:none}
   .task.expanded .tdetails{display:block}
@@ -1109,6 +1112,7 @@
       <div class="td-field">
         <label>Length</label>
         <input id="teEst" type="text" inputmode="decimal" placeholder="30m, 1h 15m, 1:15, 1.5">
+        <button type="button" id="teEstHint" class="est-hint" style="display:none"></button>
       </div>
       <div class="td-field">
         <label>Schedule at (Day view)</label>
@@ -1231,6 +1235,16 @@
       <p class="td-hint">Tap a style or drag the slider to preview. Intensity scales the number of particles (up to 4×). Respects “reduce motion”.</p>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="reschedDialog">
+  <div class="dlg-in">
+    <h3>Reschedule</h3>
+    <p class="td-hint" id="reschedHint">Type how to move it.</p>
+    <input id="reschedInput" type="text" autocomplete="off" spellcheck="false" placeholder="push 30m · pull 15m · 2pm · tomorrow 9am · move to fri · unschedule"
+      style="width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;font-size:15px;background:var(--surface);color:var(--ink);font-family:var(--display)">
+    <div class="dlg-actions"><button id="reschedCancel">Cancel</button><button class="primary" id="reschedGo">Reschedule</button></div>
   </div>
 </dialog>
 
@@ -1708,6 +1722,7 @@ async function toggleDone(id){
       t.done=false; t.actualMs=prevActual; t.running=prevRunning; t.startedAt=prevStarted; state.activeId=prevActive;
       await saveDay(); render(); pushDoneToTodoist(t);
     });
+    if(t.actualMs>0) setTimeout(buildEstIndex,600);   // learn from this completion
   }
   pushDoneToTodoist(t);
 }
@@ -2031,6 +2046,7 @@ function openTaskMenu(id,anchor){
     (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
     (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
     (t.scheduledMin!=null&&t.todoistId&&tdConnected()?'<button data-a="pushtime">⏱ Push time → Todoist</button>':'')+
+    '<button data-a="resched">↔ Reschedule…</button>'+
     '<button data-a="tomorrow">→ Move to tomorrow</button>'+
     '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
   document.body.appendChild(m);
@@ -2043,6 +2059,7 @@ function openTaskMenu(id,anchor){
     if(a==='edit') openTaskEditor(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
     else if(a==='pin') togglePin(id);
+    else if(a==='resched') openResched(id);
     else if(a==='pushtime'){ const tt=state.tasks.find(x=>x.id===id); if(tt) pushTimeToTodoist(tt,true); }
     else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const src=dayKey(), dst=dayKeyFor(d);
       moveTaskToDate(id,dst).then(ok=>{ if(ok){ render();
@@ -2812,6 +2829,48 @@ async function closeDay(){
   toastAction('Day closed and saved.','Plan tomorrow →',planTomorrow);
 }
 function planTomorrow(){ const d=new Date(viewDate); d.setDate(d.getDate()+1); gotoDate(d).then(()=>{ setDayCols(1); setView('day'); }); }
+/* ---------- natural-language reschedule ---------- */
+let reschedId=null;
+function selectedTaskId(){ return daySel || kbdId || null; }
+function openResched(id){ id=id||selectedTaskId(); if(!id){ toast('Select a task first (tap it, or j/k).'); return; }
+  const t=state.tasks.find(x=>x.id===id); if(!t)return; reschedId=id;
+  document.getElementById('reschedHint').textContent='“'+(t.name||'Untitled')+'” — '+(t.scheduledMin!=null?('at '+hmFromMin(t.scheduledMin)):'unscheduled');
+  const inp=document.getElementById('reschedInput'); inp.value=''; document.getElementById('reschedDialog').showModal(); setTimeout(()=>inp.focus(),20);
+}
+async function rescheduleTask(id,phrase){
+  const t=state.tasks.find(x=>x.id===id); if(!t){ toast('No task selected.'); return; }
+  const p=(phrase||'').trim().toLowerCase(); if(!p) return; let m;
+  if(/^unschedul/.test(p)){ t.scheduledMin=null; t.pinned=false; await saveDay(); render(); toast('Unscheduled.'); return; }
+  if(m=p.match(/^(push|pull|later|earlier|\+|\-)\s*(.+)$/)){
+    const dir=(m[1]==='pull'||m[1]==='earlier'||m[1]==='-')?-1:1; const mins=durationToMin(m[2])||0;
+    if(!mins){ toast('How much? e.g. “push 30m”.'); return; }
+    if(t.scheduledMin==null){ t.scheduledMin=snap(nowMinutes()); }
+    t.scheduledMin=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(t.scheduledMin+dir*mins)));
+    pushTimeToTodoist(t); maybeAutoArrange(); await saveDay(); render(); toast((dir>0?'Pushed ':'Pulled ')+mins+'m → '+hmFromMin(t.scheduledMin)); return;
+  }
+  const r=parseQuickAdd('· '+phrase);   // reuse the day/time parser
+  if(r.dueDate){ const dst=dayKeyFor(r.dueDate);
+    if(dst!==dayKey()){ const ok=await moveTaskBetweenDays(dayKey(),id,dst);
+      if(ok && r.scheduledMin!=null) await dayAwareUpdate(dst,id,x=>{ x.scheduledMin=snap(r.scheduledMin); });
+      render(); toast('Moved to '+fmtDateRel(r.dueDate)); return; }
+    if(r.scheduledMin!=null){ t.scheduledMin=snap(r.scheduledMin); pushTimeToTodoist(t); maybeAutoArrange(); await saveDay(); render(); toast('Set to '+hmFromMin(t.scheduledMin)); return; }
+    toast('Already on this day.'); return;
+  }
+  if(r.scheduledMin!=null){ t.scheduledMin=snap(r.scheduledMin); pushTimeToTodoist(t); maybeAutoArrange(); await saveDay(); render(); toast('Set to '+hmFromMin(t.scheduledMin)); return; }
+  toast('Didn’t get that. Try “push 30m”, “2pm”, “move to fri”, “unschedule”.');
+}
+/* ---------- estimate suggestions from history ---------- */
+let estIndex={byName:{},byCh:{}};
+async function buildEstIndex(){
+  try{ const days=await gatherDays(); const n={},c={};
+    days.forEach(d=>(d.tasks||[]).forEach(t=>{ const min=Math.round((t.actualMs||0)/60000); if(min<1)return;
+      const k=(t.name||'').trim().toLowerCase(); if(k){ (n[k]=n[k]||[]).push(min); } (c[t.channelId]=c[t.channelId]||[]).push(min); }));
+    const avg=a=>Math.round(a.reduce((x,y)=>x+y,0)/a.length);
+    estIndex={ byName:Object.fromEntries(Object.entries(n).map(([k,v])=>[k,avg(v)])),
+               byCh:Object.fromEntries(Object.entries(c).map(([k,v])=>[k,avg(v)])) };
+  }catch(e){}
+}
+function suggestEstimate(name,ch){ const k=(name||'').trim().toLowerCase(); return estIndex.byName[k]||estIndex.byCh[ch]||0; }
 async function rollover(){
   const carry=state.tasks.filter(t=>!t.done).map(t=>({name:t.name,todoistId:t.todoistId||null}));
   if(!carry.length){ toast('Nothing unfinished to carry.'); return; }
@@ -3302,6 +3361,8 @@ function openTaskEditor(id){
   document.getElementById('teDue').value=(m.due&&(m.due.string||m.due.date))||'';
   document.getElementById('tePrio').value=String(m.priority||1);
   document.getElementById('teEst').value=minToHoursStr(t.estimateMin);
+  const eh=document.getElementById('teEstHint'); const sug=t.estimateMin?0:suggestEstimate(t.name,t.channelId);
+  if(eh){ if(sug){ eh.style.display='inline-block'; eh.textContent='≈ '+minToDurationStr(sug)+' (from similar past tasks) — use'; eh.dataset.v=sug; } else eh.style.display='none'; }
   document.getElementById('teSched').value=hmInput(t.scheduledMin);
   document.getElementById('teUnschedule').style.display = t.scheduledMin!=null ? 'inline-block':'none';
   document.getElementById('teDate').value=dayKey().slice(4);
@@ -4215,6 +4276,9 @@ document.getElementById('focusNextBtn').addEventListener('click',focusNext);
   inp.addEventListener('blur',async()=>{ if(!state.activeId) return; const t=state.tasks.find(x=>x.id===state.activeId);
     if(t){ await applyTrackName(t,inp.value); await saveDay(); render(); } });
 })();
+document.getElementById('reschedCancel').addEventListener('click',()=>document.getElementById('reschedDialog').close());
+document.getElementById('reschedGo').addEventListener('click',()=>{ const v=document.getElementById('reschedInput').value; document.getElementById('reschedDialog').close(); rescheduleTask(reschedId,v); });
+document.getElementById('reschedInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('reschedGo').click(); } });
 document.getElementById('nameSave').addEventListener('click',()=>commitTaskName(false));
 document.getElementById('nameSkip').addEventListener('click',()=>commitTaskName(true));
 document.getElementById('nameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); commitTaskName(false); } });
@@ -4390,6 +4454,7 @@ function cmdkCommands(){ return [
   {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
   {label:'Start timer now',hint:'track',run:()=>startAdHocTimer()},
   {label:'Focus mode',hint:'focus',run:()=>openFocus()},
+  {label:'Reschedule selected…',hint:'when',run:()=>openResched()},
   {label:'Sync now',hint:'sync',run:()=>doManualSync()},
   {label:'Go to Today',hint:'nav',run:()=>gotoDate(new Date())},
   {label:'Previous day',hint:'nav',run:()=>navStep(-1)},
@@ -4451,6 +4516,7 @@ document.addEventListener('keydown',e=>{
   if(typing||e.metaKey||e.ctrlKey||e.altKey) return;
   if(document.querySelector('dialog[open]')) return;            // don't hijack keys inside modals
   if(e.key==='f'){ e.preventDefault(); openFocus(); return; }
+  if(e.key==='r'){ e.preventDefault(); openResched(); return; }
   // Day view: arrow-move / resize the selected block (falls through for nav keys)
   if((viewMode==='day'||viewMode==='multi') && handleDayKey(e)){ e.preventDefault(); return; }
   switch(e.key){
@@ -4492,6 +4558,7 @@ document.getElementById('bzAll').addEventListener('change',e=>{ document.querySe
 document.getElementById('teCancel').addEventListener('click',()=>document.getElementById('taskDialog').close());
 document.getElementById('teNewProj').addEventListener('click',newProjectFlow);
 document.getElementById('teSave').addEventListener('click',saveTaskEditor);
+document.getElementById('teEstHint').addEventListener('click',e=>{ const v=+e.currentTarget.dataset.v; document.getElementById('teEst').value=minToDurationStr(v); e.currentTarget.style.display='none'; });
 document.getElementById('teUnschedule').addEventListener('click',async()=>{
   const t=state.tasks.find(x=>x.id===editingTaskId); if(!t)return;
   t.scheduledMin=null; t.pinned=false; await saveDay();
@@ -4543,6 +4610,7 @@ window.addEventListener('offline',updateConnUI);
     else if(sync.gistId){ await pullGist(true); }
   }
   await loadHistory();
+  buildEstIndex();
   const carry=await sget('carry');
   if(carry&&carry.length&&!state.tasks.length){
     carry.forEach(c=>{ const n=typeof c==='string'?c:c.name; const tdId=typeof c==='string'?null:(c.todoistId||null);
