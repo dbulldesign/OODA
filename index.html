@@ -118,6 +118,16 @@
   .rev-bar .rb-v{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
   .rev-acc{font-size:13px;margin-top:4px}
   .rev-empty{color:var(--ink-soft);font-size:13px;padding:8px 0}
+  .heatmap{display:flex;gap:3px;overflow-x:auto;padding:2px 0}
+  .hm-col{display:flex;flex-direction:column;gap:3px}
+  .hm-cell{width:12px;height:12px;border-radius:2px;background:var(--surface-2);flex:none}
+  .hm-cell.ghost{background:transparent}
+  .hm-cell.l1{background:color-mix(in srgb,var(--accent) 28%,var(--surface-2))}
+  .hm-cell.l2{background:color-mix(in srgb,var(--accent) 52%,var(--surface-2))}
+  .hm-cell.l3{background:color-mix(in srgb,var(--accent) 76%,var(--surface-2))}
+  .hm-cell.l4{background:var(--accent)}
+  .hm-leg{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-faint);margin-top:6px}
+  .hm-leg .hm-cell{width:11px;height:11px}
   header{padding:26px 0 14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
   .head-right{display:flex;flex-direction:column;align-items:flex-end;gap:9px}
   .sync-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -2916,12 +2926,16 @@ async function renderReview(days){
   const cutoff=new Date(today); cutoff.setDate(cutoff.getDate()-(days-1));
   const cutoffStr=dayKeyFor(cutoff).slice(4);
   const keys=(await slist('day:')).sort();
+  const hmStart=new Date(today); hmStart.setDate(hmStart.getDate()-83); const hmStartStr=dayKeyFor(hmStart).slice(4);
+  const fetchFrom = days>0 ? (hmStartStr<cutoffStr?hmStartStr:cutoffStr) : '0000';
   let totalTasks=0,doneTasks=0,trackedMs=0,estSum=0,actSum=0,estCount=0,activeDays=0;
-  const byCh={}; const doneDays=new Set();
+  const byCh={}; const doneDays=new Set(); const dayTrk={};
   for(const k of keys){
-    const ds=k.slice(4); if(ds>todayStr) continue; if(days>0 && ds<cutoffStr) continue;
+    const ds=k.slice(4); if(ds>todayStr) continue; if(ds<fetchFrom) continue;
     const rec = k===dayKey()? {tasks:state.tasks} : await sget(k);
     const tasks=(rec&&rec.tasks)||[]; if(!tasks.length) continue;
+    let dTrk=0; tasks.forEach(t=>{ dTrk+=(t.actualMs||0); }); dayTrk[ds]=dTrk;        // for the heatmap (full 12-week span)
+    if(days>0 && ds<cutoffStr) continue;                                              // window applies to the aggregate stats only
     activeDays++;
     tasks.forEach(t=>{ totalTasks++; const act=(t.actualMs||0);
       if(t.done){ doneTasks++; doneDays.add(ds); }
@@ -2955,7 +2969,22 @@ async function renderReview(days){
       '<div class="rev-card"><div class="rv-n">'+hLabel+'</div><div class="rv-l">time tracked</div></div>'+
       '<div class="rev-card"><div class="rv-n">'+streak+'🔥</div><div class="rv-l">day streak with a win</div></div>'+
       '<div class="rev-card"><div class="rv-n">'+activeDays+'</div><div class="rv-l">active day'+(activeDays===1?'':'s')+'</div></div>'+
-    '</div>'+acc+chHtml;
+    '</div>'+acc+chHtml+reviewHeatmap(dayTrk);
+}
+function reviewHeatmap(dayTrk){
+  const today=new Date(); today.setHours(12,0,0,0);
+  const start=startOfWeek(new Date(today.getTime()-83*86400000));
+  const lvl=m=> m<=0?0 : m<30?1 : m<90?2 : m<180?3 : 4;
+  let cols='', cur=new Date(start);
+  for(let w=0; w<13; w++){
+    let cell=''; for(let i=0;i<7;i++){ const ds=dayKeyFor(cur).slice(4); const mins=Math.round((dayTrk[ds]||0)/60000); const future=cur>today;
+      cell+= future? '<span class="hm-cell ghost"></span>'
+        : '<span class="hm-cell l'+lvl(mins)+'" title="'+ds+' · '+(mins?minFmt(mins*60000)+' tracked':'nothing')+'"></span>';
+      cur=new Date(cur.getTime()+86400000); }
+    cols+='<div class="hm-col">'+cell+'</div>';
+  }
+  return '<div class="rev-h">Activity (last 12 weeks)</div><div class="heatmap">'+cols+'</div>'+
+    '<div class="hm-leg">Less <span class="hm-cell l0"></span><span class="hm-cell l1"></span><span class="hm-cell l2"></span><span class="hm-cell l3"></span><span class="hm-cell l4"></span> More</div>';
 }
 /* ---------- day templates (save / apply a day shape) ---------- */
 function openTemplatesDialog(){
