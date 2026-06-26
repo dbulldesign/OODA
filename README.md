@@ -43,6 +43,11 @@ footer shows which mode is active).
 - **Plan / Work / Reflect** phase indicator that follows the state of the day.
 - A live "now tracking" clock and a capacity bar that fills with your estimates,
   grouped by colour-coded **channels** (editable).
+- **Start timer now** (in the now-tracking card, or the ⌘K palette) tracks a
+  task as you go: it drops a live block on the Day view starting at the current
+  time and growing until you **Stop**. Name it before, **rename it while it
+  runs** (tap the name in the card), or you'll be **prompted on stop**; the
+  finished block spans start→stop and the day reflows around it.
 - Per-task start/pause timers shown as minutes:seconds (rounded up to the next
   whole minute when a task is completed), estimates vs. actuals, and
   over-estimate warnings.

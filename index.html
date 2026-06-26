@@ -117,6 +117,10 @@
   }
   .now .label{flex:1;min-width:0}
   .now .label .what{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .now .label .what[contenteditable]{outline:none;cursor:text;border-bottom:1px dashed transparent}
+  .now .label .what[contenteditable]:focus{border-bottom-color:var(--now)}
+  .now .label .what[contenteditable]:empty::before{content:'Untitled — tap to name';color:var(--ink-faint);font-weight:400}
+  .now .now-start{background:var(--accent)}
   .now .label .sub{font-size:12px;color:var(--ink-soft);letter-spacing:.02em}
   .now .clock{font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   .now .stop{border:0;background:var(--now-deep);color:#fff;font-size:13px;font-weight:600;
@@ -791,6 +795,7 @@
       <div class="sub" id="nowSub">Tap ▶ on a task to start the clock</div>
     </div>
     <div class="clock" id="nowClock">0:00:00</div>
+    <button class="stop now-start" id="nowStart" title="Start a timer now — name it later">▶ Start timer</button>
     <button class="stop" id="nowStop" style="display:none">Stop</button>
   </div>
 
@@ -1138,6 +1143,18 @@
       <p class="td-hint">Plays when you finish a task. Tap one to preview. Respects “reduce motion”.</p>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="nameDialog">
+  <div class="dlg-in">
+    <h3>Name this task</h3>
+    <p class="td-hint" id="nameHint">What were you working on?</p>
+    <input id="nameInput" type="text" autocomplete="off" spellcheck="false" style="width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;font-size:15px;background:var(--surface);color:var(--ink);font-family:var(--display)">
+    <div class="dlg-actions">
+      <button id="nameSkip">Use the time</button>
+      <button class="primary" id="nameSave">Save</button>
+    </div>
   </div>
 </dialog>
 
@@ -1516,7 +1533,10 @@ function autoCreateInTodoist(t,p){
 }
 async function toggleRun(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
-  if(t.running){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null; }
+  const wasRunning=t.running;
+  if(wasRunning){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null;
+    if(t.adhoc){ t.estimateMin=Math.max(SNAP,Math.ceil(t.actualMs/60000)); reflowCascade(t.id); }   // block spans start→stop
+  }
   else {
     state.tasks.forEach(o=>{ if(o.running){ o.actualMs+=Date.now()-o.startedAt; o.running=false; o.startedAt=null; } });
     t.running=true; t.startedAt=Date.now(); t.done=false; state.activeId=id; haptic(10);
@@ -1524,6 +1544,35 @@ async function toggleRun(id){
     reflowCascade(t.id);
   }
   await saveDay(); render();
+  if(wasRunning && t.adhoc && !(t.name||'').trim()) promptTaskName(t.id);   // ask for a name on stop
+}
+/* ----- track-as-you-go: start a timer now, name the task later ----- */
+async function startAdHocTimer(){
+  const nameEl=document.getElementById('addName'); const nm=nameEl?nameEl.value.trim():'';
+  if(nameEl) nameEl.value='';
+  const t={id:uid(),name:nm,channelId:(document.getElementById('addChannel').value||(state.channels[0]||{}).id),
+    estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:null,adhoc:true};
+  state.tasks.unshift(t);
+  await toggleRun(t.id);                       // starts it: schedules at now, reflows others, saves
+  if(viewMode!=='day'){ setDayCols(1); setView('day'); }
+  toast(nm?'Tracking “'+nm+'”…':'Tracking… name it any time, or when you stop.');
+}
+let namingId=null;
+function promptTaskName(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t)return; namingId=id;
+  const span = t.scheduledMin!=null ? hmFromMin(t.scheduledMin)+'–'+hmFromMin(Math.min(calEnd(),t.scheduledMin+(t.estimateMin||SNAP))) : '';
+  document.getElementById('nameHint').textContent = span? ('You tracked '+span+'. What was it?') : 'What were you working on?';
+  const inp=document.getElementById('nameInput'); inp.value=''; inp.placeholder=span?('Tracked '+span):'Task name';
+  document.getElementById('nameDialog').showModal(); setTimeout(()=>inp.focus(),20);
+}
+async function commitTaskName(useTime){
+  const t=state.tasks.find(x=>x.id===namingId);
+  document.getElementById('nameDialog').close();
+  if(!t)return;
+  let nm=document.getElementById('nameInput').value.trim();
+  if(!nm){ const span=t.scheduledMin!=null?hmFromMin(t.scheduledMin)+'–'+hmFromMin(Math.min(calEnd(),t.scheduledMin+(t.estimateMin||SNAP))):''; nm = useTime&&span? ('Tracked '+span) : (span?('Tracked '+span):'Tracked time'); }
+  t.name=nm; if(t.todoistMeta)t.todoistMeta.rawContent=nm;
+  namingId=null; await saveDay(); render();
 }
 async function toggleDone(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
@@ -1912,19 +1961,24 @@ function renderArc(){
 }
 function renderNow(){
   const card=document.getElementById('nowCard');
+  const whatEl=document.getElementById('nowWhat');
   const t=state.tasks.find(x=>x.id===state.activeId && x.running);
   if(t){ const ch=chById(t.channelId);
     card.classList.add('active');
-    document.getElementById('nowWhat').textContent=t.name;
-    document.getElementById('nowSub').textContent=ch.name+(t.estimateMin?' · '+t.estimateMin+'m estimate':'');
+    whatEl.setAttribute('contenteditable','true');
+    if(document.activeElement!==whatEl) whatEl.textContent=t.name||'';   // don't clobber while typing
+    document.getElementById('nowSub').textContent=ch.name+' · '+(t.name?'tap the name to rename':'name it here, or when you stop');
     document.getElementById('nowClock').textContent=clockFmt(liveActual(t));
     document.getElementById('nowStop').style.display='block';
+    document.getElementById('nowStart').style.display='none';
   } else {
     card.classList.remove('active');
-    document.getElementById('nowWhat').textContent='Nothing tracking';
-    document.getElementById('nowSub').textContent='Tap ▶ on a task to start the clock';
+    whatEl.removeAttribute('contenteditable');
+    whatEl.textContent='Nothing tracking';
+    document.getElementById('nowSub').textContent='Tap ▶ on a task, or Start timer to track now';
     document.getElementById('nowClock').textContent='0:00:00';
     document.getElementById('nowStop').style.display='none';
+    document.getElementById('nowStart').style.display='block';
   }
   updateMiniStrip();
 }
@@ -3958,6 +4012,14 @@ function acChoose(i){
 })();
 document.getElementById('addEst').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
+document.getElementById('nowStart').addEventListener('click',startAdHocTimer);
+(function(){ const w=document.getElementById('nowWhat');
+  w.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); w.blur(); } });
+  w.addEventListener('blur',()=>{ if(w.getAttribute('contenteditable')==='true' && state.activeId) renameTask(state.activeId,w.textContent); });
+})();
+document.getElementById('nameSave').addEventListener('click',()=>commitTaskName(false));
+document.getElementById('nameSkip').addEventListener('click',()=>commitTaskName(true));
+document.getElementById('nameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); commitTaskName(false); } });
 document.getElementById('capInput').addEventListener('change',async e=>{ state.capacityHours=Math.max(1,parseFloat(e.target.value)||7); await saveConfig(); renderArc(); });
 document.getElementById('reflectText').addEventListener('blur',saveReflection);
 document.getElementById('closeBtn').addEventListener('click',closeDay);
@@ -4127,6 +4189,7 @@ function handleDayKey(e){
 let cmdkAll=[], cmdkItems=[], cmdkIndex=0;
 function cmdkCommands(){ return [
   {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
+  {label:'Start timer now',hint:'track',run:()=>startAdHocTimer()},
   {label:'Sync now',hint:'sync',run:()=>doManualSync()},
   {label:'Go to Today',hint:'nav',run:()=>gotoDate(new Date())},
   {label:'Previous day',hint:'nav',run:()=>navStep(-1)},
