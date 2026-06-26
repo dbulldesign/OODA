@@ -64,6 +64,10 @@ footer shows which mode is active).
   completion rate, time tracked, your **day streak**, active days,
   **estimate-vs-actual accuracy** (are you over- or under-estimating?), and a
   **time-by-channel** breakdown. Built entirely from data already on your device.
+- On phones, a **bottom tab bar** (List / Day / Week / Month) and a **floating +
+  button** keep navigation and capture in thumb reach; a **sticky mini-strip**
+  shows the running timer and capacity once you scroll past the top, the Day
+  timeline has bigger touch targets, and actions give light **haptic** feedback.
 - A single **⚙ Settings** button (in the header, plus a footer link) gathers
   everything that used to be a long tools row — **Todoist**, **Device sync**,
   **Lock keys**, **Display**, **Review**, **Templates**, **Carry overdue**,
