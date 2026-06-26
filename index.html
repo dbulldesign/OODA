@@ -1437,6 +1437,36 @@
 </dialog>
 
 <script>
+/* ---------- crash safety net ----------
+   A single uncaught error during boot must never brick the whole app. If one
+   fires before we've finished starting up, show a recovery bar that can reload
+   or clear a bad service-worker cache — WITHOUT deleting the user's stored data
+   (tasks, settings and saved keys live in IndexedDB/localStorage and survive). */
+let __oodaBooted=false;
+function oodaRecoveryBar(msg){
+  if(document.getElementById('oodaCrash')) return;
+  const bar=document.createElement('div'); bar.id='oodaCrash';
+  bar.setAttribute('style','position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'+
+    'background:#B14233;color:#fff;font:14px/1.4 system-ui,sans-serif;padding:12px 14px;'+
+    'display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 -2px 12px rgba(0,0,0,.3)');
+  bar.innerHTML='<span style="flex:1;min-width:180px">OODA hit a snag while loading. Your tasks and settings are safe on this device.</span>'+
+    '<button id="oodaReload" style="background:#fff;color:#B14233;border:0;border-radius:7px;padding:7px 12px;font-weight:600;cursor:pointer">Reload</button>'+
+    '<button id="oodaReset" style="background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.6);border-radius:7px;padding:7px 12px;font-weight:600;cursor:pointer">Reset app cache</button>';
+  (document.body||document.documentElement).appendChild(bar);
+  document.getElementById('oodaReload').onclick=()=>location.reload();
+  document.getElementById('oodaReset').onclick=async()=>{
+    try{ if('serviceWorker' in navigator){ const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); } }catch(e){}
+    try{ if(window.caches){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(e){}
+    location.reload();
+  };
+  try{ console.error('OODA boot error:',msg); }catch(e){}
+}
+window.addEventListener('error',e=>{
+  // ignore resource-load errors (img/script/link) — only trip on real script crashes
+  if(__oodaBooted || (e&&e.target&&e.target!==window&&e.target.tagName)) return;
+  oodaRecoveryBar(e&&(e.error||e.message));
+});
+window.addEventListener('unhandledrejection',e=>{ if(!__oodaBooted) oodaRecoveryBar(e&&e.reason); });
 const PLAY='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const PAUSE='<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
 const CHECK='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
@@ -1731,6 +1761,18 @@ async function toggleRun(id){
   }
   await saveDay(); render();
   if(wasRunning && t.adhoc && !(t.name||'').trim()) promptTaskName(t.id);   // ask for a name on stop
+}
+// Resume a task you'd already stopped or completed: reopen it (if done) and keep
+// timing from where its tracked total left off. Time is cumulative, so this just
+// continues adding to actualMs — nothing already tracked is lost.
+async function resumeTask(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t) return;
+  if(t.running) return;                 // already running
+  const had=t.actualMs, wasDone=t.done;
+  t.done=false;                         // a resumed task is active again
+  await toggleRun(id);                  // start its timer (preserves accumulated time)
+  toast(wasDone? 'Reopened & resumed — timing continues from '+minFmt(had)+'.'
+               : 'Resumed — timing continues from '+minFmt(had)+'.');
 }
 /* ----- track-as-you-go: start a timer now, name the task later ----- */
 async function startAdHocTimer(){
@@ -2130,7 +2172,9 @@ function openTaskMenu(id,anchor){
   const hasMeta=!!t.todoistMeta;
   const m=document.createElement('div'); m.className='menu'; m.id='taskMenu';
   const expanded=expandedTasks.has(id);
+  const canResume = !t.running && (t.done || t.actualMs>0);
   m.innerHTML='<button data-a="edit">'+EDIT+' Edit / schedule</button>'+
+    (canResume?'<button data-a="resume">▶ Resume timer</button>':'')+
     (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
     (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
     (t.scheduledMin!=null&&t.todoistId&&tdConnected()?'<button data-a="pushtime">⏱ Push time → Todoist</button>':'')+
@@ -2145,6 +2189,7 @@ function openTaskMenu(id,anchor){
   m.style.left=Math.max(8,Math.min(left,innerWidth-mw-8))+'px';
   m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
     if(a==='edit') openTaskEditor(id);
+    else if(a==='resume') resumeTask(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
     else if(a==='pin') togglePin(id);
     else if(a==='resched') openResched(id);
@@ -4775,38 +4820,55 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadBlockColor(); loadCapDisplay(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{
+  // each preference loader is non-critical — one bad value must not stop startup
+  try{ applyTheme(preferredTheme()); }catch(e){}
+  [loadDisplay,loadDensityAccent,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,
+   applyDisplay,applyDensityAccent,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink]
+    .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
-  await load(); updateConnUI();
-  try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
-    document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x.getAttribute('data-l')===listLayout)); }catch(e){}
-  try{ dayCols=parseInt(localStorage.getItem(LS_PREFIX+'_daycols'))||1; }catch(e){}
-  try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); else render(); }catch(e){}
-  if(locked()){
-    showUnlock();   // keys are encrypted — prompt before any sync
-  } else if(syncOn() && navigator.onLine){
-    // sync with the cloud on startup — push first if we have unsynced offline edits
-    if(dirtyOffline){ await pushGist(true); }
-    else if(sync.gistId){ await pullGist(true); }
+  // CRITICAL PATH: load data and paint. If this fails, show recovery but still
+  // try a bare render so the buttons/empty state are usable.
+  try{
+    await load();
+    try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
+      document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x.getAttribute('data-l')===listLayout)); }catch(e){}
+    try{ dayCols=parseInt(localStorage.getItem(LS_PREFIX+'_daycols'))||1; }catch(e){}
+    try{ const v=localStorage.getItem(LS_PREFIX+'_view'); if(v==='day'||v==='week'||v==='month') setView(v); else render(); }catch(e){ render(); }
+  }catch(err){
+    oodaRecoveryBar(err);
+    try{ render(); }catch(e){}
   }
-  await loadHistory();
-  buildEstIndex();
-  const carry=await sget('carry');
-  if(carry&&carry.length&&!state.tasks.length){
-    carry.forEach(c=>{ const n=typeof c==='string'?c:c.name; const tdId=typeof c==='string'?null:(c.todoistId||null);
-      state.tasks.push({id:uid(),name:n,channelId:state.channels[0].id,estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:tdId}); });
-    await sset('carry',[]); await saveDay(); render(); toast('Carried '+carry.length+' task(s) from before.');
-  }
-  // flush any queued offline changes, then pull today's Todoist tasks (unless locked)
-  if(!locked() && navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
-  updateConnUI();
-  // register the service worker (offline) + wire the "new version available" flow
-  initServiceWorker();
-  // ask the browser to keep our stored data (incl. saved keys) durable — helps
-  // resist eviction on iOS / Safari and in installed PWAs
-  if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
-  startAutoSync();   // periodic background Todoist + cloud sync
-  scheduleNotifications();   // arm block-start reminders for today
+  __oodaBooted=true;   // UI is interactive — later async hiccups shouldn't trip the recovery bar
+  try{ updateConnUI(); }catch(e){}
+  // everything below is best-effort; a failure here must not blank the app
+  try{
+    if(locked()){
+      showUnlock();   // keys are encrypted — prompt before any sync
+    } else if(syncOn() && navigator.onLine){
+      // sync with the cloud on startup — push first if we have unsynced offline edits
+      if(dirtyOffline){ await pushGist(true); }
+      else if(sync.gistId){ await pullGist(true); }
+    }
+    await loadHistory();
+    buildEstIndex();
+    const carry=await sget('carry');
+    if(carry&&carry.length&&!state.tasks.length){
+      carry.forEach(c=>{ const n=typeof c==='string'?c:c.name; const tdId=typeof c==='string'?null:(c.todoistId||null);
+        state.tasks.push({id:uid(),name:n,channelId:state.channels[0].id,estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:tdId}); });
+      await sset('carry',[]); await saveDay(); render(); toast('Carried '+carry.length+' task(s) from before.');
+    }
+    // flush any queued offline changes, then pull today's Todoist tasks (unless locked)
+    if(!locked() && navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
+    updateConnUI();
+    // ask the browser to keep our stored data (incl. saved keys) durable — helps
+    // resist eviction on iOS / Safari and in installed PWAs
+    if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
+    startAutoSync();   // periodic background Todoist + cloud sync
+    scheduleNotifications();   // arm block-start reminders for today
+  }catch(err){ console.warn('boot tail error',err); }
+  // register the service worker last so a SW hiccup can't delay first paint
+  try{ initServiceWorker(); }catch(e){}
 })();
 </script>
 </body>
