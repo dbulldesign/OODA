@@ -34,6 +34,21 @@
     --accent:#5FA37A;
     --todoist:#F06A5C;
   }
+  /* ---------- alternate theme palettes (Display → Theme) ---------- */
+  :root[data-palette="sepia"]{ --paper:#E8DEC9; --surface:#F4ECDA; --surface-2:#EBE1CC;
+    --ink:#3B3020; --ink-soft:#6C5D45; --ink-faint:#9A8B70; --line:#D9C9A9; --line-strong:#C8B589; --accent:#9A6B2F; }
+  :root[data-theme="dark"][data-palette="sepia"]{ --paper:#1E1812; --surface:#28201A; --surface-2:#322822;
+    --ink:#EEE3CF; --ink-soft:#B7A98F; --ink-faint:#867B67; --line:#3A2F24; --line-strong:#4B3D2F; --accent:#CB9C59; }
+  :root[data-theme="dark"][data-palette="amoled"]{ --paper:#000000; --surface:#0A0A0A; --surface-2:#151515;
+    --ink:#EDEDED; --ink-soft:#A0A0A0; --ink-faint:#6A6A6A; --line:#202020; --line-strong:#303030; }
+  :root[data-palette="solar"]{ --paper:#FDF6E3; --surface:#FBF1D8; --surface-2:#EEE8D5;
+    --ink:#586E75; --ink-soft:#657B83; --ink-faint:#93A1A1; --line:#E6DCC2; --line-strong:#D6CCB2; --accent:#268BD2; }
+  :root[data-theme="dark"][data-palette="solar"]{ --paper:#002B36; --surface:#073642; --surface-2:#0B4250;
+    --ink:#EEE8D5; --ink-soft:#93A1A1; --ink-faint:#657B83; --line:#0E4B59; --line-strong:#155A6B; --accent:#2AA198; }
+  :root[data-palette="contrast"]{ --paper:#FFFFFF; --surface:#FFFFFF; --surface-2:#F0F0F0;
+    --ink:#000000; --ink-soft:#1A1A1A; --ink-faint:#454545; --line:#9A9A9A; --line-strong:#000000; --accent:#0A5C2E; }
+  :root[data-theme="dark"][data-palette="contrast"]{ --paper:#000000; --surface:#000000; --surface-2:#0E0E0E;
+    --ink:#FFFFFF; --ink-soft:#E2E2E2; --ink-faint:#B0B0B0; --line:#777777; --line-strong:#FFFFFF; --accent:#5FE39A; }
   :root{ --glass-surface:rgba(255,255,255,.52); --glass-2:rgba(255,255,255,.34); --glass-brd:rgba(255,255,255,.55); --glass-hi:rgba(255,255,255,.65); --glass-sh:rgba(31,42,44,.14); }
   :root[data-theme="dark"]{ --glass-surface:rgba(38,46,50,.46); --glass-2:rgba(48,56,60,.32); --glass-brd:rgba(255,255,255,.14); --glass-hi:rgba(255,255,255,.16); --glass-sh:rgba(0,0,0,.4); }
   #glassbg{display:none}
@@ -122,6 +137,9 @@
   #dispSizes button:nth-child(3){font-size:17px}
   #dispSizes button:nth-child(4){font-size:19px}
   .disp-sizes button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .disp-sizes.wrap-seg{flex-wrap:wrap}
+  .accent-custom{display:inline-flex;align-items:center;gap:7px;margin-top:8px;font-size:12.5px;color:var(--ink-soft);cursor:pointer}
+  .accent-custom input[type=color]{width:28px;height:28px;padding:0;border:1px solid var(--line-strong);border-radius:7px;background:none;cursor:pointer}
   .glass-opts{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:2px 0 4px;background:var(--surface-2)}
   .glass-opts .grow-row{display:flex;align-items:center;gap:10px;margin:4px 0}
   .glass-opts .grow-row label{flex:0 0 44px;font-size:12.5px;color:var(--ink-soft)}
@@ -900,6 +918,7 @@
     if(localStorage.getItem('ooda:_greact')==='1' && localStorage.getItem('ooda:_glass')==='1') document.documentElement.classList.add('glass-react');
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
     if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
+    var pal=localStorage.getItem('ooda:_palette'); if(pal&&pal!=='default') document.documentElement.setAttribute('data-palette',pal);
     var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
     var dm=localStorage.getItem('ooda:_detmode'); if(dm==='hover') document.documentElement.classList.add('det-hover'); else if(dm==='always') document.documentElement.classList.add('det-always');
   }catch(e){} })();
@@ -1331,6 +1350,14 @@
       </div>
     </div>
     <div class="td-field">
+      <label>Timeline snap</label>
+      <div class="disp-sizes" id="snapSeg">
+        <button type="button" data-snap="15">15 min</button>
+        <button type="button" data-snap="30">30 min</button>
+        <button type="button" data-snap="60">60 min</button>
+      </div>
+    </div>
+    <div class="td-field">
       <label>Capacity display</label>
       <div class="disp-sizes" id="capDispSeg">
         <button type="button" data-cd="bar">Bar</button>
@@ -1338,8 +1365,19 @@
       </div>
     </div>
     <div class="td-field">
+      <label>Theme</label>
+      <div class="disp-sizes wrap-seg" id="paletteSeg">
+        <button type="button" data-pal="default">Default</button>
+        <button type="button" data-pal="sepia">Sepia</button>
+        <button type="button" data-pal="solar">Solarized</button>
+        <button type="button" data-pal="amoled">AMOLED</button>
+        <button type="button" data-pal="contrast">Contrast</button>
+      </div>
+    </div>
+    <div class="td-field">
       <label>Accent color</label>
       <div class="accent-row" id="accentRow"></div>
+      <label class="accent-custom"><input type="color" id="accentPicker"> <span>Custom…</span></label>
     </div>
     <div class="td-field">
       <label>Task details</label>
@@ -1362,6 +1400,11 @@
         <button type="button" data-w="day">Whole day only</button>
       </div>
       <p class="td-hint">Tap a style or drag the slider to preview. Intensity scales the number of particles (up to 4×). Respects “reduce motion”.</p>
+    </div>
+    <div class="td-field">
+      <label class="td-check" style="margin:0"><input type="checkbox" id="dispSound"> Sound effects (complete / start / break)</label>
+      <div class="grow-row" id="soundVolWrap" style="display:none;margin-top:8px"><label>Volume</label>
+        <input type="range" id="soundVol" min="0" max="1" step="0.05"><span class="grow-v" id="soundVolVal"></span></div>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
   </div>
@@ -1849,7 +1892,7 @@ async function toggleRun(id){
   }
   else {
     state.tasks.forEach(o=>{ if(o.running){ o.actualMs+=Date.now()-o.startedAt; o.running=false; o.startedAt=null; } });
-    t.running=true; t.startedAt=Date.now(); t.done=false; state.activeId=id; haptic(10);
+    t.running=true; t.startedAt=Date.now(); t.done=false; state.activeId=id; haptic(10); playSound('start');
     scheduleRunningTask(t,true);
     reflowCascade(t.id);
   }
@@ -1938,7 +1981,7 @@ async function toggleDone(id){
   // round tracked time up to the next whole minute on completion
   if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
   await saveDay(); render();
-  if(t.done){ haptic(18); const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]');
+  if(t.done){ haptic(18); playSound('complete'); const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]');
     const allDone=state.tasks.length && state.tasks.every(x=>x.done);
     if(fxWhen!=='day' || allDone) celebrate(li);
     if(allDone){ toastAction('Everything done — nice work today. 🎉','Plan tomorrow →',planTomorrow); setTimeout(()=>celebrate(null),180); }
@@ -2526,7 +2569,10 @@ function updateRunningSchedule(){
   if(after!==before && after!==lastRunningScheduleSig){ lastRunningScheduleSig=after; saveDay(); }
 }
 /* ---------- day calendar view (schedule tasks on a timeline) ---------- */
-const SNAP=30;  // minutes — calendar snaps to half-hours
+let SNAP=30;  // minutes — calendar snap granularity (configurable: 15 / 30 / 60)
+function loadSnap(){ try{ const v=parseInt(localStorage.getItem(LS_PREFIX+'_snap')); if(v===15||v===30||v===60) SNAP=v; }catch(e){} }
+function setSnap(v){ SNAP=v; try{localStorage.setItem(LS_PREFIX+'_snap',String(v));}catch(e){} markSnap(); if(viewMode==='day') renderCal(); }
+function markSnap(){ document.querySelectorAll('#snapSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.snap===SNAP)); }
 function snap(m){ return Math.round(m/SNAP)*SNAP; }
 function ceilSnap(m){ return Math.max(SNAP,Math.ceil(m/SNAP)*SNAP); }
 function blockDur(t){
@@ -4403,6 +4449,15 @@ function buildAccents(){ const row=document.getElementById('accentRow'); if(!row
   row.addEventListener('click',e=>{ const b=e.target.closest('.accent-sw'); if(b) setAccent(b.dataset.c); });
   row.dataset.built='1'; }
 function setAccent(c){ accent=c; try{localStorage.setItem(LS_PREFIX+'_accent',c);}catch(e){} applyDensityAccent(); markAccent(); }
+/* ---------- theme palettes (Default / Sepia / Solarized / AMOLED / Contrast) ---------- */
+let palette='default';
+function loadPalette(){ try{ palette=localStorage.getItem(LS_PREFIX+'_palette')||'default'; }catch(e){} }
+function applyPalette(){ if(palette&&palette!=='default') document.documentElement.setAttribute('data-palette',palette);
+  else document.documentElement.removeAttribute('data-palette'); }
+function setPalette(p){ palette=p; try{localStorage.setItem(LS_PREFIX+'_palette',p);}catch(e){}
+  document.documentElement.classList.add('theme-anim'); clearTimeout(themeAnimT); themeAnimT=setTimeout(()=>document.documentElement.classList.remove('theme-anim'),750);
+  applyPalette(); markPalette(); }
+function markPalette(){ document.querySelectorAll('#paletteSeg button').forEach(b=>b.classList.toggle('on',b.dataset.pal===palette)); }
 /* ---------- task details: reveal mode + which fields to show ---------- */
 const DETAIL_FIELDS=[['project','Project'],['due','Due date'],['priority','Priority'],['labels','Labels'],['description','Description'],['links','Links'],['comments','Comments'],['subtasks','Sub-tasks'],['channel','Channel'],['schedule','Scheduled time'],['estimate','Estimate'],['tracked','Tracked time']];
 const DEFAULT_DETAILS=['project','due','priority','labels','description','links','subtasks'];
@@ -4460,6 +4515,9 @@ function buildFxChoices(){
 function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); markCapDisplay(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
   const go=document.getElementById('glassOpts'); if(go) go.style.display=glassOn?'block':'none'; markGlassOpts();
+  markPalette(); markSnap();
+  const ap=document.getElementById('accentPicker'); if(ap) ap.value=/^#[0-9a-f]{6}$/i.test(accent)?accent:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#3F7A56';
+  const sv=document.getElementById('soundVol'); if(sv){ sv.value=soundVol; document.getElementById('soundVolVal').textContent=Math.round(soundVol*100)+'%'; } markSound();
   document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
@@ -4529,6 +4587,32 @@ function setFxInt(v){ fxIntensity=v; try{localStorage.setItem(LS_PREFIX+'_fxint'
 function setFxWhen(w){ fxWhen=w; try{localStorage.setItem(LS_PREFIX+'_fxwhen',w);}catch(e){} markFxWhen(); }
 function markFxWhen(){ document.querySelectorAll('#fxWhenSeg button').forEach(b=>b.classList.toggle('on',b.dataset.w===fxWhen)); }
 function markFx(){ document.querySelectorAll('#fxChoices button').forEach(b=>b.classList.toggle('on',b.dataset.fx===fxMode)); }
+/* ---------- sound effects (WebAudio blips on complete / start / break) ---------- */
+let soundOn=false, soundVol=0.5, _actx=null;
+function loadSound(){ try{ soundOn=localStorage.getItem(LS_PREFIX+'_sound')==='1';
+  const v=parseFloat(localStorage.getItem(LS_PREFIX+'_soundvol')); if(!isNaN(v)) soundVol=v; }catch(e){} }
+function setSound(on){ soundOn=on; try{localStorage.setItem(LS_PREFIX+'_sound',on?'1':'0');}catch(e){} if(on) playSound('start'); markSound(); }
+function setSoundVol(v){ soundVol=v; try{localStorage.setItem(LS_PREFIX+'_soundvol',String(v));}catch(e){}
+  const l=document.getElementById('soundVolVal'); if(l) l.textContent=Math.round(v*100)+'%'; if(soundOn) playSound('start'); }
+function markSound(){ const c=document.getElementById('dispSound'); if(c) c.checked=soundOn;
+  const w=document.getElementById('soundVolWrap'); if(w) w.style.display=soundOn?'flex':'none'; }
+// short pleasant tones; types: complete (rising arpeggio), start (single blip), break (two-tone)
+function playSound(type){
+  if(!soundOn) return;
+  try{
+    _actx = _actx || new (window.AudioContext||window.webkitAudioContext)();
+    if(_actx.state==='suspended') _actx.resume();
+    const seqs={ complete:[[523,0],[659,.09],[784,.18]], start:[[660,0]], break:[[784,0],[523,.12]], goal:[[523,0],[659,.08],[784,.16],[1046,.26]] };
+    const seq=seqs[type]||seqs.start;
+    seq.forEach(([freq,t])=>{
+      const o=_actx.createOscillator(), g=_actx.createGain(); o.type='sine'; o.frequency.value=freq;
+      const t0=_actx.currentTime+t;
+      g.gain.setValueAtTime(0,t0); g.gain.linearRampToValueAtTime(soundVol*0.5,t0+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+0.22);
+      o.connect(g); g.connect(_actx.destination); o.start(t0); o.stop(t0+0.24);
+    });
+  }catch(e){}
+}
 function fxHost(){ return document.getElementById('confetti'); }
 function fxPiece(cls){ const el=document.createElement('div'); el.className=cls; return el; }
 // full-screen confetti — pieces seeded across the whole width, slow drift down
@@ -4692,6 +4776,11 @@ document.getElementById('fxIntInput').addEventListener('input',e=>setFxInt(parse
 document.getElementById('fxWhenSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-w]'); if(b) setFxWhen(b.dataset.w); });
 document.getElementById('blockColorSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-bc]'); if(b) setBlockColor(b.dataset.bc); });
 document.getElementById('capDispSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-cd]'); if(b) setCapDisplay(b.dataset.cd); });
+document.getElementById('snapSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-snap]'); if(b) setSnap(+b.dataset.snap); });
+document.getElementById('paletteSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-pal]'); if(b) setPalette(b.dataset.pal); });
+document.getElementById('accentPicker').addEventListener('input',e=>setAccent(e.target.value));
+document.getElementById('dispSound').addEventListener('change',e=>setSound(e.target.checked));
+document.getElementById('soundVol').addEventListener('input',e=>setSoundVol(parseFloat(e.target.value)));
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -5098,8 +5187,8 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
   try{ applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,
-   applyDisplay,applyDensityAccent,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink]
+  [loadDisplay,loadDensityAccent,loadPalette,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,
+   applyDisplay,applyDensityAccent,applyPalette,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   // CRITICAL PATH: load data and paint. If this fails, show recovery but still
