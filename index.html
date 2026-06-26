@@ -215,6 +215,7 @@
   .chip.prio{font-weight:700;border-color:transparent;color:#fff}
   .chip.prio.p1{background:#B14233}.chip.prio.p2{background:#C2752A}.chip.prio.p3{background:#2E6B9E}
   .chip.chan{color:var(--ink)}.chip.chan .dot{width:7px;height:7px;border-radius:50%}
+  .chip.repeat{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
   .est-hint{margin-top:5px;border:1px dashed var(--accent);background:var(--surface-2);color:var(--ink);
     border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
   .est-hint:hover{background:var(--surface)}
@@ -1141,6 +1142,15 @@
         <label>Day (move to date)</label>
         <input id="teDate" type="date">
       </div>
+      <div class="td-field">
+        <label>Repeat (this app)</label>
+        <select id="teRepeat">
+          <option value="">Does not repeat</option>
+          <option value="daily">Every day</option>
+          <option value="weekdays">Weekdays (Mon–Fri)</option>
+          <option value="weekly">Weekly</option>
+        </select>
+      </div>
       <div class="td-field" style="grid-column:1/-1">
         <label>Project (Todoist)</label>
         <div style="display:flex;gap:8px"><select id="teProject" style="flex:1"></select><button type="button" id="teNewProj" class="aa-btn">+ New</button></div>
@@ -1451,7 +1461,7 @@ const DEFAULT_CHANNELS=[
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,horizon:true,pushtimes:false,lastSync:null,projects:[]};
 const TD_BASE='https://api.todoist.com/api/v1';
 
-let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[] };
+let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[], recurring:[] };
 let memFallback={}; let storeOk=true; let tick=null;
 
 /* ---------- storage layer ----------
@@ -1507,6 +1517,52 @@ async function loadDay(){
   state.reflection=day&&day.reflection?day.reflection:'';
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   const rt=document.getElementById('reflectText'); if(rt) rt.value=state.reflection;
+  await seedRecurringForViewedDay();
+}
+/* ---------- local recurring tasks ---------- */
+function dayMatchesRepeat(d, r){
+  if(!r) return false;
+  if(r.freq==='daily') return true;
+  const dow=d.getDay();
+  if(r.freq==='weekdays') return dow>=1 && dow<=5;
+  if(r.freq==='weekly') return dow===r.weekday;
+  return false;
+}
+// On today/future days, drop in an instance of each matching recurring template
+// that isn't already present for this day. Past days are left untouched.
+async function seedRecurringForViewedDay(){
+  const recs=state.recurring||[]; if(!recs.length) return;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const d=new Date(viewDate); d.setHours(0,0,0,0);
+  if(d<today) return;
+  let added=false;
+  for(const r of recs){
+    if(!dayMatchesRepeat(d,r)) continue;
+    if(state.tasks.some(t=>t.recurId===r.id)) continue;
+    state.tasks.push({ id:uid(), name:r.name, channelId:r.channelId, estimateMin:r.estimateMin||0,
+      scheduledMin:(r.scheduledMin!=null?r.scheduledMin:null), actualMs:0, running:false, startedAt:null,
+      done:false, recurId:r.id });
+    added=true;
+  }
+  if(added) await saveDay();
+}
+// Reflect the editor's Repeat choice onto a task's recurring template.
+function applyRepeatChoice(t, freq){
+  state.recurring=state.recurring||[];
+  if(!freq){
+    // turning repeat off: unlink this instance; remove the template if nothing else uses it
+    if(t.recurId){ const rid=t.recurId; t.recurId=null;
+      if(!state.tasks.some(x=>x.recurId===rid)) state.recurring=state.recurring.filter(r=>r.id!==rid);
+      saveConfig();
+    }
+    return;
+  }
+  let r = t.recurId && state.recurring.find(x=>x.id===t.recurId);
+  if(!r){ r={ id:uid() }; state.recurring.push(r); t.recurId=r.id; }
+  r.freq=freq; r.name=t.name; r.channelId=t.channelId;
+  r.estimateMin=t.estimateMin||0; r.scheduledMin=(t.scheduledMin!=null?t.scheduledMin:null);
+  if(freq==='weekly') r.weekday=new Date(viewDate).getDay();
+  saveConfig();
 }
 async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); applyViewTransition(render); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 function shiftDay(n){ const d=new Date(viewDate); d.setDate(d.getDate()+n); gotoDate(d); }
@@ -1557,8 +1613,8 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; }
-  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; await saveConfig(); }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
+  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; }
   // resume a running task across reloads
@@ -1572,7 +1628,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -1582,7 +1638,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],updatedAt:Date.now()}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],updatedAt:Date.now()}); schedulePush(); }
 // write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
 async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
 async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
@@ -1781,7 +1837,8 @@ function taskProjectLabel(t){ return (t.todoistMeta&&t.todoistMeta.projectName)|
 function rowProjectChip(t){
   if(taskProject(t)) return '';
   const ch=chById(t.channelId);
-  return '<div class="meta"><span class="chip chan"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+'</span></div>';
+  const rep = t.recurId ? '<span class="chip repeat">↻ repeats</span>' : '';
+  return '<div class="meta"><span class="chip chan"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+'</span>'+rep+'</div>';
 }
 function taskDueTs(t){ const d=t.todoistMeta&&t.todoistMeta.due; if(!d)return Infinity;
   const s=d.datetime||d.date; const ms=Date.parse(d.datetime|| (d.date?d.date+'T00:00:00':'')); return isNaN(ms)?Infinity:ms; }
@@ -3425,6 +3482,8 @@ function openTaskEditor(id){
   document.getElementById('teSched').value=hmInput(t.scheduledMin);
   document.getElementById('teUnschedule').style.display = t.scheduledMin!=null ? 'inline-block':'none';
   document.getElementById('teDate').value=dayKey().slice(4);
+  const rec = t.recurId && (state.recurring||[]).find(r=>r.id===t.recurId);
+  document.getElementById('teRepeat').value = rec? rec.freq : '';
   document.getElementById('teLabels').value=(m.labels||[]).join(', ');
   buildTeProjects(m.projectId||'');
   const connected=tdConnected(), linked=!!t.todoistId;
@@ -3452,6 +3511,8 @@ async function saveTaskEditor(){
 
   // apply locally
   t.name=title; t.estimateMin=estMin; t.scheduledMin=minFromHM(document.getElementById('teSched').value);
+  // local repeat: create / update / remove the recurring template this task seeds from
+  applyRepeatChoice(t, document.getElementById('teRepeat').value);
   if(linked||hasAny){
     const m=t.todoistMeta||(t.todoistMeta={projectId:'',projectName:'',section:'',labels:[],priority:1,due:null,description:'',rawContent:'',url:'',commentCount:0});
     m.priority=prio; m.labels=labels; m.rawContent=title;
