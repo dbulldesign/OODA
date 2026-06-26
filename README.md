@@ -47,7 +47,10 @@ footer shows which mode is active).
   task as you go: it drops a live block on the Day view starting at the current
   time and growing until you **Stop**. Name it before, **rename it while it
   runs** (tap the name in the card), or you'll be **prompted on stop**; the
-  finished block spans start→stop and the day reflows around it.
+  finished block spans start→stop and the day reflows around it. When you name
+  it (in the card or the stop prompt) you can type **`#`** to pick an existing
+  project/channel or **create a new one** (a `#`-autocomplete works in the
+  quick-add box, the now-tracking name, and the stop prompt).
 - Per-task start/pause timers shown as minutes:seconds (rounded up to the next
   whole minute when a task is completed), estimates vs. actuals, and
   over-estimate warnings.

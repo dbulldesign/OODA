@@ -117,9 +117,9 @@
   }
   .now .label{flex:1;min-width:0}
   .now .label .what{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .now .label .what[contenteditable]{outline:none;cursor:text;border-bottom:1px dashed transparent}
-  .now .label .what[contenteditable]:focus{border-bottom-color:var(--now)}
-  .now .label .what[contenteditable]:empty::before{content:'Untitled — tap to name';color:var(--ink-faint);font-weight:400}
+  .now .label .what-input{width:100%;border:0;border-bottom:1px dashed var(--line-strong);background:none;color:var(--ink);
+    font-weight:600;font-size:16px;font-family:var(--display);padding:0 0 2px;outline:none}
+  .now .label .what-input:focus{border-bottom-color:var(--now)}
   .now .now-start{background:var(--accent)}
   .now .label .sub{font-size:12px;color:var(--ink-soft);letter-spacing:.02em}
   .now .clock{font-family:var(--mono);font-size:26px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
@@ -792,6 +792,7 @@
     <div class="pulse"></div>
     <div class="label">
       <div class="what" id="nowWhat">Nothing tracking</div>
+      <input class="what-input" id="nowNameInp" style="display:none" placeholder="Untitled — name it (type #project too)" autocomplete="off" spellcheck="false">
       <div class="sub" id="nowSub">Tap ▶ on a task to start the clock</div>
     </div>
     <div class="clock" id="nowClock">0:00:00</div>
@@ -1569,10 +1570,40 @@ async function commitTaskName(useTime){
   const t=state.tasks.find(x=>x.id===namingId);
   document.getElementById('nameDialog').close();
   if(!t)return;
-  let nm=document.getElementById('nameInput').value.trim();
-  if(!nm){ const span=t.scheduledMin!=null?hmFromMin(t.scheduledMin)+'–'+hmFromMin(Math.min(calEnd(),t.scheduledMin+(t.estimateMin||SNAP))):''; nm = useTime&&span? ('Tracked '+span) : (span?('Tracked '+span):'Tracked time'); }
-  t.name=nm; if(t.todoistMeta)t.todoistMeta.rawContent=nm;
+  const raw=document.getElementById('nameInput').value.trim();
+  if(raw) await applyTrackName(t,raw);
+  if(!(t.name||'').trim()){ const span=t.scheduledMin!=null?hmFromMin(t.scheduledMin)+'–'+hmFromMin(Math.min(calEnd(),t.scheduledMin+(t.estimateMin||SNAP))):''; t.name = span?('Tracked '+span):'Tracked time'; }
+  if(t.todoistMeta)t.todoistMeta.rawContent=t.name;
   namingId=null; await saveDay(); render();
+}
+/* extract a #project (existing multi-word match, else a single token) from a typed name */
+function extractProject(raw){
+  let s=' '+String(raw||'').replace(/\s+/g,' ').trim()+' '; let proj='';
+  const take=re=>{ const mm=s.match(re); if(mm){ s=s.slice(0,mm.index)+' '+s.slice(mm.index+mm[0].length); } return mm; };
+  const names=[...tdProjects().map(p=>p.name), ...state.channels.map(c=>c.name)].filter(Boolean).sort((a,b)=>b.length-a.length);
+  let pm=null;
+  for(const nm of names){ if(pm=take(new RegExp('\\s#'+nm.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?=\\s)','i'))){ proj=nm; break; } }
+  if(!pm){ const m=take(/\s#([A-Za-z0-9_\-]+)(?=\s)/); if(m) proj=m[1]; }
+  return { name:s.replace(/\s+/g,' ').trim(), project:proj };
+}
+const CHANNEL_COLORS=['#3F7A56','#2E6B9E','#C2752A','#B14233','#5B4B9E','#0E7C7B','#C7407A','#7A746B'];
+async function ensureChannelForProject(name){
+  if(!name) return null;
+  const hit=state.channels.find(c=>c.name.toLowerCase()===name.toLowerCase());
+  if(hit) return hit.id;
+  const used=new Set(state.channels.map(c=>c.color));
+  const color=CHANNEL_COLORS.find(c=>!used.has(c))||CHANNEL_COLORS[state.channels.length%CHANNEL_COLORS.length];
+  const ch={id:uid(),name,color}; state.channels.push(ch); await saveConfig(); buildChannelSelect();
+  if(tdConnected()) tdCreateProject(name).catch(()=>{});   // also create it in Todoist (best-effort)
+  toast('Project “'+name+'” created.');
+  return ch.id;
+}
+// apply a typed name that may contain a #project, setting the task's channel (creating it if new)
+async function applyTrackName(t,raw){
+  const {name,project}=extractProject(raw);
+  if(name) t.name=name;
+  if(project){ const cid=await ensureChannelForProject(project); if(cid) t.channelId=cid; }
+  if(t.todoistMeta) t.todoistMeta.rawContent=t.name;
 }
 async function toggleDone(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
@@ -1961,19 +1992,19 @@ function renderArc(){
 }
 function renderNow(){
   const card=document.getElementById('nowCard');
-  const whatEl=document.getElementById('nowWhat');
+  const whatEl=document.getElementById('nowWhat'), inp=document.getElementById('nowNameInp');
   const t=state.tasks.find(x=>x.id===state.activeId && x.running);
   if(t){ const ch=chById(t.channelId);
     card.classList.add('active');
-    whatEl.setAttribute('contenteditable','true');
-    if(document.activeElement!==whatEl) whatEl.textContent=t.name||'';   // don't clobber while typing
-    document.getElementById('nowSub').textContent=ch.name+' · '+(t.name?'tap the name to rename':'name it here, or when you stop');
+    whatEl.style.display='none'; inp.style.display='block';
+    if(document.activeElement!==inp) inp.value=t.name||'';   // don't clobber while typing
+    document.getElementById('nowSub').textContent=ch.name+' · name it here (use #project), or when you stop';
     document.getElementById('nowClock').textContent=clockFmt(liveActual(t));
     document.getElementById('nowStop').style.display='block';
     document.getElementById('nowStart').style.display='none';
   } else {
     card.classList.remove('active');
-    whatEl.removeAttribute('contenteditable');
+    whatEl.style.display=''; inp.style.display='none';
     whatEl.textContent='Nothing tracking';
     document.getElementById('nowSub').textContent='Tap ▶ on a task, or Start timer to track now';
     document.getElementById('nowClock').textContent='0:00:00';
@@ -3948,7 +3979,7 @@ document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.tar
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter' && !acOpen())addTask(); });
 /* ---------- '#project' autocomplete in the quick-add box ---------- */
-let acItems=[], acIndex=0, acTokenStart=-1;
+let acItems=[], acIndex=0, acTokenStart=-1, acTarget=null;
 function acMenuEl(){ return document.getElementById('acMenu'); }
 function acOpen(){ return acMenuEl().style.display!=='none'; }
 function acClose(){ acMenuEl().style.display='none'; acItems=[]; acTokenStart=-1; }
@@ -3968,27 +3999,29 @@ function acProjects(){
   return out;
 }
 function acUpdate(){
-  const inp=document.getElementById('addName'); const tok=acToken(inp);
+  const inp=acTarget; if(!inp) return; const tok=acToken(inp);
   if(!tok){ acClose(); return; }
   const q=tok.query.toLowerCase();
   acItems=acProjects().filter(p=>p.name.toLowerCase().includes(q))
     .sort((a,b)=>{ const aw=a.name.toLowerCase().startsWith(q)?0:1, bw=b.name.toLowerCase().startsWith(q)?0:1; return aw-bw||a.name.localeCompare(b.name); })
     .slice(0,8);
+  // offer to create a new project when the typed name doesn't match
+  if(tok.query.trim() && !acItems.some(p=>p.name.toLowerCase()===q)) acItems.unshift({name:tok.query.trim(),kind:'new'});
   acTokenStart=tok.start; acIndex=0;
   acRender();
 }
 function acRender(){
   const menu=acMenuEl();
-  if(!acItems.length){ menu.innerHTML='<div class="ac-empty">No matching projects</div>'; }
+  if(!acItems.length){ menu.innerHTML='<div class="ac-empty">Type a project name…</div>'; }
   else menu.innerHTML=acItems.map((p,i)=>'<div class="ac-item'+(i===acIndex?' on':'')+'" data-i="'+i+'">'+
     (p.color?'<span class="dot" style="background:'+p.color+'"></span>':'<span class="dot" style="background:transparent;border:1px solid var(--line-strong)"></span>')+
-    '<span class="ac-nm">'+escapeHtml(p.name)+'</span><span class="ac-tag">'+(p.kind==='project'?'Todoist':'channel')+'</span></div>').join('');
-  const inp=document.getElementById('addName'); const r=inp.getBoundingClientRect();
-  menu.style.left=r.left+'px'; menu.style.top=(r.bottom+4)+'px'; menu.style.minWidth=Math.min(r.width,320)+'px';
+    '<span class="ac-nm">'+(p.kind==='new'?'Create “'+escapeHtml(p.name)+'”':escapeHtml(p.name))+'</span><span class="ac-tag">'+(p.kind==='project'?'Todoist':p.kind==='new'?'new':'channel')+'</span></div>').join('');
+  const inp=acTarget; const r=inp.getBoundingClientRect();
+  menu.style.left=r.left+'px'; menu.style.top=(r.bottom+4)+'px'; menu.style.minWidth=Math.min(Math.max(r.width,180),320)+'px';
   menu.style.display='block';
 }
 function acChoose(i){
-  const p=acItems[i]; if(!p) return; const inp=document.getElementById('addName');
+  const p=acItems[i]; if(!p) return; const inp=acTarget; if(!inp) return;
   const v=inp.value, caret=inp.selectionStart;
   const before=v.slice(0,acTokenStart), after=v.slice(caret);
   const insert='#'+p.name+' ';
@@ -3996,26 +4029,29 @@ function acChoose(i){
   const pos=(before+insert).length; inp.setSelectionRange(pos,pos);
   acClose(); inp.focus();
 }
-(function wireAutocomplete(){
-  const inp=document.getElementById('addName'); const menu=acMenuEl();
-  inp.addEventListener('input',acUpdate);
-  inp.addEventListener('click',acUpdate);
+function attachAutocomplete(inp){
+  inp.addEventListener('input',()=>{ acTarget=inp; acUpdate(); });
+  inp.addEventListener('click',()=>{ acTarget=inp; acUpdate(); });
   inp.addEventListener('keydown',e=>{
-    if(!acOpen()) return;
+    if(!acOpen()||acTarget!==inp) return;
     if(e.key==='ArrowDown'){ e.preventDefault(); acIndex=Math.min(acItems.length-1,acIndex+1); acRender(); }
     else if(e.key==='ArrowUp'){ e.preventDefault(); acIndex=Math.max(0,acIndex-1); acRender(); }
     else if(e.key==='Enter'||e.key==='Tab'){ if(acItems.length){ e.preventDefault(); e.stopPropagation(); acChoose(acIndex); } else acClose(); }
     else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); acClose(); }
-  },true);   // capture so Enter selects before the add-task handler fires
+  },true);   // capture so Enter selects before the submit handler fires
   inp.addEventListener('blur',()=>setTimeout(acClose,150));
-  menu.addEventListener('pointerdown',e=>{ const it=e.target.closest('.ac-item[data-i]'); if(it){ e.preventDefault(); acChoose(+it.dataset.i); } });
-})();
+}
+attachAutocomplete(document.getElementById('addName'));
+attachAutocomplete(document.getElementById('nowNameInp'));
+attachAutocomplete(document.getElementById('nameInput'));
+acMenuEl().addEventListener('pointerdown',e=>{ const it=e.target.closest('.ac-item[data-i]'); if(it){ e.preventDefault(); acChoose(+it.dataset.i); } });
 document.getElementById('addEst').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
 document.getElementById('nowStart').addEventListener('click',startAdHocTimer);
-(function(){ const w=document.getElementById('nowWhat');
-  w.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); w.blur(); } });
-  w.addEventListener('blur',()=>{ if(w.getAttribute('contenteditable')==='true' && state.activeId) renameTask(state.activeId,w.textContent); });
+(function(){ const inp=document.getElementById('nowNameInp');
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter' && !acOpen()){ e.preventDefault(); inp.blur(); } });
+  inp.addEventListener('blur',async()=>{ if(!state.activeId) return; const t=state.tasks.find(x=>x.id===state.activeId);
+    if(t){ await applyTrackName(t,inp.value); await saveDay(); render(); } });
 })();
 document.getElementById('nameSave').addEventListener('click',()=>commitTaskName(false));
 document.getElementById('nameSkip').addEventListener('click',()=>commitTaskName(true));
