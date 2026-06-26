@@ -327,6 +327,21 @@
   dialog{border:1px solid var(--line-strong);border-radius:12px;padding:0;max-width:420px;width:92%;background:var(--surface);color:var(--ink);
     max-height:88vh;max-height:88dvh;overflow:auto}
   dialog::backdrop{background:rgba(31,42,44,.35)}
+  /* help guide */
+  dialog.help{max-width:640px}
+  .help-intro{font-size:13px;color:var(--ink-soft);margin:0 0 12px}
+  .help-body{display:flex;flex-direction:column;gap:12px;margin-bottom:10px}
+  .help-card{display:grid;grid-template-columns:128px 1fr;gap:14px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .help-vis{height:78px;border-radius:9px;background:var(--surface-2);display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;color:var(--ink-soft)}
+  .help-tx h4{margin:0 0 4px;font-size:14px}
+  .help-tx p{margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.5}
+  .help-tx kbd{font-family:var(--mono);background:var(--surface-2);border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:11px}
+  .hv-pill{display:inline-block;border-radius:10px;padding:2px 7px;font-size:9.5px;line-height:1.5;color:#fff;font-weight:600}
+  .hv-chips{display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:10px;color:var(--ink)}
+  .hv-tl{position:relative;width:100%;height:100%}
+  .hv-blk{position:absolute;left:18%;right:6%;border-radius:5px;color:#fff;font-size:9px;padding:2px 5px;box-shadow:inset 3px 0 0 rgba(0,0,0,.2)}
+  .hv-axis{position:absolute;left:0;top:0;bottom:0;width:16%;font-size:8px;color:var(--ink-faint);display:flex;flex-direction:column;justify-content:space-between}
+  @media(max-width:520px){ .help-card{grid-template-columns:1fr} .help-vis{height:66px} }
   .dlg-in{padding:20px}
   .dlg-in h3{margin:0 0 12px;font-size:16px}
   .ch-edit{display:flex;align-items:center;gap:8px;margin-bottom:8px}
@@ -743,6 +758,7 @@
         <span id="ph-work">Work</span>
         <span id="ph-reflect">Reflect</span>
         <button class="theme-btn" id="themeBtn" title="Toggle light / dark">🌙</button>
+        <button class="theme-btn" id="helpBtn" title="Help & guide">?</button>
         <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
       </div>
       <div class="sync-row">
@@ -1103,6 +1119,17 @@
   </div>
 </dialog>
 
+<dialog id="helpDialog" class="help">
+  <div class="dlg-in">
+    <h3>OODA — guide</h3>
+    <p class="help-intro">A quick tour of what OODA can do. Everything lives on this device (and syncs if you connect Todoist or device sync).</p>
+    <div class="help-body" id="helpBody"></div>
+    <h3 style="margin-top:6px">Keyboard shortcuts</h3>
+    <div class="kbd-keys" id="helpKeys"></div>
+    <div class="dlg-actions"><span></span><button class="primary" id="helpDone">Done</button></div>
+  </div>
+</dialog>
+
 <dialog id="cmdkDialog" class="cmdk">
   <div class="cmdk-in">
     <input id="cmdkInput" type="text" placeholder="Type a command or task…" autocomplete="off" spellcheck="false">
@@ -1122,22 +1149,7 @@
 <dialog id="kbdDialog">
   <div class="dlg-in">
     <h3>Keyboard shortcuts</h3>
-    <div class="kbd-keys">
-      <kbd>n</kbd><span>New task (focus the add box)</span>
-      <kbd>/</kbd><span>Search</span>
-      <kbd>j</kbd><span>Move selection down</span>
-      <kbd>k</kbd><span>Move selection up</span>
-      <kbd>space</kbd><span>Start / pause the selected task</span>
-      <kbd>x</kbd><span>Complete / reopen the selected task</span>
-      <kbd>e</kbd><span>Edit the selected task</span>
-      <kbd>d</kbd><span>Delete the selected task (with Undo)</span>
-      <kbd>[</kbd><span>Previous day</span>
-      <kbd>]</kbd><span>Next day</span>
-      <kbd>t</kbd><span>Jump to today</span>
-      <kbd>↑↓</kbd><span>Day view: move the selected block (⇧ to resize)</span>
-      <kbd>⌘K</kbd><span>Command palette (⌘K / Ctrl+K)</span>
-      <kbd>?</kbd><span>This help</span>
-    </div>
+    <div class="kbd-keys" id="kbdKeys"></div>
     <div class="dlg-actions"><span></span><button class="primary" id="kbdDone">Done</button></div>
   </div>
 </dialog>
@@ -1180,6 +1192,7 @@
       <div class="set-h">Appearance</div>
       <div class="set-grid">
         <button id="dispBtn">Display</button>
+        <button id="helpSetBtn">Help &amp; guide</button>
       </div>
     </div>
     <div class="set-group">
@@ -3921,8 +3934,64 @@ function moveKbd(dir){ const rows=kbdRows(); if(!rows.length){ kbdId=null; retur
   let i=rows.findIndex(e=>e.dataset.id===kbdId);
   i = i<0 ? (dir>0?0:rows.length-1) : Math.min(rows.length-1,Math.max(0,i+dir));
   kbdId=rows[i].dataset.id; refreshKbd(); rows[i].scrollIntoView({block:'nearest'}); }
-function showShortcuts(){ document.getElementById('kbdDialog').showModal(); }
+function showShortcuts(){ renderShortcutKeys(document.getElementById('kbdKeys')); document.getElementById('kbdDialog').showModal(); }
 document.getElementById('kbdDone').addEventListener('click',()=>document.getElementById('kbdDialog').close());
+/* ---------- shared keyboard-shortcut list ---------- */
+const SHORTCUTS=[
+  ['n','New task (focus the add box)'],
+  ['/','Search the list'],
+  ['⌘K','Command palette (⌘K / Ctrl+K)'],
+  ['j / k','Move selection — list rows, or blocks in Day view'],
+  ['space','Start / pause the selected task'],
+  ['x','Complete / reopen the selected task'],
+  ['e','Edit the selected task'],
+  ['d','Delete the selected task (with Undo)'],
+  ['↑ / ↓','Day view: move the selected block (⇧ to resize)'],
+  ['[ / ]','Previous / next — day, week, or month'],
+  ['t','Jump to today'],
+  ['?','Open this guide'],
+];
+function renderShortcutKeys(el){ if(!el)return; el.innerHTML=SHORTCUTS.map(s=>'<kbd>'+escapeHtml(s[0])+'</kbd><span>'+escapeHtml(s[1])+'</span>').join(''); }
+/* ---------- help guide (illustrated feature tour) ---------- */
+function helpCards(){
+  const pill=(c,t)=>'<span class="hv-pill" style="background:'+c+'">'+t+'</span>';
+  return [
+    {title:'Quick capture',body:'Type in the add box and OODA pulls out the details: <b>#project</b> (a <kbd>#</kbd> menu pops up), <b>@labels</b>, <b>p1–p4</b>, a time (<b>2pm</b>, <b>noon</b>), a day (<b>tomorrow</b>, <b>mon</b>, <b>next week</b>) and an estimate (<b>~45m</b>, <b>1h</b>). Dated tasks land on the right day.',
+      visual:'<div class="hv-chips">report '+pill('#2E6B9E','tomorrow')+pill('#3F7A56','2pm')+pill('#C2752A','~45m')+' #Work p1</div>'},
+    {title:'Views',body:'Switch with the tabs (a bottom bar on phones): <b>List</b>, <b>Day</b> timeline, a <b>3-day</b> grid, <b>Week</b>, <b>Month</b>, and a kanban <b>Board</b>. Sort, filter and search the list; <b>All days</b> searches your whole history.',
+      visual:'<div style="display:flex;gap:3px;font-size:9.5px;flex-wrap:wrap">'+['List','Day','3-day','Week','Month','Board'].map((v,i)=>'<span style="border:1px solid var(--line-strong);border-radius:6px;padding:3px 6px;'+(i===1?'background:var(--ink);color:var(--surface)':'')+'">'+v+'</span>').join('')+'</div>'},
+    {title:'Schedule on the timeline',body:'Drag a task from <b>Unscheduled</b> onto the Day timeline, drag blocks to move, drag the bottom edge to resize. <b>📌 Pin</b> a time, <b>Tidy day</b> packs them, <b>Fill my day</b> auto-places your backlog, and <b>Auto-arrange</b> reflows around new blocks.',
+      visual:'<div class="hv-tl"><div class="hv-axis"><span>9</span><span>12</span><span>3</span></div><div class="hv-blk" style="top:8%;height:34%;background:#3F7A56">Deep work</div><div class="hv-blk" style="top:52%;height:24%;background:#C2752A">Email</div></div>'},
+    {title:'Track time & capacity',body:'Hit <b>▶</b> to start a task’s timer (shown m:ss); the <b>capacity bar</b> fills with your estimates by channel and turns <span style="color:var(--cap-over)">orange</span> when you’re over your day’s capacity.',
+      visual:'<div style="width:100%"><div style="height:12px;border-radius:6px;overflow:hidden;background:var(--surface);border:1px solid var(--line);display:flex"><span style="width:38%;background:#3F7A56"></span><span style="width:30%;background:#2E6B9E"></span><span style="width:20%;background:#C2752A"></span></div><div style="font-size:9px;margin-top:4px;color:var(--ink-faint)">5.8h scheduled · 7h capacity</div></div>'},
+    {title:'3-day & three-pane (desktop)',body:'The Day header has a <b>1 day / 3 days</b> toggle — drag blocks across columns to change their day. On a wide screen the Day view becomes <b>Unscheduled · timeline · details</b>; click a block to inspect and act on it.',
+      visual:'<div style="display:flex;gap:3px;width:100%;height:100%">'+[0,1,2].map(i=>'<div style="flex:1;border:1px solid var(--line);border-radius:5px;position:relative;background:var(--surface)"><div style="position:absolute;left:8%;right:8%;top:'+(15+i*12)+'%;height:26%;border-radius:3px;background:'+['#3F7A56','#2E6B9E','#C2752A'][i]+'"></div></div>').join('')+'</div>'},
+    {title:'Todoist sync',body:'Connect Todoist to pull tasks (any filter, plus <b>upcoming & recurring</b> on their due days), see <b>project / due / priority / @label</b> chips and <b>sub-tasks</b>, complete back, and optionally <b>push your scheduled times</b> to Todoist. New OODA tasks can auto-create there.',
+      visual:'<div style="font-size:10px;width:100%"><div style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:#3F7A56"></span>Draft brief <span style="border:1px solid var(--todoist,#E44332);color:var(--todoist,#E44332);border-radius:4px;padding:0 4px;font-size:8px">TD</span></div><div class="hv-chips" style="margin-top:4px">'+pill('#7A746B','Work')+pill('#B14233','today')+pill('#5B4B9E','P1')+'</div></div>'},
+    {title:'Sync devices & backup',body:'<b>Device sync</b> mirrors everything to a private GitHub gist (per-day merge, so two devices won’t clobber each other). <b>Lock keys</b> encrypts your tokens behind a password. <b>Export</b> CSV/JSON/<b>ICS</b> (calendar), or <b>Backup / Restore</b> the whole dataset.',
+      visual:'<svg width="56" height="40" viewBox="0 0 56 40" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 30h26a8 8 0 0 0 0-16 11 11 0 0 0-21-3 8 8 0 0 0-5 19z"/><path d="M28 33v-12M24 25l4-4 4 4" stroke="var(--accent)"/></svg>'},
+    {title:'On your phone',body:'A thumb-reach <b>bottom tab bar</b> and a floating <b>+</b> to add; a <b>sticky strip</b> shows the running timer and capacity as you scroll; bigger calendar touch targets and light <b>haptics</b> on complete / drag. Zoom is locked for a native feel.',
+      visual:'<svg width="34" height="58" viewBox="0 0 34 58" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="30" height="54" rx="5"/><line x1="2" y1="46" x2="32" y2="46"/><circle cx="9" cy="51" r="1.6" fill="currentColor"/><circle cx="17" cy="51" r="1.6" fill="currentColor"/><circle cx="25" cy="51" r="1.6" fill="currentColor"/><circle cx="26" cy="40" r="4" fill="var(--accent)" stroke="none"/></svg>'},
+    {title:'Fast on desktop',body:'Press <kbd>⌘K</kbd> for the <b>command palette</b> (jump to any action or task), <b>right-click</b> a task or block for its menu, hover to reveal row actions, and use the keyboard shortcuts below. <b>Undo</b> appears after delete / complete / move.',
+      visual:'<div style="border:1px solid var(--line-strong);border-radius:8px;width:90%;background:var(--surface)"><div style="font-size:10px;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink-faint)">⌘K  Type a command…</div><div style="font-size:9.5px;padding:5px 8px;background:var(--surface-2)">Fill my day</div></div>'},
+    {title:'Review & routines',body:'<b>Review</b> shows completion rate, time-by-channel, estimate accuracy and a streak over 7/30 days. Save a day’s shape as a <b>Template</b>, <b>Carry overdue</b> onto today, and end with a <b>Shutdown</b> note + carry-to-tomorrow.',
+      visual:'<svg width="64" height="40" viewBox="0 0 64 40" fill="none"><rect x="6" y="20" width="9" height="16" fill="#3F7A56"/><rect x="20" y="12" width="9" height="24" fill="#2E6B9E"/><rect x="34" y="24" width="9" height="12" fill="#C2752A"/><rect x="48" y="8" width="9" height="28" fill="#5B4B9E"/></svg>'},
+    {title:'Make it yours',body:'<b>Display</b> settings: light / dark, an <b>accent color</b>, <b>density</b> (compact / comfortable), text & UI size, a fill-the-screen wide mode, and the <b>completion celebration</b> (confetti, fireworks, party, stars, balloons).',
+      visual:'<div style="display:flex;gap:6px">'+['#3F7A56','#2E6B9E','#C2752A','#B14233','#5B4B9E'].map(c=>'<span style="width:18px;height:18px;border-radius:50%;background:'+c+'"></span>').join('')+'</div>'},
+    {title:'Offline & updates',body:'OODA works fully <b>offline</b> and installs as an app; Todoist changes queue and flush when you’re back online. When a new version ships you’ll see an <b>Update & reload</b> banner; the version shows in the footer.',
+      visual:'<div style="font-size:10px;background:var(--ink);color:var(--surface);border-radius:8px;padding:6px 8px;display:flex;gap:6px;align-items:center">New version <span style="background:var(--surface);color:var(--ink);border-radius:5px;padding:2px 6px;font-weight:600;font-size:9px">Update</span></div>'},
+  ];
+}
+function openHelp(){
+  const body=document.getElementById('helpBody');
+  body.innerHTML=helpCards().map(c=>'<div class="help-card"><div class="help-vis">'+c.visual+'</div><div class="help-tx"><h4>'+c.title+'</h4><p>'+c.body+'</p></div></div>').join('');
+  renderShortcutKeys(document.getElementById('helpKeys'));
+  renderShortcutKeys(document.getElementById('kbdKeys'));
+  document.getElementById('helpDialog').showModal();
+}
+document.getElementById('helpDone').addEventListener('click',()=>document.getElementById('helpDialog').close());
+document.getElementById('helpBtn').addEventListener('click',openHelp);
+document.getElementById('helpSetBtn').addEventListener('click',openHelp);
 /* ---------- Day view: keyboard-select a block, move/resize with arrows ---------- */
 function renderCal(){ if(dayCols>1) renderMulti(); else renderDay(); }
 function inspectorOn(){ return viewMode==='day' && matchMedia('(min-width:1200px)').matches; }
@@ -4003,6 +4072,7 @@ function cmdkCommands(){ return [
   {label:'Sync activity log',hint:'open',run:()=>openSyncLog()},
   {label:'Edit channels',hint:'open',run:()=>openChDialog()},
   {label:'Toggle theme',hint:'view',run:()=>toggleTheme()},
+  {label:'Help & guide',hint:'help',run:()=>openHelp()},
   {label:'Keyboard shortcuts',hint:'help',run:()=>showShortcuts()},
 ];}
 function openCmdk(){
@@ -4056,7 +4126,7 @@ document.addEventListener('keydown',e=>{
     case '[': e.preventDefault(); navStep(-1); break;
     case ']': e.preventDefault(); navStep(1); break;
     case 't': e.preventDefault(); gotoDate(new Date()); break;
-    case '?': e.preventDefault(); showShortcuts(); break;
+    case '?': e.preventDefault(); openHelp(); break;
   }
 });
 document.getElementById('todoistBtn').addEventListener('click',openTdDialog);

@@ -28,6 +28,9 @@ footer shows which mode is active).
   Todoist when auto-create is on). Typing **`#`** pops a **project picker** —
   your Todoist projects and channels drop down and filter as you type; pick one
   to insert it (multi-word names supported).
+- **Help guide** — the **?** button in the header (or `?` / Settings → Help &
+  guide / the command palette) opens an **illustrated tour** of every feature
+  with a built-in **keyboard-shortcuts** section.
 - **Command palette** — **⌘K / Ctrl+K** opens a fuzzy launcher for actions
   (sync, views, Fill my day, Settings, Review…) and to jump to any of today's
   tasks. **Right-click** a task row or calendar block for its action menu.
