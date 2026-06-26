@@ -5112,7 +5112,9 @@ window.addEventListener('offline',updateConnUI);
   }
   __oodaBooted=true;   // UI is interactive — later async hiccups shouldn't trip the recovery bar
   try{ updateConnUI(); }catch(e){}
-  // everything below is best-effort; a failure here must not blank the app
+  // Everything below is best-effort and each step is isolated so one failure
+  // can't skip the rest. Sync runs FIRST (before the heavier history/estimate
+  // indexing) so it isn't held up behind them, and startAutoSync() always runs.
   try{
     if(locked()){
       showUnlock();   // keys are encrypted — prompt before any sync
@@ -5121,23 +5123,25 @@ window.addEventListener('offline',updateConnUI);
       if(dirtyOffline){ await pushGist(true); }
       else if(sync.gistId){ await pullGist(true); }
     }
-    await loadHistory();
-    buildEstIndex();
+  }catch(err){ console.warn('startup cloud sync failed',err); }
+  // flush any queued offline changes, then pull today's Todoist tasks (unless locked)
+  try{ if(!locked() && navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); } }catch(err){ console.warn('todoist startup sync failed',err); }
+  try{ updateConnUI(); }catch(e){}
+  try{ startAutoSync(); }catch(err){ console.warn('startAutoSync failed',err); }    // periodic background Todoist + cloud sync
+  // heavier, non-urgent startup work runs after sync is under way
+  try{
     const carry=await sget('carry');
     if(carry&&carry.length&&!state.tasks.length){
       carry.forEach(c=>{ const n=typeof c==='string'?c:c.name; const tdId=typeof c==='string'?null:(c.todoistId||null);
         state.tasks.push({id:uid(),name:n,channelId:state.channels[0].id,estimateMin:0,actualMs:0,done:false,running:false,startedAt:null,todoistId:tdId}); });
       await sset('carry',[]); await saveDay(); render(); toast('Carried '+carry.length+' task(s) from before.');
     }
-    // flush any queued offline changes, then pull today's Todoist tasks (unless locked)
-    if(!locked() && navigator.onLine){ await flushTodoist(); if(tdConnected()) syncTodoist(true); }
-    updateConnUI();
-    // ask the browser to keep our stored data (incl. saved keys) durable — helps
-    // resist eviction on iOS / Safari and in installed PWAs
-    if(navigator.storage && navigator.storage.persist){ try{ await navigator.storage.persist(); }catch(e){} }
-    startAutoSync();   // periodic background Todoist + cloud sync
-    scheduleNotifications();   // arm block-start reminders for today
-  }catch(err){ console.warn('boot tail error',err); }
+  }catch(err){ console.warn('carry failed',err); }
+  try{ await loadHistory(); }catch(err){ console.warn('loadHistory failed',err); }
+  try{ buildEstIndex(); }catch(err){ console.warn('buildEstIndex failed',err); }
+  // ask the browser to keep our stored data (incl. saved keys) durable
+  try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
+  try{ scheduleNotifications(); }catch(e){}   // arm block-start reminders for today
   // register the service worker last so a SW hiccup can't delay first paint
   try{ initServiceWorker(); }catch(e){}
 })();
