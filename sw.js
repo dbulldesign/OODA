@@ -30,13 +30,18 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return; // let API calls hit the network
+  // Stale-while-revalidate: serve the cached shell instantly (no blank wait on a
+  // slow network), then refresh the cache in the background. A genuinely new
+  // deploy ships a new service worker, which waits and triggers the in-app
+  // "update available" prompt — that's how the user moves to the latest version.
   e.respondWith(
-    fetch(req).then(resp => {
-      const copy = resp.clone();
-      caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
-      return resp;
-    }).catch(() =>
-      caches.match(req).then(hit => hit || caches.match('./index.html'))
-    )
+    caches.match(req).then(cached => {
+      const network = fetch(req).then(resp => {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(req, copy)).catch(()=>{});
+        return resp;
+      }).catch(() => cached || caches.match('./index.html'));
+      return cached || network;
+    })
   );
 });
