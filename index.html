@@ -1327,6 +1327,27 @@
   </div>
 </dialog>
 
+<dialog id="addDialog">
+  <div class="dlg-in">
+    <h3>New task</h3>
+    <div class="td-field">
+      <input id="qaName" type="text" spellcheck="false" autocomplete="off" placeholder="What needs doing?  (#project @label p1 2pm ~45m)">
+    </div>
+    <div class="te-grid">
+      <div class="td-field"><label>Channel</label><select id="qaChannel"></select></div>
+      <div class="td-field"><label>Priority</label>
+        <select id="qaPrio"><option value="1">None</option><option value="2">P3</option><option value="3">P2</option><option value="4">P1</option></select></div>
+      <div class="td-field"><label>Schedule at (today)</label><input id="qaSched" type="time" step="300"></div>
+      <div class="td-field"><label>Estimate</label><input id="qaEst" type="text" inputmode="decimal" placeholder="30m, 1h 15m"></div>
+    </div>
+    <div class="dlg-actions">
+      <span style="flex:1"></span>
+      <button id="qaCancel">Cancel</button>
+      <button class="primary" id="qaAdd">Add task</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="secDialog">
   <div class="dlg-in">
     <h3 id="secTitle">Protect your keys</h3>
@@ -1938,6 +1959,40 @@ async function addTask(){
   nameEl.value=''; estEl.value=''; nameEl.focus();
   autoCreateInTodoist(t,p);
   if(targetKey===dayKey()){ state.tasks.unshift(t); await saveDay(); render(); }
+  else { await addTaskToDay(targetKey,t); render(); toast('Added to '+fmtDateRel(p.dueDate)); }
+}
+// mobile "+" opens a proper add dialog (a delayed .focus() on the inline box
+// won't raise the keyboard on iOS once the tap gesture is broken by scrolling)
+function openAddDialog(){
+  const sel=document.getElementById('qaChannel'), src=document.getElementById('addChannel');
+  if(sel&&src){ sel.innerHTML=src.innerHTML; sel.value=src.value; }
+  document.getElementById('qaName').value='';
+  document.getElementById('qaEst').value='';
+  document.getElementById('qaSched').value='';
+  document.getElementById('qaPrio').value='1';
+  document.getElementById('addDialog').showModal();
+  const n=document.getElementById('qaName'); setTimeout(()=>{ try{ n.focus(); }catch(e){} },40);
+}
+async function quickAddSubmit(){
+  const raw=document.getElementById('qaName').value.trim();
+  if(!raw){ document.getElementById('addDialog').close(); return; }
+  const p=parseQuickAdd(raw);
+  const name=p.name||raw;
+  const estMin = p.estimateMin || hoursToMin(document.getElementById('qaEst').value);
+  const prio = Math.max(p.priority||1, parseInt(document.getElementById('qaPrio').value)||1);
+  const schedVal=minFromHM(document.getElementById('qaSched').value);
+  const channelId = p.projectName ? matchChannel(p.projectName) : document.getElementById('qaChannel').value;
+  const t={id:uid(),name,channelId,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
+    scheduledMin:(schedVal!=null?snap(schedVal):(p.scheduledMin!=null?snap(p.scheduledMin):null))};
+  if(p.labels.length||prio>1||p.dueDate||p.projectName){
+    t.todoistMeta={projectId:'',projectName:p.projectName||'',section:'',labels:p.labels.slice(),priority:prio,
+      due:p.dueDate?{date:dayKeyFor(p.dueDate).slice(4),datetime:'',string:p.dueString,recurring:false}:null,
+      description:'',rawContent:name,url:'',commentCount:0};
+  }
+  const targetKey = p.dueDate ? dayKeyFor(p.dueDate) : dayKey();
+  document.getElementById('addDialog').close();
+  autoCreateInTodoist(t,p);
+  if(targetKey===dayKey()){ state.tasks.unshift(t); await saveDay(); render(); toast('Added.'); }
   else { await addTaskToDay(targetKey,t); render(); toast('Added to '+fmtDateRel(p.dueDate)); }
 }
 // queue a Todoist create for a brand-new local task when auto-create is on
@@ -5016,8 +5071,11 @@ document.getElementById('tdStat').addEventListener('click',openTdDialog);
 document.getElementById('dsStat').addEventListener('click',openSyncDialog);
 // mobile bottom tab bar + FAB
 document.getElementById('tabbar').addEventListener('click',e=>{ const b=e.target.closest('.tb'); if(b){ haptic(8); setView(b.dataset.v); } });
-document.getElementById('fabAdd').addEventListener('click',()=>{ haptic(8); window.scrollTo({top:0,behavior:'smooth'});
-  const a=document.getElementById('addName'); setTimeout(()=>{ if(a){ a.focus(); } },260); });
+document.getElementById('fabAdd').addEventListener('click',()=>{ haptic(8); openAddDialog(); });
+document.getElementById('qaCancel').addEventListener('click',()=>document.getElementById('addDialog').close());
+document.getElementById('qaAdd').addEventListener('click',quickAddSubmit);
+document.getElementById('qaName').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
+document.getElementById('qaEst').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
 // sticky now/capacity strip — reveal once the capacity card scrolls off the top
 (function(){ const arc=document.querySelector('.arc-card'), strip=document.getElementById('miniStrip');
   if(!arc||!strip||!('IntersectionObserver' in window)) return;
