@@ -623,6 +623,9 @@
   .cal-block .cb-row{display:flex;align-items:baseline;gap:6px;line-height:1.25}
   .cal-block .cb-t{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cal-block .cb-s{flex:0 0 auto;font-size:11px;opacity:.95;font-variant-numeric:tabular-nums;text-shadow:0 1px 1px rgba(0,0,0,.25)}
+  .cal-block .cb-proj{display:inline-block;margin-top:2px;font-size:10px;font-weight:600;line-height:1.4;
+    padding:0 6px;border-radius:8px;background:rgba(255,255,255,.22);color:#fff;max-width:100%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
   .cal-block.done{opacity:.55;text-decoration:line-through}
   .cal-block .cb-pin{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.18);color:#fff;
     border-radius:6px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;opacity:0;padding:0;transition:opacity .15s}
@@ -1646,6 +1649,7 @@ async function removeTask(id){
 /* sort + filter helpers for the list view */
 function taskTags(t){ return (t.todoistMeta&&t.todoistMeta.labels)||[]; }
 function taskProject(t){ return (t.todoistMeta&&t.todoistMeta.projectName)||''; }
+function taskProjectLabel(t){ return (t.todoistMeta&&t.todoistMeta.projectName)||chById(t.channelId).name||''; }
 function taskDueTs(t){ const d=t.todoistMeta&&t.todoistMeta.due; if(!d)return Infinity;
   const s=d.datetime||d.date; const ms=Date.parse(d.datetime|| (d.date?d.date+'T00:00:00':'')); return isNaN(ms)?Infinity:ms; }
 function passesFilter(t){
@@ -2240,6 +2244,7 @@ function renderDay(){
     b.style.right='auto';
     b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span>'+
       '<span class="cb-s">'+(t.running?'⏱ ':'')+hmFromMin(t.scheduledMin)+' · '+minFmt(dur*60000)+'</span></div>'+
+      '<span class="cb-proj">'+escapeHtml(taskProjectLabel(t))+'</span>'+
       '<button class="cb-pin'+(t.pinned?' on':'')+'" title="'+(t.pinned?'Pinned — auto-arrange keeps this time':'Pin this time')+'">📌</button>'+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
@@ -2333,7 +2338,7 @@ async function renderMulti(){
       const b=document.createElement('div'); b.className='cal-block mini'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(key===dayKey()&&t.id===daySel?' sel':''); b.dataset.id=t.id;
       b.style.top=top+'px'; b.style.height=h+'px'; b.style.background=ch.color;
       b.style.left='calc('+(info.col/info.cols*100)+'% + 1px)'; b.style.width='calc('+(100/info.cols)+'% - 3px)'; b.style.right='auto';
-      b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span></div><span class="cb-s">'+hmFromMin(t.scheduledMin)+'</span>';
+      b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span></div><span class="cb-s">'+hmFromMin(t.scheduledMin)+' · '+escapeHtml(taskProjectLabel(t))+'</span>';
       b.addEventListener('contextmenu',e=>{ e.preventDefault(); if(key===dayKey()) openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); else openMultiEditor(key,t.id); });
       attachMultiDrag(b,t,key,START,END);
       canvas.appendChild(b); });
