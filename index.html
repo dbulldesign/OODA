@@ -718,9 +718,21 @@
   .cal-chip .cdot{width:8px;height:8px;border-radius:3px;flex:0 0 auto}
   .cal-chip .cnm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cal-chip.sel{outline:2px solid var(--now);border-color:var(--now)}
+  /* hover preview popup for unscheduled chips */
+  .chip-pop{position:fixed;z-index:1200;max-width:300px;background:var(--surface);border:1px solid var(--line-strong);
+    border-radius:10px;padding:10px 12px;box-shadow:0 10px 30px rgba(0,0,0,.22);font-size:12.5px;color:var(--ink);
+    opacity:0;pointer-events:none;transform:translateY(3px);transition:opacity .16s ease,transform .16s ease}
+  .chip-pop.show{opacity:1;transform:translateY(0);pointer-events:auto}
+  .chip-pop .cp-nm{font-weight:650;font-size:13.5px;line-height:1.3;margin-bottom:5px}
+  .chip-pop .cp-row{display:flex;align-items:center;gap:6px;color:var(--ink-soft);margin:3px 0}
+  .chip-pop .cp-row .dot{width:8px;height:8px;border-radius:3px;flex:0 0 auto}
+  .chip-pop .meta{margin-top:6px}
+  .chip-pop .cp-det{margin-top:7px;padding-top:7px;border-top:1px solid var(--line);color:var(--ink-soft);line-height:1.45}
+  .chip-pop .cp-det .d-desc{white-space:pre-wrap}
   .cal-backlog .hint{margin:8px 0 0;font-size:11.5px;color:var(--ink-faint)}
   .cal-grid{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-  .cal-scroll{position:relative;overflow-y:auto;max-height:62vh}
+  /* the timeline renders at full height — the page scrolls, not an inner box */
+  .cal-scroll{position:relative;overflow:visible}
   .cal-canvas{position:relative}
   .cal-hour{position:absolute;left:0;right:0;border-top:1px solid var(--line);padding-left:52px;box-sizing:border-box}
   .cal-hour .hl{position:absolute;left:8px;top:-8px;font-size:10.5px;color:var(--ink-faint);font-family:var(--mono)}
@@ -830,7 +842,6 @@
   @media (min-width:860px){
     .wrap{max-width:900px}
     .cal-body{display:grid;grid-template-columns:250px 1fr;gap:14px;align-items:start}
-    .cal-scroll{max-height:70vh}
     .cal-backlog{position:sticky;top:0}
   }
   /* three-pane Day view on large screens: Unscheduled | timeline | details */
@@ -1539,6 +1550,7 @@ let searchAll=false;                                 // search across every stor
 let daySel=null;                                     // keyboard-selected calendar block (Day view)
 let dayCols=1;                                        // Day view: 1 day or a 3-day multi-column grid
 let calDragging=false;                                // true while dragging a block — pauses the tick's re-render so the drag isn't interrupted
+let dayScrollPending=false;                            // request a one-time scroll-to-now when the Day view is (re)opened
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -1987,7 +1999,7 @@ function buildFilterOptions(){
   if(sel.value!==cur) filterKey='all';
 }
 function setView(v){
-  viewMode=v; calSel=null; try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
+  viewMode=v; calSel=null; if(v==='day') dayScrollPending=true; try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
   document.getElementById('vbList').classList.toggle('on',v==='list');
   document.getElementById('vbDay').classList.toggle('on',v==='day');
   document.getElementById('vbWeek').classList.toggle('on',v==='week');
@@ -2627,6 +2639,7 @@ function renderDay(){
     c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+
       (t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
     c.addEventListener('pointerdown',e=>startChipDrag(e,t,c));  // drag onto timeline, or tap to select
+    attachChipHover(c,t);
     chips.appendChild(c); });
   bl.appendChild(chips);
   const hint=document.createElement('p'); hint.className='hint';
@@ -2689,22 +2702,15 @@ function renderDay(){
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
   lastCanvas=canvas;
-  requestAnimationFrame(()=>{ sizeDayScroll(); scroll.scrollTop = (prevScroll!=null) ? prevScroll
-    : (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
+  requestAnimationFrame(()=>{ if(dayScrollPending){ dayScrollPending=false; scrollDayToNow(); } });
 }
-// Grow the timeline's scroll area to fill the viewport down to just above the
-// Shutdown section, so it's one tall pane instead of scrolling inside a short box.
-function sizeDayScroll(){
-  const scroll=document.querySelector('#calView .cal-scroll'); if(!scroll) return;
-  const rectTop=scroll.getBoundingClientRect().top;
-  const mobile=matchMedia('(max-width:760px)').matches;
-  const reserve=mobile?104:28;   // room for the mobile tab bar / a little breathing space
-  const avail=window.innerHeight-rectTop-reserve;
-  const content=scroll.firstElementChild;        // the timeline canvas — no point growing past it
-  const ch=content?content.offsetHeight:1e5;
-  scroll.style.maxHeight=Math.max(260,Math.min(avail,ch+4))+'px';
+// The timeline shows the full day and the page scrolls. When the Day view is first
+// opened we nudge the window once so "now" is in view (no per-render scrolling).
+function scrollDayToNow(){
+  const nl=document.querySelector('#calView .cal-now');
+  if(nl){ const y=nl.getBoundingClientRect().top+window.scrollY; window.scrollTo({top:Math.max(0,y-200)}); }
 }
-function setDayCols(n){ dayCols=n; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
+function setDayCols(n){ dayCols=n; dayScrollPending=true; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
 /* ---------- multi-day (N-day) time grid ---------- */
 async function dayAwareUpdate(keyStr,id,fn){
   if(keyStr===dayKey()){ const t=state.tasks.find(x=>x.id===id); if(t){ fn(t); await saveDay(); } }
@@ -2742,7 +2748,7 @@ async function renderMulti(){
   if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
   back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button'); c.className='cal-chip';
     c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+(t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
-    c.addEventListener('pointerdown',e=>startMultiChipDrag(e,t,c)); chips.appendChild(c); });
+    c.addEventListener('pointerdown',e=>startMultiChipDrag(e,t,c)); attachChipHover(c,t); chips.appendChild(c); });
   bl.appendChild(chips);
   const body=document.createElement('div'); body.className='cal-body'; body.appendChild(bl);
   // build N day columns
@@ -2788,7 +2794,7 @@ async function renderMulti(){
   scroll.appendChild(mbody); grid.appendChild(scroll); body.appendChild(grid);
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
-  requestAnimationFrame(()=>{ sizeDayScroll(); scroll.scrollTop = (prevScroll!=null)?prevScroll : (nowMin>=START&&nowMin<=END)?Math.max(0,(nowMin-START)*PXM-140):0; });
+  requestAnimationFrame(()=>{ if(dayScrollPending){ dayScrollPending=false; scrollDayToNow(); } });
 }
 async function multiQuickAdd(dateObj,key,mins,isDay0){
   const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:mins};
@@ -2832,6 +2838,7 @@ function attachMultiDrag(b,t,srcKey,START,END){
 }
 function startMultiChipDrag(e,t,chip){
   let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
+  hideChipDetail();
   try{ chip.setPointerCapture(e.pointerId); }catch(_){ }
   function colAt(x,y){ for(const c of document.querySelectorAll('#calView .multi-col')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
   function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
@@ -2916,8 +2923,39 @@ function attachBlockDrag(b,t,START,END){
   b.addEventListener('dblclick',e=>{ e.stopPropagation(); openTaskEditor(t.id); });  // edit even in 3-pane select mode
 }
 // drag an unscheduled chip onto the timeline to schedule it in one gesture
+/* hover an unscheduled chip to preview its full details; the popup fades out the
+   moment you start dragging it onto the timeline */
+let chipPop=null, chipPopT=null;
+function ensureChipPop(){ if(!chipPop){ chipPop=document.createElement('div'); chipPop.className='chip-pop'; chipPop.id='chipPop';
+  chipPop.addEventListener('mouseenter',()=>clearTimeout(chipPopT));
+  chipPop.addEventListener('mouseleave',hideChipDetail); document.body.appendChild(chipPop); } return chipPop; }
+function showChipDetail(t,anchor){
+  const p=ensureChipPop(); const ch=chById(t.channelId);
+  const act=liveActual(t);
+  const bits=[];
+  bits.push('<div class="cp-nm">'+escapeHtml(t.name||'(untitled)')+'</div>');
+  bits.push('<div class="cp-row"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+
+    (t.estimateMin?' · '+minFmt(t.estimateMin*60000)+' est':'')+
+    (act>0?' · '+durFmt(act)+' tracked':'')+'</div>');
+  const meta=taskMetaHtml(t); if(meta) bits.push(meta);
+  const det=taskDetailsHtml(t); if(det) bits.push('<div class="cp-det">'+det+'</div>');
+  if(!meta&&!det&&!t.estimateMin) bits.push('<div class="cp-row" style="color:var(--ink-faint)">No extra details — drag onto the timeline to schedule.</div>');
+  p.innerHTML=bits.join('');
+  const r=anchor.getBoundingClientRect();
+  p.classList.add('show');                       // make it measurable
+  const pw=p.offsetWidth, ph=p.offsetHeight;
+  let left=r.right+8; if(left+pw>innerWidth-8) left=Math.max(8,r.left-pw-8);
+  let top=r.top; if(top+ph>innerHeight-8) top=Math.max(8,innerHeight-ph-8);
+  p.style.left=left+'px'; p.style.top=top+'px';
+}
+function hideChipDetail(){ clearTimeout(chipPopT); if(chipPop) chipPop.classList.remove('show'); }
+function attachChipHover(c,t){
+  c.addEventListener('mouseenter',()=>{ clearTimeout(chipPopT); chipPopT=setTimeout(()=>showChipDetail(t,c),140); });
+  c.addEventListener('mouseleave',()=>{ clearTimeout(chipPopT); chipPopT=setTimeout(hideChipDetail,80); });
+}
 function startChipDrag(e,t,chip){
   let moved=false, ghost=null; const sx=e.clientX, sy=e.clientY;
+  hideChipDetail();
   try{ chip.setPointerCapture(e.pointerId); }catch(_){}
   function mv(ev){
     const dx=ev.clientX-sx, dy=ev.clientY-sy;
@@ -4637,7 +4675,6 @@ document.getElementById('glassGlow').addEventListener('input',e=>setGlassGlow(pa
 document.getElementById('glassReact').addEventListener('change',e=>setGlassReact(e.target.checked));
 document.getElementById('glassPaletteSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-gp]'); if(b) setGlassPalette(b.dataset.gp); });
 window.addEventListener('pointermove',glassPointerMove,{passive:true});
-window.addEventListener('resize',()=>{ if(viewMode==='day') sizeDayScroll(); });
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
