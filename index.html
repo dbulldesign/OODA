@@ -698,7 +698,8 @@
   .aa-btn:hover{background:var(--surface-2);color:var(--ink)}
   .cal-rz{position:absolute;left:0;right:0;bottom:0;height:11px;cursor:ns-resize;touch-action:none}
   .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
-  .cal-block{touch-action:none}
+  .cal-block{touch-action:none;cursor:grab}
+  .cal-block.dragging{cursor:grabbing}
   .cal-block.running{outline:2px solid var(--now);outline-offset:1px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}
   .cal-block.dragging{opacity:.95;box-shadow:0 12px 28px rgba(0,0,0,.32);z-index:6;transform:scale(1.035);
     transition:transform .14s cubic-bezier(.34,1.56,.5,1),box-shadow .14s ease}
@@ -736,11 +737,14 @@
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cal-block .cb-proj.inline{flex:0 0 auto;max-width:46%;align-self:center}
   .cal-block.done{opacity:.55;text-decoration:line-through}
-  .cal-block .cb-pin{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.18);color:#fff;
-    border-radius:6px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;opacity:0;padding:0;transition:opacity .15s}
-  .cal-block:hover .cb-pin{opacity:.85}
-  .cal-block .cb-pin.on{opacity:1;background:rgba(0,0,0,.34)}
-  .cal-block.pinned{border-color:rgba(255,255,255,.85);box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 1.5px rgba(255,255,255,.5)}
+  /* pin toggle sits bottom-right, clear of the time (which is top-right) */
+  .cal-block .cb-pin{position:absolute;bottom:12px;right:3px;border:0;background:rgba(0,0,0,.22);color:#fff;
+    border-radius:6px;width:22px;height:22px;font-size:12px;line-height:1;cursor:pointer;opacity:0;padding:0;transition:opacity .15s;z-index:2}
+  .cal-block:hover .cb-pin{opacity:.9}
+  .cal-block .cb-pin.on{opacity:1;background:#E8B53A;color:#3a2d00;box-shadow:0 0 0 2px rgba(232,181,58,.45)}
+  /* pinned = locked in place: bold gold left bar + ring, and not draggable */
+  .cal-block.pinned{box-shadow:inset 6px 0 0 #E8B53A,0 0 0 2px rgba(232,181,58,.9);cursor:default}
+  .cal-block.pinned .cb-t{padding-left:2px}
   .cal-block.sel{outline:2.5px solid var(--accent);outline-offset:1px;z-index:5}
   /* day-span toggle + multi-day grid */
   .day-span{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;margin-right:8px}
@@ -1534,6 +1538,7 @@ let selectMode=false; const selected=new Set();      // bulk selection
 let searchAll=false;                                 // search across every stored day
 let daySel=null;                                     // keyboard-selected calendar block (Day view)
 let dayCols=1;                                        // Day view: 1 day or a 3-day multi-column grid
+let calDragging=false;                                // true while dragging a block — pauses the tick's re-render so the drag isn't interrupted
 const PXM=1;  // day view: 1px per minute
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
@@ -1807,6 +1812,7 @@ async function toggleRun(id){
   const wasRunning=t.running;
   if(wasRunning){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null;
     if(t.adhoc){ t.estimateMin=Math.max(SNAP,Math.ceil(t.actualMs/60000)); reflowCascade(t.id); }   // block spans start→stop
+    if(t.scheduledMin!=null) t.pinned=true;   // stopping locks the block in place so it won't be re-arranged
   }
   else {
     state.tasks.forEach(o=>{ if(o.running){ o.actualMs+=Date.now()-o.startedAt; o.running=false; o.startedAt=null; } });
@@ -1817,17 +1823,21 @@ async function toggleRun(id){
   await saveDay(); render();
   if(wasRunning && t.adhoc && !(t.name||'').trim()) promptTaskName(t.id);   // ask for a name on stop
 }
-// Resume a task you'd already stopped or completed: reopen it (if done) and keep
-// timing from where its tracked total left off. Time is cumulative, so this just
-// continues adding to actualMs — nothing already tracked is lost.
+// Resuming a stopped/completed task starts a FRESH run: a new task with the same
+// name, project (channel) and tags (labels), scheduled at the current time. The
+// original stays put (stopped & pinned) so its block remains a record of when you
+// worked on it earlier.
 async function resumeTask(id){
   const t=state.tasks.find(x=>x.id===id); if(!t) return;
-  if(t.running) return;                 // already running
-  const had=t.actualMs, wasDone=t.done;
-  t.done=false;                         // a resumed task is active again
-  await toggleRun(id);                  // start its timer (preserves accumulated time)
-  toast(wasDone? 'Reopened & resumed — timing continues from '+minFmt(had)+'.'
-               : 'Resumed — timing continues from '+minFmt(had)+'.');
+  const copy={ id:uid(), name:t.name, channelId:t.channelId,
+    estimateMin:t.estimateMin||0, actualMs:0, done:false, running:false, startedAt:null,
+    scheduledMin:null, pinned:false, todoistId:null };
+  if(t.todoistMeta){ const m=t.todoistMeta;        // carry the project + tags, not the Todoist link
+    copy.todoistMeta={ projectId:m.projectId||'', projectName:m.projectName||'', section:m.section||'',
+      labels:(m.labels||[]).slice(), priority:m.priority||1, due:null, description:'', rawContent:t.name, url:'', commentCount:0 }; }
+  state.tasks.unshift(copy);
+  await toggleRun(copy.id);             // starts it: schedules at the current time, saves & renders
+  toast('Resumed “'+t.name+'” as a new run at '+hmFromMin(copy.scheduledMin)+'.');
 }
 /* ----- track-as-you-go: start a timer now, name the task later ----- */
 async function startAdHocTimer(){
@@ -2473,6 +2483,7 @@ function updateRunningRows(){
 }
 let lastRunningScheduleSig='';
 function updateRunningSchedule(){
+  if(calDragging) return;   // never re-render the timeline out from under an active drag
   const t=state.tasks.find(x=>x.running); if(!t)return;
   scheduleRunningTask(t);
   const before=scheduleSig();
@@ -2678,8 +2689,20 @@ function renderDay(){
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
   lastCanvas=canvas;
-  requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null) ? prevScroll
+  requestAnimationFrame(()=>{ sizeDayScroll(); scroll.scrollTop = (prevScroll!=null) ? prevScroll
     : (nowMin>=START&&nowMin<=END)? Math.max(0,(nowMin-START)*PXM-140) : 0; });
+}
+// Grow the timeline's scroll area to fill the viewport down to just above the
+// Shutdown section, so it's one tall pane instead of scrolling inside a short box.
+function sizeDayScroll(){
+  const scroll=document.querySelector('#calView .cal-scroll'); if(!scroll) return;
+  const rectTop=scroll.getBoundingClientRect().top;
+  const mobile=matchMedia('(max-width:760px)').matches;
+  const reserve=mobile?104:28;   // room for the mobile tab bar / a little breathing space
+  const avail=window.innerHeight-rectTop-reserve;
+  const content=scroll.firstElementChild;        // the timeline canvas — no point growing past it
+  const ch=content?content.offsetHeight:1e5;
+  scroll.style.maxHeight=Math.max(260,Math.min(avail,ch+4))+'px';
 }
 function setDayCols(n){ dayCols=n; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
 /* ---------- multi-day (N-day) time grid ---------- */
@@ -2765,7 +2788,7 @@ async function renderMulti(){
   scroll.appendChild(mbody); grid.appendChild(scroll); body.appendChild(grid);
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
-  requestAnimationFrame(()=>{ scroll.scrollTop = (prevScroll!=null)?prevScroll : (nowMin>=START&&nowMin<=END)?Math.max(0,(nowMin-START)*PXM-140):0; });
+  requestAnimationFrame(()=>{ sizeDayScroll(); scroll.scrollTop = (prevScroll!=null)?prevScroll : (nowMin>=START&&nowMin<=END)?Math.max(0,(nowMin-START)*PXM-140):0; });
 }
 async function multiQuickAdd(dateObj,key,mins,isDay0){
   const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,scheduledMin:mins};
@@ -2778,14 +2801,16 @@ function attachMultiDrag(b,t,srcKey,START,END){
   let moved=false,ghost=null,downX=0,downY=0;
   function colAt(x,y){ for(const c of document.querySelectorAll('#calView .multi-col')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
   function overBacklog(x,y){ if(!lastBacklog)return false; const r=lastBacklog.getBoundingClientRect(); return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom; }
-  function down(e){ if(e.button===2) return; downX=e.clientX; downY=e.clientY; moved=false; try{b.setPointerCapture(e.pointerId);}catch(_){ } e.preventDefault(); e.stopPropagation(); }
-  function mv(e){ const dx=e.clientX-downX, dy=e.clientY-downY;
+  function down(e){ if(e.button===2) return; downX=e.clientX; downY=e.clientY; moved=false; calDragging=true; try{b.setPointerCapture(e.pointerId);}catch(_){ } e.preventDefault(); e.stopPropagation(); }
+  function mv(e){ if(t.pinned) return;   // pinned blocks are locked in place
+    const dx=e.clientX-downX, dy=e.clientY-downY;
     if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; b.classList.add('dragging'); ghost=document.createElement('div'); ghost.className='cal-ghost'; document.body.appendChild(ghost); }
     if(moved){ const c=colAt(e.clientX,e.clientY); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.toggle('drop',x===c));
       if(lastBacklog) lastBacklog.classList.toggle('drop',overBacklog(e.clientX,e.clientY));
       let label=t.name; if(c){ const cv=c.querySelector('.multi-canvas'); const r=cv.getBoundingClientRect(); let mins=Math.max(START,Math.min(END-SNAP,snap(START+(e.clientY-r.top)/PXM))); label=hmFromMin(mins)+' · '+t.name; }
       ghost.textContent=overBacklog(e.clientX,e.clientY)?'release to unschedule':label; ghost.style.left=e.clientX+'px'; ghost.style.top=e.clientY+'px'; } }
   async function up(e){ if(e.button===2) return;       // ignore right-click release
+    calDragging=false;
     b.removeEventListener('pointermove',mv); b.removeEventListener('pointerup',up); b.removeEventListener('pointercancel',up);
     try{b.releasePointerCapture(e.pointerId);}catch(_){ }
     if(ghost) ghost.remove(); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.remove('drop')); if(lastBacklog) lastBacklog.classList.remove('drop');
@@ -2853,13 +2878,14 @@ function layoutOverlap(items){
 function attachBlockDrag(b,t,START,END){
   let mode=null,startY=0,startX=0,origTop=0,origH=0,moved=false;
   function down(e,m){
-    mode=m; moved=false; startY=e.clientY; startX=e.clientX; origTop=parseFloat(b.style.top); origH=parseFloat(b.style.height);
-    b.setPointerCapture(e.pointerId); b.classList.add('dragging'); e.preventDefault(); e.stopPropagation();
+    mode=m; moved=false; calDragging=true; startY=e.clientY; startX=e.clientX; origTop=parseFloat(b.style.top); origH=parseFloat(b.style.height);
+    b.setPointerCapture(e.pointerId); if(!(m==='move'&&t.pinned)) b.classList.add('dragging'); e.preventDefault(); e.stopPropagation();
   }
   function overBacklog(e){ if(!lastBacklog) return false; const r=lastBacklog.getBoundingClientRect();
     return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom; }
   function move(e){
     if(!mode) return;
+    if(mode==='move' && t.pinned) return;   // pinned blocks are locked in place
     const dy=e.clientY-startY; if(Math.abs(dy)>3||Math.abs(e.clientX-startX)>3) moved=true;
     if(mode==='move'){ const ob=overBacklog(e); if(lastBacklog) lastBacklog.classList.toggle('drop',ob);
       let top=Math.max(0,Math.min(origTop+dy,(END-START)*PXM-origH)); b.style.top=top+'px';
@@ -2868,7 +2894,7 @@ function attachBlockDrag(b,t,START,END){
       b.querySelector('.cb-s').textContent=hmFromMin(t.scheduledMin)+' · '+minFmt(snap(h/PXM)*60000); }
   }
   function up(e){
-    if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
+    if(!mode) return; const m=mode; mode=null; calDragging=false; b.classList.remove('dragging');
     if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
     if(!moved){ daySel=t.id;       // a tap just selects the block — drag to move/resize, right-click for actions
@@ -4611,6 +4637,7 @@ document.getElementById('glassGlow').addEventListener('input',e=>setGlassGlow(pa
 document.getElementById('glassReact').addEventListener('change',e=>setGlassReact(e.target.checked));
 document.getElementById('glassPaletteSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-gp]'); if(b) setGlassPalette(b.dataset.gp); });
 window.addEventListener('pointermove',glassPointerMove,{passive:true});
+window.addEventListener('resize',()=>{ if(viewMode==='day') sizeDayScroll(); });
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
