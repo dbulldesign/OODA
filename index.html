@@ -195,7 +195,9 @@
     border-radius:var(--radius);padding:11px 13px;margin-bottom:8px;transition:border-color .2s,opacity .2s}
   .task.running{border-color:var(--now);box-shadow:inset 3px 0 0 var(--now)}
   .task.done{opacity:.5}
-  .task .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;margin-top:5px}
+  .task .dot{width:11px;height:11px;border-radius:3px;flex:0 0 auto;margin-top:5px;cursor:grab;touch-action:none}
+  .task .dot:active{cursor:grabbing}
+  .task .dot.sched-grab{box-shadow:0 0 0 3px var(--now-soft)}
   .task .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
   .task .row1{display:flex;align-items:flex-start;gap:11px}
   .task .name{flex:1;min-width:0;font-size:15px;line-height:1.35;overflow-wrap:anywhere;cursor:text}
@@ -1967,6 +1969,9 @@ function taskRow(t){
     '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
     '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
     detHtml;
+  const dotEl=li.querySelector('.dot');
+  dotEl.title='Drag onto the Day timeline to schedule';
+  dotEl.addEventListener('pointerdown',e=>startListSchedule(e,t,dotEl));
   const cb=li.querySelector('.sel-cb');
   cb.addEventListener('click',e=>{ e.stopPropagation();
     if(e.target.checked) selected.add(t.id); else selected.delete(t.id); li.classList.toggle('picked',e.target.checked); updateBulkBar(); });
@@ -2722,6 +2727,60 @@ function startChipDrag(e,t,chip){
     renderDay();
   }
   chip.addEventListener('pointermove',mv); chip.addEventListener('pointerup',up); chip.addEventListener('pointercancel',up);
+  e.preventDefault();
+}
+// Drag a task straight out of the list view and drop it onto the Day timeline.
+// List and timeline aren't shown together, so the first move flips to Day view
+// (synchronously, so the new canvas is the live drop target) and a ghost follows
+// the pointer. Drop over the timeline schedules; drop elsewhere leaves the task
+// armed so a single tap on a time slot places it.
+function inCanvasRect(ev,r){ return ev.clientX>=r.left&&ev.clientX<=r.right&&ev.clientY>=r.top&&ev.clientY<=r.bottom; }
+function ensureDayViewSync(){
+  if(viewMode==='day' && dayCols===1 && lastCanvas) return;
+  dayCols=1; viewMode='day';
+  try{ localStorage.setItem(LS_PREFIX+'_view','day'); localStorage.setItem(LS_PREFIX+'_daycols','1'); }catch(e){}
+  document.getElementById('vbList').classList.remove('on');
+  document.getElementById('vbDay').classList.add('on');
+  document.getElementById('vbWeek').classList.remove('on');
+  document.getElementById('vbMonth').classList.remove('on');
+  document.querySelectorAll('#tabbar .tb').forEach(b=>b.classList.toggle('on',b.dataset.v==='day'));
+  ['sortSel','filterSel','searchInp','layoutSeg'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  render();   // synchronous (no view transition) so renderDay() refreshes lastCanvas now
+}
+function startListSchedule(e,t,dot){
+  if(e.button!=null && e.button!==0) return;
+  if(selectMode) return;   // in bulk-select mode the dot isn't a drag handle
+  const sx=e.clientX, sy=e.clientY; let moved=false, ghost=null, switched=false;
+  if(dot) dot.classList.add('sched-grab');
+  function mv(ev){
+    const dx=ev.clientX-sx, dy=ev.clientY-sy;
+    if(!moved && Math.abs(dx)+Math.abs(dy)>8){
+      moved=true;
+      ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost);
+      switched = !(viewMode==='day' && dayCols===1);
+      ensureDayViewSync();
+    }
+    if(moved&&ghost){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px';
+      const cv=lastCanvas; if(cv){ const r=cv.getBoundingClientRect(); cv.classList.toggle('drop',inCanvasRect(ev,r)); } }
+  }
+  function up(ev){
+    window.removeEventListener('pointermove',mv,true); window.removeEventListener('pointerup',up,true); window.removeEventListener('pointercancel',up,true);
+    if(dot) dot.classList.remove('sched-grab');
+    if(ghost) ghost.remove();
+    const cv=lastCanvas; if(cv) cv.classList.remove('drop');
+    if(!moved) return;   // a plain tap on the dot — leave it to other handlers
+    if(cv){ const r=cv.getBoundingClientRect();
+      if(inCanvasRect(ev,r)){
+        let mins=snap(calStart()+(ev.clientY-r.top)/PXM); mins=Math.max(calStart(),Math.min(calEnd()-SNAP,mins));
+        t.scheduledMin=mins; calSel=null; pushTimeToTodoist(t); haptic(12); maybeAutoArrange(); saveDay(); render();
+        toast('Scheduled “'+t.name+'” for '+hmFromMin(mins)); return;
+      }
+    }
+    // dropped off the timeline — keep it armed so a tap on a slot still places it
+    calSel=t.id; renderDay();
+    toast('Tap a time to place “'+t.name+'”.');
+  }
+  window.addEventListener('pointermove',mv,true); window.addEventListener('pointerup',up,true); window.addEventListener('pointercancel',up,true);
   e.preventDefault();
 }
 /* ---------- week view (7-day overview, tap a day to plan it) ---------- */
@@ -4480,7 +4539,7 @@ function helpCards(){
       visual:'<div class="hv-chips">report '+pill('#2E6B9E','tomorrow')+pill('#3F7A56','2pm')+pill('#C2752A','~45m')+' #Work p1</div>'},
     {title:'Views',body:'Switch with the tabs (a bottom bar on phones): <b>List</b>, <b>Day</b> timeline, a <b>3-day</b> grid, <b>Week</b>, <b>Month</b>, and a kanban <b>Board</b>. Sort, filter and search the list; <b>All days</b> searches your whole history.',
       visual:'<div style="display:flex;gap:3px;font-size:9.5px;flex-wrap:wrap">'+['List','Day','3-day','Week','Month','Board'].map((v,i)=>'<span style="border:1px solid var(--line-strong);border-radius:6px;padding:3px 6px;'+(i===1?'background:var(--ink);color:var(--surface)':'')+'">'+v+'</span>').join('')+'</div>'},
-    {title:'Schedule on the timeline',body:'Drag a task from <b>Unscheduled</b> onto the Day timeline, drag blocks to move, drag the bottom edge to resize. <b>📌 Pin</b> a time, <b>Tidy day</b> packs them, <b>Fill my day</b> auto-places your backlog, and <b>Auto-arrange</b> reflows around new blocks.',
+    {title:'Schedule on the timeline',body:'Drag a task from <b>Unscheduled</b> — or straight from the <b>List</b> view by its colour dot — onto the Day timeline, then drag blocks to move and the bottom edge to resize. <b>📌 Pin</b> a time, <b>Tidy day</b> packs them, <b>Fill my day</b> auto-places your backlog, and <b>Auto-arrange</b> reflows around new blocks.',
       visual:'<div class="hv-tl"><div class="hv-axis"><span>9</span><span>12</span><span>3</span></div><div class="hv-blk" style="top:8%;height:34%;background:#3F7A56">Deep work</div><div class="hv-blk" style="top:52%;height:24%;background:#C2752A">Email</div></div>'},
     {title:'Track time & capacity',body:'Hit <b>▶</b> to start a task’s timer (shown m:ss); the <b>capacity bar</b> fills with your estimates by channel and turns <span style="color:var(--cap-over)">orange</span> when you’re over your day’s capacity.',
       visual:'<div style="width:100%"><div style="height:12px;border-radius:6px;overflow:hidden;background:var(--surface);border:1px solid var(--line);display:flex"><span style="width:38%;background:#3F7A56"></span><span style="width:30%;background:#2E6B9E"></span><span style="width:20%;background:#C2752A"></span></div><div style="font-size:9px;margin-top:4px;color:var(--ink-faint)">5.8h scheduled · 7h capacity</div></div>'},
@@ -4494,7 +4553,7 @@ function helpCards(){
       visual:'<svg width="34" height="58" viewBox="0 0 34 58" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="30" height="54" rx="5"/><line x1="2" y1="46" x2="32" y2="46"/><circle cx="9" cy="51" r="1.6" fill="currentColor"/><circle cx="17" cy="51" r="1.6" fill="currentColor"/><circle cx="25" cy="51" r="1.6" fill="currentColor"/><circle cx="26" cy="40" r="4" fill="var(--accent)" stroke="none"/></svg>'},
     {title:'Fast on desktop',body:'Press <kbd>⌘K</kbd> for the <b>command palette</b> (jump to any action or task), <b>right-click</b> a task or block for its menu, hover to reveal row actions, and use the keyboard shortcuts below. <b>Undo</b> appears after delete / complete / move.',
       visual:'<div style="border:1px solid var(--line-strong);border-radius:8px;width:90%;background:var(--surface)"><div style="font-size:10px;padding:6px 8px;border-bottom:1px solid var(--line);color:var(--ink-faint)">⌘K  Type a command…</div><div style="font-size:9.5px;padding:5px 8px;background:var(--surface-2)">Fill my day</div></div>'},
-    {title:'Review & routines',body:'<b>Review</b> shows completion rate, time-by-channel, estimate accuracy and a streak over 7/30 days. Save a day’s shape as a <b>Template</b>, <b>Carry overdue</b> onto today, and end with a <b>Shutdown</b> note + carry-to-tomorrow.',
+    {title:'Review & routines',body:'<b>Review</b> shows completion rate, time-by-channel, estimate accuracy and a streak over 7/30 days. Set a task to <b>repeat</b> (daily / weekdays / weekly) and it reappears on its days. Save a day’s shape as a <b>Template</b>, <b>Carry overdue</b> onto today, and end with a <b>Shutdown</b> note + carry-to-tomorrow.',
       visual:'<svg width="64" height="40" viewBox="0 0 64 40" fill="none"><rect x="6" y="20" width="9" height="16" fill="#3F7A56"/><rect x="20" y="12" width="9" height="24" fill="#2E6B9E"/><rect x="34" y="24" width="9" height="12" fill="#C2752A"/><rect x="48" y="8" width="9" height="28" fill="#5B4B9E"/></svg>'},
     {title:'Make it yours',body:'<b>Display</b> settings: light / dark, an <b>accent color</b>, <b>density</b> (compact / comfortable), text & UI size, a fill-the-screen wide mode, and the <b>completion celebration</b> (confetti, fireworks, party, stars, balloons).',
       visual:'<div style="display:flex;gap:6px">'+['#3F7A56','#2E6B9E','#C2752A','#B14233','#5B4B9E'].map(c=>'<span style="width:18px;height:18px;border-radius:50%;background:'+c+'"></span>').join('')+'</div>'},
