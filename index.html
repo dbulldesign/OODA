@@ -830,6 +830,14 @@
   .cal-block.sel{outline:2.5px solid var(--accent);outline-offset:1px;z-index:5}
   .cal-block.dc-ghost{background:color-mix(in srgb,var(--accent) 38%,transparent);border:2px dashed var(--accent);
     color:var(--ink);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;pointer-events:none;z-index:6}
+  .cal-block.multi-sel{outline:3px solid var(--accent);outline-offset:2px;z-index:5}
+  .cal-bulk{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:1100;display:flex;flex-wrap:wrap;
+    align-items:center;gap:6px;background:var(--ink);color:var(--surface);border-radius:12px;padding:8px 10px;box-shadow:0 10px 30px rgba(0,0,0,.35);max-width:94vw}
+  .cal-bulk .cbk-n{font-size:12.5px;font-weight:600;padding:0 6px;opacity:.9}
+  .cal-bulk button{border:0;background:rgba(255,255,255,.14);color:var(--surface);border-radius:7px;padding:7px 10px;font-size:12.5px;cursor:pointer;font-family:var(--display)}
+  .cal-bulk button:hover{background:rgba(255,255,255,.26)}
+  .cal-bulk button.danger{background:rgba(177,66,51,.85)}
+  @media (max-width:760px){ .cal-bulk{bottom:96px} }
   /* day-span toggle + multi-day grid */
   .day-span{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;margin-right:8px}
   .day-span button{border:0;background:var(--surface);color:var(--ink-soft);font-size:12px;padding:5px 9px;cursor:pointer;font-family:var(--display)}
@@ -2113,6 +2121,7 @@ function buildFilterOptions(){
 }
 function setView(v){
   viewMode=v; calSel=null; if(v==='day') dayScrollPending=true; try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
+  if(v!=='day'){ if(typeof blockSel!=='undefined') blockSel.clear(); const cb=document.getElementById('calBulk'); if(cb) cb.remove(); }
   document.getElementById('vbList').classList.toggle('on',v==='list');
   document.getElementById('vbDay').classList.toggle('on',v==='day');
   document.getElementById('vbWeek').classList.toggle('on',v==='week');
@@ -2775,7 +2784,7 @@ function renderDay(){
     chips.appendChild(c); });
   bl.appendChild(chips);
   const hint=document.createElement('p'); hint.className='hint';
-  hint.textContent = calSel? 'Tap a time slot to place it. Drag blocks to move, drag the bottom edge to resize.' : 'Tap a task then a time to schedule, drag blocks to move/resize, or tap an empty slot to add.';
+  hint.textContent = calSel? 'Tap a time slot to place it. Drag blocks to move, drag the bottom edge to resize.' : 'Tap a task then a time to schedule, drag blocks to move/resize, drag an empty stretch to create, or ⇧-click blocks to bulk-edit.';
   bl.appendChild(hint);
   // body wraps backlog + grid (two columns on wide screens)
   const body=document.createElement('div'); body.className='cal-body';
@@ -2811,7 +2820,7 @@ function renderDay(){
     const dur=blockDur(t);
     const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
-    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':''); b.dataset.id=t.id;
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':'')+(blockSel.has(t.id)?' multi-sel':''); b.dataset.id=t.id;
     b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
@@ -2843,7 +2852,37 @@ function renderDay(){
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
   lastCanvas=canvas;
+  renderBulkBar();
   requestAnimationFrame(()=>{ if(dayScrollPending){ dayScrollPending=false; scrollDayToNow(); } });
+}
+/* ---------- bulk-select blocks on the timeline (shift/⌘-click) ---------- */
+let blockSel=new Set();
+function toggleBlockSel(id){ if(blockSel.has(id)) blockSel.delete(id); else blockSel.add(id); daySel=null; renderDay(); }
+function renderBulkBar(){
+  blockSel.forEach(id=>{ const t=state.tasks.find(x=>x.id===id); if(!t||t.scheduledMin==null||t.done) blockSel.delete(id); });
+  let bar=document.getElementById('calBulk');
+  if(!blockSel.size){ if(bar) bar.remove(); return; }
+  if(!bar){ bar=document.createElement('div'); bar.id='calBulk'; bar.className='cal-bulk'; document.body.appendChild(bar); }
+  bar.innerHTML='<span class="cbk-n">'+blockSel.size+' selected</span>'+
+    '<button data-b="up" title="Earlier">▲ '+SNAP+'m</button><button data-b="down" title="Later">▼ '+SNAP+'m</button>'+
+    '<button data-b="pin">📌 Pin</button><button data-b="unpin">Unpin</button>'+
+    '<button data-b="tom">→ Tomorrow</button><button data-b="unsched">Unschedule</button>'+
+    '<button data-b="del" class="danger">✕ Delete</button><button data-b="clear">Done</button>';
+  bar.onclick=e=>{ const b=e.target.closest('button[data-b]'); if(b) bulkBlocks(b.dataset.b); };
+}
+async function bulkBlocks(a){
+  const ids=[...blockSel]; const ts=ids.map(id=>state.tasks.find(x=>x.id===id)).filter(Boolean);
+  if(a==='clear'){ blockSel.clear(); renderDay(); return; }
+  if(a==='tom'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const dst=dayKeyFor(d), src=dayKey();
+    let n=0; for(const id of ids){ if(await moveTaskBetweenDays(src,id,dst)) n++; } blockSel.clear(); render();
+    toast('Moved '+n+' to '+fmtDateRel(d)); return; }
+  if(a==='up') ts.forEach(t=>t.scheduledMin=Math.max(calStart(),snap(t.scheduledMin-SNAP)));
+  else if(a==='down') ts.forEach(t=>t.scheduledMin=Math.min(calEnd()-SNAP,snap(t.scheduledMin+SNAP)));
+  else if(a==='pin') ts.forEach(t=>t.pinned=true);
+  else if(a==='unpin') ts.forEach(t=>t.pinned=false);
+  else if(a==='unsched'){ ts.forEach(t=>{ t.scheduledMin=null; t.pinned=false; }); blockSel.clear(); }
+  else if(a==='del'){ ids.forEach(id=>{ const i=state.tasks.findIndex(x=>x.id===id); if(i>=0){ if(state.tasks[i].running)state.activeId=null; state.tasks.splice(i,1); } }); blockSel.clear(); }
+  saveDay(); renderDay(); toast('Updated '+ts.length+' block'+(ts.length===1?'':'s')+'.');
 }
 // The timeline shows the full day and the page scrolls. When the Day view is first
 // opened we nudge the window once so "now" is in view (no per-render scrolling).
@@ -3078,10 +3117,13 @@ function attachBlockDrag(b,t,START,END){
     if(!mode) return; const m=mode; mode=null; calDragging=false; b.classList.remove('dragging');
     if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!moved){ daySel=t.id;       // a tap just selects the block — drag to move/resize, right-click for actions
+    if(!moved){
+      if(e.shiftKey||e.metaKey||e.ctrlKey){ toggleBlockSel(t.id); return; }   // multi-select for bulk actions
+      blockSel.clear();
+      daySel=t.id;       // a plain tap just selects the block — drag to move/resize, right-click for actions
       document.querySelectorAll('#calView .cal-block.sel,#calView .multi-block.sel').forEach(x=>x.classList.remove('sel'));
       b.classList.add('sel');
-      if(inspectorOn()) renderInspector();
+      if(inspectorOn()) renderInspector(); else renderBulkBar();
       return; }
     if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); haptic(12); }
