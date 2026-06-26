@@ -86,7 +86,10 @@ footer shows which mode is active).
 - Responsive **mobile and desktop** layouts (the Day view goes two-column on wide
   screens; phones get a single-column, touch-sized layout). A **Display** option
   (tools row) adds a **fill-the-screen** wide mode and a **text/UI size** control
-  for big monitors, a **Density** toggle (comfortable / compact row spacing), and
+  for big monitors, a **Task details** control (reveal each task's details **on
+  click / on hover / always**, and pick exactly which fields show — project,
+  due, priority, labels, description, links, sub-tasks, channel, time, estimate,
+  tracked), a **Density** toggle (comfortable / compact row spacing), and
   an **Accent color** picker that recolors primary actions, the active tab, and
   the FAB. View changes and day navigation **cross-fade** where supported, and on
   pointer devices a task row's action buttons stay subtle until you hover.

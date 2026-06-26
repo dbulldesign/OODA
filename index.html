@@ -63,6 +63,9 @@
   .fx-choices button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
     padding:6px 12px;cursor:pointer;font-family:var(--display);font-size:13px;line-height:1}
   .fx-choices button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  #detFields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;margin-top:4px}
+  .det-f{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink)}
+  .det-f input{width:15px;height:15px;accent-color:var(--accent)}
   .tpl-list{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px;max-height:46vh;overflow:auto}
   .tpl-row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:8px 10px}
   .tpl-info{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -167,6 +170,14 @@
   .tdetails{flex-basis:100%;width:100%;margin:8px 0 1px;padding:10px 12px;border-top:1px dashed var(--line);
     font-size:13px;color:var(--ink-soft);display:none}
   .task.expanded .tdetails{display:block}
+  /* reveal modes: hover (pointer devices) and always-on */
+  html.det-always .tdetails{display:block}
+  @media (hover:hover) and (pointer:fine){ html.det-hover .task:hover .tdetails{display:block} }
+  /* details chevron — shown only in click mode */
+  .det-toggle{flex:none;align-self:center}
+  html.det-hover .det-toggle,html.det-always .det-toggle{display:none}
+  .task.expanded .det-toggle .icon{transform:rotate(180deg)}
+  .det-toggle .icon{transition:transform .2s}
   .tdetails a{color:#2E6B9E;text-underline-offset:2px}
   .tdetails .d-desc{white-space:pre-wrap;margin-bottom:8px;color:var(--ink)}
   .tdetails .d-row{margin:3px 0}
@@ -730,6 +741,7 @@
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
     if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
     var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
+    var dm=localStorage.getItem('ooda:_detmode'); if(dm==='hover') document.documentElement.classList.add('det-hover'); else if(dm==='always') document.documentElement.classList.add('det-always');
   }catch(e){} })();
   // native-app feel: block iOS pinch-to-zoom and double-tap-to-zoom
   (function(){
@@ -1109,6 +1121,16 @@
     <div class="td-field">
       <label>Accent color</label>
       <div class="accent-row" id="accentRow"></div>
+    </div>
+    <div class="td-field">
+      <label>Task details</label>
+      <div class="disp-sizes" id="detModeSeg">
+        <button type="button" data-m="click">On click</button>
+        <button type="button" data-m="hover">On hover</button>
+        <button type="button" data-m="always">Always</button>
+      </div>
+      <p class="td-hint">How each task’s details appear below its title. Choose which to show:</p>
+      <div id="detFields"></div>
     </div>
     <div class="td-field">
       <label>Completion celebration</label>
@@ -1649,6 +1671,7 @@ function taskRow(t){
   const ch=chById(t.channelId); const act=liveActual(t);
   const over=t.estimateMin>0 && act>t.estimateMin*60000;
   const hasMeta=!!t.todoistMeta;
+  const detHtml=taskDetailRows(t);
   const li=document.createElement('li');
   li.dataset.id=t.id;
   li.className='task'+(t.running?' running':'')+(t.done?' done':'')+(expandedTasks.has(t.id)?' expanded':'')+(selected.has(t.id)?' picked':'');
@@ -1665,10 +1688,11 @@ function taskRow(t){
       '</div>'+
       taskMetaHtml(t)+
     '</div>'+
+    (detHtml?'<button class="det-toggle" title="Show details">'+CHEV+'</button>':'')+
     '<button class="menu-btn" title="More">'+DOTS+'</button>'+
     '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
     '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
-    (hasMeta?taskDetailsHtml(t):'');
+    detHtml;
   const cb=li.querySelector('.sel-cb');
   cb.addEventListener('click',e=>{ e.stopPropagation();
     if(e.target.checked) selected.add(t.id); else selected.delete(t.id); li.classList.toggle('picked',e.target.checked); updateBulkBar(); });
@@ -1679,8 +1703,12 @@ function taskRow(t){
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
   li.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
-  if(expandedTasks.has(t.id) && t.todoistId){
-    loadSubtasks(t.id);
+  const dtog=li.querySelector('.det-toggle');
+  if(dtog) dtog.addEventListener('click',e=>{ e.stopPropagation();
+    if(expandedTasks.has(t.id))expandedTasks.delete(t.id); else expandedTasks.add(t.id); render(); });
+  if(detHtml && t.todoistId && detailFields.has('subtasks')){
+    if(detailsMode!=='click' || expandedTasks.has(t.id)) loadSubtasks(t.id);
+    else li.addEventListener('mouseenter',()=>loadSubtasks(t.id),{once:true});
     li.querySelectorAll('.subtask-cb').forEach(cb=>cb.addEventListener('change',e=>{ e.stopPropagation();
       toggleSubtask(t.todoistId,cb.dataset.sid,cb.checked); cb.closest('.d-sub').classList.toggle('done',cb.checked); }));
   }
@@ -1967,7 +1995,7 @@ function scheduleRunningTask(t,force=false){
 // push overlapping scheduled tasks down so nothing collides; keeps start times where possible
 // pinned blocks are fixed obstacles auto-arrange / tidy / fill won't move
 function pinnedObstacles(){ return scheduledActive().filter(t=>t.pinned).map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)})); }
-// place `movable` tasks sequentially from day start, stepping over fixed obstacles
+// pack `movable` tasks back-to-back from day start, stepping over fixed obstacles (used by Tidy/Fill)
 function packAround(movable,obst){
   const o=obst.slice().sort((a,b)=>a.s-b.s); let cursor=calStart();
   movable.sort((a,b)=>a.scheduledMin-b.scheduledMin).forEach(t=>{ const dur=blockDur(t);
@@ -1975,6 +2003,15 @@ function packAround(movable,obst){
     while(!placed && guard++<64){ const hit=o.find(x=>cursor<x.e && cursor+dur>x.s);
       if(hit){ cursor=hit.e; } else placed=true; if(cursor+dur>calEnd()) placed=true; }
     t.scheduledMin=snap(Math.min(cursor,calEnd()-SNAP)); cursor=t.scheduledMin+dur; });
+}
+// keep each task at its own start time, only pushing it later to avoid overlapping the
+// previous task or a pinned block (used by Auto-arrange — does NOT compact to the day start)
+function cascadePreserve(movable,obst){
+  const o=obst.slice().sort((a,b)=>a.s-b.s); let cursor=calStart();
+  movable.sort((a,b)=>a.scheduledMin-b.scheduledMin).forEach(t=>{ const dur=blockDur(t);
+    let s=Math.max(t.scheduledMin,cursor,calStart()), guard=0;
+    while(guard++<64){ const hit=o.find(x=>s<x.e && s+dur>x.s); if(hit){ s=hit.e; } else break; }
+    s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+dur; });
 }
 function reflowCascade(anchorId){
   const movable=scheduledActive().filter(t=>!t.pinned).sort((a,b)=>a.scheduledMin-b.scheduledMin);
@@ -1991,7 +2028,7 @@ function reflowCascade(anchorId){
       s=Math.min(s,calEnd()-SNAP); t.scheduledMin=snap(s); cursor=t.scheduledMin+blockDur(t); });
     return;
   }
-  packAround(movable,obst);
+  cascadePreserve(movable,obst);   // preserve times, resolve overlaps (NOT a compaction to 6am)
 }
 // pack everything back-to-back from the start of the day (manual "Tidy"), stepping over pinned blocks
 function compactDay(){ packAround(scheduledActive().filter(t=>!t.pinned),pinnedObstacles()); }
@@ -2526,7 +2563,7 @@ async function loadSubtasks(localId){
     subtaskCache[t.todoistId]=kids.map(k=>({id:k.id,content:k.content,done:!!k.checked||!!k.is_completed})); }
   catch(e){ subtaskCache[t.todoistId]=[]; }
   subtaskLoading.delete(t.todoistId);
-  if(expandedTasks.has(localId)) render();
+  if(viewMode==='list') render();
 }
 function subtaskHtml(t){
   if(!t.todoistId) return '';
@@ -3573,6 +3610,42 @@ function buildAccents(){ const row=document.getElementById('accentRow'); if(!row
   row.addEventListener('click',e=>{ const b=e.target.closest('.accent-sw'); if(b) setAccent(b.dataset.c); });
   row.dataset.built='1'; }
 function setAccent(c){ accent=c; try{localStorage.setItem(LS_PREFIX+'_accent',c);}catch(e){} applyDensityAccent(); markAccent(); }
+/* ---------- task details: reveal mode + which fields to show ---------- */
+const DETAIL_FIELDS=[['project','Project'],['due','Due date'],['priority','Priority'],['labels','Labels'],['description','Description'],['links','Links'],['comments','Comments'],['subtasks','Sub-tasks'],['channel','Channel'],['schedule','Scheduled time'],['estimate','Estimate'],['tracked','Tracked time']];
+const DEFAULT_DETAILS=['project','due','priority','labels','description','links','subtasks'];
+let detailsMode='click'; let detailFields=new Set(DEFAULT_DETAILS);
+function loadDetails(){ try{ detailsMode=localStorage.getItem(LS_PREFIX+'_detmode')||'click';
+  const f=localStorage.getItem(LS_PREFIX+'_detfields'); detailFields=new Set(f!=null?(f?f.split(','):[]):DEFAULT_DETAILS); }catch(e){} }
+function applyDetailsMode(){ const r=document.documentElement; r.classList.remove('det-hover','det-always');
+  if(detailsMode==='hover') r.classList.add('det-hover'); else if(detailsMode==='always') r.classList.add('det-always'); }
+function setDetailsMode(m){ detailsMode=m; try{localStorage.setItem(LS_PREFIX+'_detmode',m);}catch(e){} applyDetailsMode(); markDetailsMode(); render(); }
+function markDetailsMode(){ document.querySelectorAll('#detModeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.m===detailsMode)); }
+function toggleDetailField(k,on){ if(on)detailFields.add(k); else detailFields.delete(k);
+  try{localStorage.setItem(LS_PREFIX+'_detfields',[...detailFields].join(','));}catch(e){} render(); }
+function buildDetailFields(){ const box=document.getElementById('detFields'); if(!box||box.dataset.built)return;
+  box.innerHTML=DETAIL_FIELDS.map(f=>'<label class="det-f"><input type="checkbox" data-k="'+f[0]+'"'+(detailFields.has(f[0])?' checked':'')+'> '+f[1]+'</label>').join('');
+  box.addEventListener('change',e=>{ const cb=e.target.closest('input[data-k]'); if(cb) toggleDetailField(cb.dataset.k,cb.checked); });
+  box.dataset.built='1'; }
+function markDetailFields(){ document.querySelectorAll('#detFields input[data-k]').forEach(cb=>cb.checked=detailFields.has(cb.dataset.k)); }
+function taskDetailRows(t){
+  const m=t.todoistMeta||{}, F=detailFields, has=k=>F.has(k); const rows=[]; let desc='';
+  if(has('description')&&m.description) desc='<div class="d-desc">'+linkify(m.description)+'</div>';
+  if(has('channel')) rows.push(['Channel',escapeHtml(chById(t.channelId).name)]);
+  if(has('schedule')&&t.scheduledMin!=null) rows.push(['Scheduled',hmFromMin(t.scheduledMin)]);
+  if(has('estimate')&&t.estimateMin) rows.push(['Estimate',t.estimateMin+'m']);
+  if(has('tracked')) rows.push(['Tracked',durFmt(liveActual(t))]);
+  if(has('project')&&m.projectName) rows.push(['Project',escapeHtml(m.projectName)+(m.section?(' / '+escapeHtml(m.section)):'')]);
+  if(has('due')){ const due=fmtDue(m.due); if(due&&(due.raw||due.label)) rows.push(['Due',escapeHtml(due.raw||due.label)+(due.recurring?' (recurring)':'')+(due.over&&!t.done?' — overdue':'')]); }
+  if(has('priority')){ const pl=prioLabel(m.priority); if(pl) rows.push(['Priority',pl]); }
+  if(has('labels')&&m.labels&&m.labels.length) rows.push(['Labels',m.labels.map(escapeHtml).join(', ')]);
+  if(has('comments')&&m.commentCount) rows.push(['Comments',m.commentCount+' in Todoist']);
+  let links='';
+  if(has('links')){ const ls=extractLinks((m.rawContent||'')+'\n'+(m.description||'')); if(ls.length) links='<div class="d-row"><b>Links:</b> '+ls.map(l=>'<a href="'+escapeHtml(l.url)+'" target="_blank" rel="noopener">'+escapeHtml(l.label)+'</a>').join(' · ')+'</div>'; }
+  const subs = (has('subtasks')&&t.todoistId)? subtaskHtml(t) : '';
+  const open = (t.todoistId&&m.url)? '<div class="d-row"><a href="'+escapeHtml(m.url)+'" target="_blank" rel="noopener">Open in Todoist ↗</a></div>' : '';
+  const inner=desc+subs+rows.map(r=>'<div class="d-row"><b>'+r[0]+':</b> '+r[1]+'</div>').join('')+links+open;
+  return inner? '<div class="tdetails">'+inner+'</div>' : '';
+}
 function markAccent(){ document.querySelectorAll('#accentRow .accent-sw').forEach(b=>b.classList.toggle('on',b.dataset.c.toLowerCase()===(accent||'').toLowerCase())); }
 /* cross-fade view changes when supported (and motion isn't reduced) */
 function applyViewTransition(fn){
@@ -3590,7 +3663,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); document.getElementById('dispDialog').showModal(); }
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode(); document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
@@ -3814,6 +3887,7 @@ document.getElementById('dispDone').addEventListener('click',()=>document.getEle
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
+document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -4189,7 +4263,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadDetails(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); applyDetailsMode(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
