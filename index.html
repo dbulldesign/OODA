@@ -171,6 +171,7 @@
   .chip.label::before{content:'@';opacity:.55}
   .chip.prio{font-weight:700;border-color:transparent;color:#fff}
   .chip.prio.p1{background:#B14233}.chip.prio.p2{background:#C2752A}.chip.prio.p3{background:#2E6B9E}
+  .chip.chan{color:var(--ink)}.chip.chan .dot{width:7px;height:7px;border-radius:50%}
   .tdetails{flex-basis:100%;width:100%;margin:8px 0 1px;padding:10px 12px;border-top:1px dashed var(--line);
     font-size:13px;color:var(--ink-soft);display:none}
   .task.expanded .tdetails{display:block}
@@ -626,6 +627,7 @@
   .cal-block .cb-proj{display:inline-block;margin-top:2px;font-size:10px;font-weight:600;line-height:1.4;
     padding:0 6px;border-radius:8px;background:rgba(255,255,255,.22);color:#fff;max-width:100%;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+  .cal-block .cb-proj.inline{margin-top:0;flex:0 0 auto;max-width:46%;align-self:center}
   .cal-block.done{opacity:.55;text-decoration:line-through}
   .cal-block .cb-pin{position:absolute;top:2px;right:2px;border:0;background:rgba(0,0,0,.18);color:#fff;
     border-radius:6px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;opacity:0;padding:0;transition:opacity .15s}
@@ -1650,6 +1652,12 @@ async function removeTask(id){
 function taskTags(t){ return (t.todoistMeta&&t.todoistMeta.labels)||[]; }
 function taskProject(t){ return (t.todoistMeta&&t.todoistMeta.projectName)||''; }
 function taskProjectLabel(t){ return (t.todoistMeta&&t.todoistMeta.projectName)||chById(t.channelId).name||''; }
+// a channel chip for list rows (Todoist tasks already show their project chip via taskMetaHtml)
+function rowProjectChip(t){
+  if(taskProject(t)) return '';
+  const ch=chById(t.channelId);
+  return '<div class="meta"><span class="chip chan"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+'</span></div>';
+}
 function taskDueTs(t){ const d=t.todoistMeta&&t.todoistMeta.due; if(!d)return Infinity;
   const s=d.datetime||d.date; const ms=Date.parse(d.datetime|| (d.date?d.date+'T00:00:00':'')); return isNaN(ms)?Infinity:ms; }
 function passesFilter(t){
@@ -1770,7 +1778,7 @@ function taskRow(t){
           (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
           '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
       '</div>'+
-      taskMetaHtml(t)+
+      taskMetaHtml(t)+rowProjectChip(t)+
     '</div>'+
     (detHtml?'<button class="det-toggle" title="Show details">'+CHEV+'</button>':'')+
     '<button class="menu-btn" title="More">'+DOTS+'</button>'+
@@ -2242,9 +2250,11 @@ function renderDay(){
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
+    const proj=escapeHtml(taskProjectLabel(t)); const tall=h>=52;   // tall enough for the tag on its own line
     b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span>'+
+      (proj&&!tall?'<span class="cb-proj inline">'+proj+'</span>':'')+
       '<span class="cb-s">'+(t.running?'⏱ ':'')+hmFromMin(t.scheduledMin)+' · '+minFmt(dur*60000)+'</span></div>'+
-      '<span class="cb-proj">'+escapeHtml(taskProjectLabel(t))+'</span>'+
+      (proj&&tall?'<span class="cb-proj">'+proj+'</span>':'')+
       '<button class="cb-pin'+(t.pinned?' on':'')+'" title="'+(t.pinned?'Pinned — auto-arrange keeps this time':'Pin this time')+'">📌</button>'+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
