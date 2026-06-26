@@ -18,6 +18,7 @@
     --now:#C2752A; --now-soft:#F2E0CB; --now-deep:#8A4E18;
     --over:#B14233; --over-soft:#F0D8D2;
     --cap-over:#D9822B; --cap-over-soft:#F2DEC2;
+    --accent:#3F7A56;
     --todoist:#E44332;
     --radius:10px;
     --display:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
@@ -30,6 +31,7 @@
     --now:#D98A3D; --now-soft:#3A2C18; --now-deep:#E0A05B;
     --over:#D2604F; --over-soft:#3A211C;
     --cap-over:#E0922F; --cap-over-soft:#3A2D18;
+    --accent:#5FA37A;
     --todoist:#F06A5C;
   }
   *{box-sizing:border-box}
@@ -239,7 +241,7 @@
   .reflect textarea{width:100%;min-height:64px;border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;font-size:14px;font-family:var(--display);resize:vertical;background:var(--surface-2);color:var(--ink)}
   .reflect .row{display:flex;gap:10px;margin-top:11px;flex-wrap:wrap}
   .reflect button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer}
-  .reflect button.primary{background:var(--ink);color:var(--surface);border-color:var(--ink);font-weight:600}
+  .reflect button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
   .reflect button:hover{filter:brightness(.98)}
 
   .tools{display:flex;justify-content:space-between;align-items:center;margin-top:26px;font-size:12.5px;color:var(--ink-faint);flex-wrap:wrap;gap:10px}
@@ -329,7 +331,24 @@
   .ch-edit button{border:0;background:none;color:var(--over);cursor:pointer;font-size:13px}
   .dlg-actions{display:flex;justify-content:space-between;align-items:center;margin-top:14px;gap:8px}
   .dlg-actions button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer}
-  .dlg-actions button.primary{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .dlg-actions button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  /* accent swatches (Display) */
+  .accent-row{display:flex;gap:8px;flex-wrap:wrap}
+  .accent-sw{width:28px;height:28px;border-radius:50%;border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line-strong);cursor:pointer;padding:0}
+  .accent-sw.on{box-shadow:0 0 0 2px var(--accent)}
+  /* density (compact reduces task spacing) */
+  html.density-compact .task{padding:8px 10px}
+  html.density-compact .tasks{gap:5px}
+  html.density-compact .now{padding:12px 14px;margin:10px 0 12px}
+  html.density-compact .arc-card{padding:11px 13px}
+  html.density-compact .add{margin:8px 0 14px}
+  /* hover quick-actions: dim row buttons until hover (pointer devices only) */
+  @media (hover:hover) and (pointer:fine){
+    .task .go,.task .check,.task .menu-btn{opacity:.45;transition:opacity .14s}
+    .task:hover .go,.task:hover .check,.task:hover .menu-btn,.task .go.running,.task .check.done{opacity:1}
+  }
+  /* view transitions (cross-fade); respects reduced-motion via JS guard */
+  ::view-transition-old(root),::view-transition-new(root){animation-duration:.22s}
   .dlg-actions button.danger{color:var(--over);border-color:var(--line-strong)}
   .addch{border:1px dashed var(--line-strong);background:none;width:100%;border-radius:8px;padding:8px;font-size:13px;color:var(--ink-soft);cursor:pointer;margin-top:4px}
 
@@ -627,6 +646,8 @@
     document.documentElement.setAttribute('data-theme',s);
     if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
+    if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
+    var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
   }catch(e){} })();
   // native-app feel: block iOS pinch-to-zoom and double-tap-to-zoom
   (function(){
@@ -996,6 +1017,17 @@
     </div>
     <p class="td-hint">Scales everything up — handy on a big monitor. Affects this device only.</p>
     <div class="td-field">
+      <label>Density</label>
+      <div class="disp-sizes" id="densitySeg">
+        <button type="button" data-d="comfortable">Comfortable</button>
+        <button type="button" data-d="compact">Compact</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Accent color</label>
+      <div class="accent-row" id="accentRow"></div>
+    </div>
+    <div class="td-field">
       <label>Completion celebration</label>
       <div class="fx-choices" id="fxChoices"></div>
       <p class="td-hint">Plays when you finish a task. Tap one to preview. Respects “reduce motion”.</p>
@@ -1208,7 +1240,7 @@ async function loadDay(){
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   const rt=document.getElementById('reflectText'); if(rt) rt.value=state.reflection;
 }
-async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); render(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
+async function gotoDate(d){ viewDate=new Date(d); viewDate.setHours(12,0,0,0); calSel=null; await loadDay(); updateDateLabel(); applyViewTransition(render); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
 function shiftDay(n){ const d=new Date(viewDate); d.setDate(d.getDate()+n); gotoDate(d); }
 // header ‹ › steps by the current view's unit: a week in Week, a month in Month, else a day
 function navStep(dir){ const d=new Date(viewDate);
@@ -1460,7 +1492,7 @@ function setView(v){
   document.getElementById('filterSel').style.display=hideCtl?'none':'';
   document.getElementById('searchInp').style.display=hideCtl?'none':'';
   document.getElementById('layoutSeg').style.display=hideCtl?'none':'';
-  render();
+  applyViewTransition(render);
 }
 function render(){
   buildFilterOptions();
@@ -3265,6 +3297,27 @@ function applyTheme(theme){
 /* ---------- display: wide layout + UI scale ---------- */
 let dispWide=false, dispScale=1;
 function loadDisplay(){ try{ dispWide=localStorage.getItem(LS_PREFIX+'_wide')==='1'; dispScale=parseFloat(localStorage.getItem(LS_PREFIX+'_scale'))||1; }catch(e){} }
+/* density + accent color */
+let density='comfortable', accent='';
+function loadDensityAccent(){ try{ density=localStorage.getItem(LS_PREFIX+'_density')||'comfortable'; accent=localStorage.getItem(LS_PREFIX+'_accent')||''; }catch(e){} }
+function applyDensityAccent(){
+  document.documentElement.classList.toggle('density-compact',density==='compact');
+  if(accent) document.documentElement.style.setProperty('--accent',accent); else document.documentElement.style.removeProperty('--accent');
+}
+function setDensity(d){ density=d; try{localStorage.setItem(LS_PREFIX+'_density',d);}catch(e){} applyDensityAccent(); markDensity(); }
+function markDensity(){ document.querySelectorAll('#densitySeg button').forEach(b=>b.classList.toggle('on',b.dataset.d===density)); }
+const ACCENTS=['#3F7A56','#2E6B9E','#C2752A','#B14233','#5B4B9E','#0E7C7B','#C7407A','#7A746B'];
+function buildAccents(){ const row=document.getElementById('accentRow'); if(!row||row.dataset.built)return;
+  row.innerHTML=ACCENTS.map(c=>'<button type="button" class="accent-sw" data-c="'+c+'" title="'+c+'" style="background:'+c+'"></button>').join('');
+  row.addEventListener('click',e=>{ const b=e.target.closest('.accent-sw'); if(b) setAccent(b.dataset.c); });
+  row.dataset.built='1'; }
+function setAccent(c){ accent=c; try{localStorage.setItem(LS_PREFIX+'_accent',c);}catch(e){} applyDensityAccent(); markAccent(); }
+function markAccent(){ document.querySelectorAll('#accentRow .accent-sw').forEach(b=>b.classList.toggle('on',b.dataset.c.toLowerCase()===(accent||'').toLowerCase())); }
+/* cross-fade view changes when supported (and motion isn't reduced) */
+function applyViewTransition(fn){
+  if(document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches){ try{ document.startViewTransition(()=>fn()); return; }catch(e){} }
+  fn();
+}
 function applyDisplay(){
   document.documentElement.classList.toggle('wide',dispWide);
   document.documentElement.style.zoom = dispScale===1? '' : String(dispScale);
@@ -3276,7 +3329,7 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); document.getElementById('dispDialog').showModal(); }
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
@@ -3499,6 +3552,7 @@ document.getElementById('dispBtn').addEventListener('click',openDispDialog);
 document.getElementById('dispDone').addEventListener('click',()=>document.getElementById('dispDialog').close());
 document.getElementById('dispWide').addEventListener('change',e=>setWide(e.target.checked));
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
+document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -3701,7 +3755,7 @@ window.addEventListener('online',async()=>{ updateConnUI();
 });
 window.addEventListener('offline',updateConnUI);
 
-(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadFx(); loadNotify(); applyDisplay(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
+(async()=>{ applyTheme(preferredTheme()); loadDisplay(); loadDensityAccent(); loadFx(); loadNotify(); applyDisplay(); applyDensityAccent(); loadSync(); loadOutbox(); updateCloudLink(); updateSecLink();
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   await load(); updateConnUI();
   try{ listLayout=localStorage.getItem(LS_PREFIX+'_layout')||'list';
