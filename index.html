@@ -629,7 +629,12 @@
   .cal-rz::after{content:'';position:absolute;left:50%;bottom:3px;width:26px;height:3px;border-radius:2px;background:rgba(255,255,255,.6);transform:translateX(-50%)}
   .cal-block{touch-action:none}
   .cal-block.running{outline:2px solid var(--now);outline-offset:1px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}
-  .cal-block.dragging{opacity:.92;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:4}
+  .cal-block.dragging{opacity:.95;box-shadow:0 12px 28px rgba(0,0,0,.32);z-index:6;transform:scale(1.035);
+    transition:transform .14s cubic-bezier(.34,1.56,.5,1),box-shadow .14s ease}
+  @media (prefers-reduced-motion:no-preference){
+    .cal-block.pop{animation:blkpop .34s cubic-bezier(.34,1.56,.5,1)}
+    @keyframes blkpop{0%{transform:scale(1.06)}60%{transform:scale(.99)}100%{transform:scale(1)}}
+  }
   .cal-canvas.drop{background:var(--now-soft)}
   .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
   .cal-backlog h4{margin:0;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
@@ -1668,7 +1673,7 @@ async function toggleDone(id){
   if(t.done){ haptic(18); const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]');
     const allDone=state.tasks.length && state.tasks.every(x=>x.done);
     if(fxWhen!=='day' || allDone) celebrate(li);
-    if(allDone){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); }
+    if(allDone){ toastAction('Everything done — nice work today. 🎉','Plan tomorrow →',planTomorrow); setTimeout(()=>celebrate(null),180); }
     else toastAction('Completed.','Undo',async()=>{
       t.done=false; t.actualMs=prevActual; t.running=prevRunning; t.startedAt=prevStarted; state.activeId=prevActive;
       await saveDay(); render(); pushDoneToTodoist(t);
@@ -2518,6 +2523,7 @@ function attachBlockDrag(b,t,START,END){
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); haptic(12); }
     else { t.estimateMin=Math.max(SNAP,snap(parseFloat(b.style.height)/PXM)); }
     maybeAutoArrange(); saveDay(); render();
+    const moved2=document.querySelector('.cal-block[data-id="'+t.id+'"]'); if(moved2) moved2.classList.add('pop');
   }
   b.addEventListener('pointerdown',e=>{ if(e.target.classList.contains('cal-rz')) down(e,'resize'); else down(e,'move'); });
   b.addEventListener('pointermove',move);
@@ -2747,8 +2753,10 @@ async function closeDay(){
   state.activeId=null; state.reflection=document.getElementById('reflectText').value;
   await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:true});
   schedulePush();
-  render(); loadHistory(); toast('Day closed and saved to your record.');
+  render(); loadHistory();
+  toastAction('Day closed and saved.','Plan tomorrow →',planTomorrow);
 }
+function planTomorrow(){ const d=new Date(viewDate); d.setDate(d.getDate()+1); gotoDate(d).then(()=>{ setDayCols(1); setView('day'); }); }
 async function rollover(){
   const carry=state.tasks.filter(t=>!t.done).map(t=>({name:t.name,todoistId:t.todoistId||null}));
   if(!carry.length){ toast('Nothing unfinished to carry.'); return; }
