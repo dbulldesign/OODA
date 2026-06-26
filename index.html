@@ -797,6 +797,8 @@
   .cal-block.pinned{box-shadow:inset 6px 0 0 #E8B53A,0 0 0 2px rgba(232,181,58,.9);cursor:default}
   .cal-block.pinned .cb-t{padding-left:2px}
   .cal-block.sel{outline:2.5px solid var(--accent);outline-offset:1px;z-index:5}
+  .cal-block.dc-ghost{background:color-mix(in srgb,var(--accent) 38%,transparent);border:2px dashed var(--accent);
+    color:var(--ink);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;pointer-events:none;z-index:6}
   /* day-span toggle + multi-day grid */
   .day-span{display:inline-flex;border:1px solid var(--line-strong);border-radius:7px;overflow:hidden;margin-right:8px}
   .day-span button{border:0;background:var(--surface);color:var(--ink-soft);font-size:12px;padding:5px 9px;cursor:pointer;font-family:var(--display)}
@@ -1886,14 +1888,16 @@ function autoCreateInTodoist(t,p){
 async function toggleRun(id){
   const t=state.tasks.find(x=>x.id===id); if(!t)return;
   const wasRunning=t.running;
-  if(wasRunning){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null; state.activeId=null;
+  if(wasRunning){ t.actualMs=liveActual(t); t.running=false; t.startedAt=null;
+    // multiple timers can run at once — hand the now-card focus to another live timer
+    state.activeId = (state.activeId===id) ? (state.tasks.find(o=>o.running&&o.id!==id)||{}).id||null : state.activeId;
     if(t.adhoc){ t.estimateMin=Math.max(SNAP,Math.ceil(t.actualMs/60000)); reflowCascade(t.id); }   // block spans start→stop
     if(t.scheduledMin!=null) t.pinned=true;   // stopping locks the block in place so it won't be re-arranged
   }
   else {
-    state.tasks.forEach(o=>{ if(o.running){ o.actualMs+=Date.now()-o.startedAt; o.running=false; o.startedAt=null; } });
+    // start this timer WITHOUT stopping others — concurrent tracking is allowed
     t.running=true; t.startedAt=Date.now(); t.done=false; state.activeId=id; haptic(10); playSound('start');
-    scheduleRunningTask(t,true);
+    scheduleRunningTask(t);          // place at now only if it isn't already on the timeline
     reflowCascade(t.id);
   }
   await saveDay(); render();
@@ -2323,7 +2327,9 @@ function openTaskMenu(id,anchor){
     (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
     (t.scheduledMin!=null&&t.todoistId&&tdConnected()?'<button data-a="pushtime">⏱ Push time → Todoist</button>':'')+
     '<button data-a="resched">↔ Reschedule…</button>'+
-    '<button data-a="tomorrow">→ Move to tomorrow</button>'+
+    '<button data-a="snooze-tom">→ Snooze: tomorrow</button>'+
+    '<button data-a="snooze-wknd">→ Snooze: this weekend</button>'+
+    '<button data-a="snooze-week">→ Snooze: next week</button>'+
     '<div class="sep"></div><button class="danger" data-a="del">✕ Delete</button>';
   document.body.appendChild(m);
   const mw=180; let top,left;
@@ -2338,9 +2344,9 @@ function openTaskMenu(id,anchor){
     else if(a==='pin') togglePin(id);
     else if(a==='resched') openResched(id);
     else if(a==='pushtime'){ const tt=state.tasks.find(x=>x.id===id); if(tt) pushTimeToTodoist(tt,true); }
-    else if(a==='tomorrow'){ const d=new Date(viewDate); d.setDate(d.getDate()+1); const src=dayKey(), dst=dayKeyFor(d);
-      moveTaskToDate(id,dst).then(ok=>{ if(ok){ render();
-        toastAction('Moved to '+fmtDateRel(d),'Undo',async()=>{ await moveTaskBetweenDays(dst,id,src); render(); }); } }); }
+    else if(a==='snooze-tom') snoozeTask(id,'tomorrow');
+    else if(a==='snooze-wknd') snoozeTask(id,'weekend');
+    else if(a==='snooze-week') snoozeTask(id,'week');
     else if(a==='del') removeTask(id);
   });
   setTimeout(()=>{ document.addEventListener('click',menuOutside,true); document.addEventListener('scroll',closeMenu,true); },0);
@@ -2474,12 +2480,15 @@ function renderArc(){
 function renderNow(){
   const card=document.getElementById('nowCard');
   const whatEl=document.getElementById('nowWhat'), inp=document.getElementById('nowNameInp');
-  const t=state.tasks.find(x=>x.id===state.activeId && x.running);
-  if(t){ const ch=chById(t.channelId);
+  const running=state.tasks.filter(x=>x.running);
+  // keep activeId pointing at a live timer so the now-card's Stop always works
+  if(!running.some(x=>x.id===state.activeId)) state.activeId = running[0]?running[0].id:null;
+  const t=state.tasks.find(x=>x.id===state.activeId && x.running) || running[0];
+  if(t){ const ch=chById(t.channelId); const more=running.length-1;
     card.classList.add('active');
     whatEl.style.display='none'; inp.style.display='block';
     if(document.activeElement!==inp) inp.value=t.name||'';   // don't clobber while typing
-    document.getElementById('nowSub').textContent=ch.name+' · name it here (use #project), or when you stop';
+    document.getElementById('nowSub').textContent=ch.name+(more>0?(' · +'+more+' more timer'+(more>1?'s':'')+' running'):' · name it here (use #project), or when you stop');
     document.getElementById('nowClock').textContent=clockFmt(liveActual(t));
     document.getElementById('nowStop').style.display='block';
     document.getElementById('nowStart').style.display='none';
@@ -2688,6 +2697,7 @@ function renderDay(){
     '<div class="cal-range">Day <input type="time" id="dayStartInp" step="3600" value="'+hmInput(START)+'"> – <input type="time" id="dayEndInp" step="3600" value="'+hmInput(END)+'"></div>'+
     '<div class="cal-arrange"><span class="day-span" id="daySpan"><button data-c="1" class="on">1 day</button><button data-c="3">3 days</button></span>'+
       '<label class="aa-toggle"><input type="checkbox" id="aaToggle"'+(state.autoArrange?' checked':'')+'> Auto-arrange</label>'+
+      '<button id="autoFillBtn" class="aa-btn">Auto-fill</button>'+
       '<button id="tidyBtn" class="aa-btn">Tidy day</button></div>';
   cal.appendChild(head);
   head.querySelector('#daySpan').addEventListener('click',e=>{ const b=e.target.closest('button[data-c]'); if(b) setDayCols(+b.dataset.c); });
@@ -2695,6 +2705,7 @@ function renderDay(){
   head.querySelector('#dayEndInp').addEventListener('change',e=>{ const m=minFromHM(e.target.value); if(m!=null){ state.dayEndH=Math.ceil(m/60); if(state.dayEndH<=state.dayStartH)state.dayEndH=state.dayStartH+1; saveConfig(); renderDay(); } });
   head.querySelector('#aaToggle').addEventListener('change',e=>{ state.autoArrange=e.target.checked; saveConfig(); if(state.autoArrange){ reflowCascade(); saveDay(); } renderDay(); toast(state.autoArrange?'Auto-arrange on — new tasks reflow the day.':'Auto-arrange off.'); });
   head.querySelector('#tidyBtn').addEventListener('click',()=>{ compactDay(); saveDay(); renderDay(); toast('Day tidied — packed from '+hmFromMin(START)+'.'); });
+  head.querySelector('#autoFillBtn').addEventListener('click',autoFillCapacity);
   // unscheduled backlog (also a drop target to remove a task from the calendar)
   const bl=document.createElement('div'); bl.className='cal-backlog'; lastBacklog=bl;
   bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled</h4>'+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div>';
@@ -2727,6 +2738,7 @@ function renderDay(){
     if(mm<END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); }
   }
   canvas.addEventListener('click',e=>{
+    if(dcSuppressClick){ dcSuppressClick=false; return; }   // a drag-create just happened
     const rect=canvas.getBoundingClientRect();
     let mins=snap(START + (e.clientY-rect.top)/PXM);
     mins=Math.max(START,Math.min(END-SNAP,mins));
@@ -2734,6 +2746,7 @@ function renderDay(){
       if(t){ t.scheduledMin=mins; calSel=null; maybeAutoArrange(); saveDay(); render(); toast('Scheduled for '+hmFromMin(mins)); } return; }
     quickAddAt(mins);   // tap empty slot → add a new task at that time
   });
+  attachDragCreate(canvas,START,END);   // drag across empty time to create a block of that length
   // lay overlapping blocks side-by-side in columns
   const items=sched.map(t=>{ const s=Math.max(START,Math.min(END,t.scheduledMin)); return {t,s,e:s+blockDur(t)}; });
   const lay=layoutOverlap(items);
@@ -2925,8 +2938,41 @@ function startMultiChipDrag(e,t,chip){
   chip.addEventListener('pointermove',mv); chip.addEventListener('pointerup',up); chip.addEventListener('pointercancel',up);
   e.preventDefault();
 }
-async function quickAddAt(mins){
-  const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:SNAP,actualMs:0,
+// drag across an empty stretch of the timeline to create a task spanning that range
+let dcSuppressClick=false;
+function attachDragCreate(canvas,START,END){
+  let start=null, ghost=null;
+  function emptyTarget(t){ return t===canvas || t.classList.contains('cal-hour') || t.classList.contains('cal-half') || t.classList.contains('hl'); }
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.button===2 || !emptyTarget(e.target) || calSel) return;
+    const rect=canvas.getBoundingClientRect();
+    start={y:e.clientY, rect}; try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  canvas.addEventListener('pointermove',e=>{
+    if(!start) return;
+    if(Math.abs(e.clientY-start.y)<6) return;
+    if(!ghost){ ghost=document.createElement('div'); ghost.className='cal-block dc-ghost'; canvas.appendChild(ghost); }
+    const top=Math.min(start.y,e.clientY)-start.rect.top, bot=Math.max(start.y,e.clientY)-start.rect.top;
+    const a=snap(START+top/PXM), b=Math.max(snap(START+bot/PXM),a+SNAP);
+    ghost.style.top=((a-START)*PXM)+'px'; ghost.style.height=((b-a)*PXM)+'px';
+    ghost.textContent=hmFromMin(a)+' – '+hmFromMin(b);
+  });
+  function finish(e){
+    if(!start) return; const s=start, g=ghost; start=null; ghost=null;
+    try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+    if(g) g.remove();
+    if(Math.abs(e.clientY-s.y)<6) return;        // not a real drag — let click handle it
+    let a=snap(START+(Math.min(s.y,e.clientY)-s.rect.top)/PXM);
+    let b=snap(START+(Math.max(s.y,e.clientY)-s.rect.top)/PXM);
+    a=Math.max(START,a); b=Math.min(END,Math.max(b,a+SNAP));
+    dcSuppressClick=true;
+    quickAddAt(a, b-a);
+  }
+  canvas.addEventListener('pointerup',finish);
+  canvas.addEventListener('pointercancel',()=>{ if(ghost) ghost.remove(); start=null; ghost=null; });
+}
+async function quickAddAt(mins,durMin){
+  const t={id:uid(),name:'New task',channelId:(state.channels[0]||{}).id,estimateMin:durMin||SNAP,actualMs:0,
     done:false,running:false,startedAt:null,todoistId:null,scheduledMin:mins};
   state.tasks.unshift(t); maybeAutoArrange(); await saveDay(); render();
   openTaskEditor(t.id);
@@ -3931,6 +3977,45 @@ async function saveTaskEditor(){
     : (queued ? (navigator.onLine?'Saved & syncing to Todoist.':'Saved — will sync to Todoist when online.') : 'Saved.'));
 }
 async function moveTaskToDate(id,targetKey){ return moveTaskBetweenDays(dayKey(),id,targetKey); }
+// one-tap "snooze": move a task to tomorrow / this weekend (Sat) / next week (Mon)
+function snoozeTarget(when){
+  const d=new Date(viewDate); d.setHours(12,0,0,0);
+  if(when==='tomorrow'){ d.setDate(d.getDate()+1); }
+  else if(when==='weekend'){ const add=(6-d.getDay()+7)%7; d.setDate(d.getDate()+(add||7)); }   // next Saturday
+  else if(when==='week'){ const add=(1-d.getDay()+7)%7; d.setDate(d.getDate()+(add||7)); }        // next Monday
+  return d;
+}
+async function snoozeTask(id,when){
+  const d=snoozeTarget(when), src=dayKey(), dst=dayKeyFor(d);
+  if(dst===src){ toast('Already on that day.'); return; }
+  const ok=await moveTaskToDate(id,dst);
+  if(ok){ render(); toastAction('Snoozed to '+fmtDateRel(d),'Undo',async()=>{ await moveTaskBetweenDays(dst,id,src); render(); }); }
+}
+// find the first open gap (within the day range) big enough for `dur` minutes
+function firstGap(occ,dur){
+  const o=occ.slice().sort((a,b)=>a.s-b.s); let cursor=calStart();
+  for(const iv of o){ if(iv.s-cursor>=dur) return cursor; cursor=Math.max(cursor,iv.e); }
+  return (calEnd()-cursor>=dur)? cursor : null;
+}
+// pack the highest-priority unscheduled tasks into open gaps until the day hits capacity
+function autoFillCapacity(){
+  const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
+  if(!back.length){ toast('Nothing unscheduled to fill.'); return; }
+  const prio=t=>(t.todoistMeta&&t.todoistMeta.priority)||1;
+  back.sort((a,b)=> prio(b)-prio(a) || (b.estimateMin||0)-(a.estimateMin||0));
+  const occ=scheduledActive().map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)}));
+  let load=scheduledActive().reduce((s,t)=>s+blockDur(t),0);
+  const capMin=state.capacityHours*60; let placed=0;
+  for(const t of back){
+    const dur=blockDur(t);
+    if(load+dur>capMin) continue;                 // stay within capacity
+    const at=firstGap(occ,dur); if(at==null) continue;
+    t.scheduledMin=snap(Math.min(at,calEnd()-SNAP));
+    occ.push({s:t.scheduledMin,e:t.scheduledMin+dur}); load+=dur; placed++;
+  }
+  if(placed){ saveDay(); renderDay(); toast('Auto-filled '+placed+' task'+(placed>1?'s':'')+' — ~'+(load/60).toFixed(1).replace(/\.0$/,'')+'h scheduled.'); }
+  else toast('No room within capacity (or no gaps big enough).');
+}
 // move a task from any day's record to any other day's record (preserves scheduledMin)
 async function moveTaskBetweenDays(srcKey,id,dstKey){
   if(srcKey===dstKey) return false;
