@@ -9,6 +9,9 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="theme-color" content="#EBE8E0">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- translucent status bar so the app fills edge-to-edge behind the notch/Dynamic Island -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="OODA">
 <style>
   :root{
@@ -115,7 +118,7 @@
   html,body{margin:0}
   /* native-app feel on iOS: no pinch / double-tap zoom, no text auto-resize,
      no tap-highlight flash, and no rubber-band overscroll on the page */
-  html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}
+  html{touch-action:manipulation;-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none;background:var(--paper);min-height:100vh}
   body{-webkit-tap-highlight-color:transparent}
   body{
     font-family:var(--display); color:var(--ink);
@@ -123,6 +126,13 @@
     -webkit-font-smoothing:antialiased; line-height:1.45;
     padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) calc(80px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
     transition:background-color .3s ease,color .3s ease;
+  }
+  /* installed PWA: a faint scrim behind the (white) status-bar text so the time/
+     battery stay legible over the light background; not needed in dark mode */
+  @media (display-mode:standalone){
+    body::before{content:'';position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);
+      background:linear-gradient(to bottom,rgba(0,0,0,.26),rgba(0,0,0,0));z-index:9999;pointer-events:none}
+    :root[data-theme="dark"] body::before{display:none}
   }
   a,button{-webkit-tap-highlight-color:transparent}
   button{touch-action:manipulation}
@@ -4587,6 +4597,9 @@ function preferredTheme(){
 }
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme',theme);
+  // keep the OS theme-color in sync with the current paper background
+  try{ const mc=document.querySelector('meta[name="theme-color"]');
+    if(mc){ const paper=getComputedStyle(document.documentElement).getPropertyValue('--paper').trim(); if(paper) mc.setAttribute('content',paper); } }catch(e){}
   const k=document.getElementById('themeKnob'); if(k) k.textContent = theme==='dark'?'🌙':'☀️';
   const b=document.getElementById('themeBtn'); if(b) b.setAttribute('aria-checked', theme==='dark'?'true':'false');
   if(typeof applyGlassVars==='function') applyGlassVars();   // surface tint is theme-aware
