@@ -1146,7 +1146,14 @@
     <div class="td-field">
       <label>Completion celebration</label>
       <div class="fx-choices" id="fxChoices"></div>
-      <p class="td-hint">Plays when you finish a task. Tap one to preview. Respects “reduce motion”.</p>
+      <label style="margin-top:10px">Intensity <span id="fxIntVal" style="color:var(--ink-soft);font-weight:400">1.0×</span></label>
+      <input type="range" id="fxIntInput" min="0.3" max="4" step="0.1" value="1" style="width:100%;accent-color:var(--accent)">
+      <label style="margin-top:8px">Celebrate</label>
+      <div class="disp-sizes" id="fxWhenSeg">
+        <button type="button" data-w="each">Each task</button>
+        <button type="button" data-w="day">Whole day only</button>
+      </div>
+      <p class="td-hint">Tap a style or drag the slider to preview. Intensity scales the number of particles (up to 4×). Respects “reduce motion”.</p>
     </div>
     <div class="dlg-actions"><span></span><button class="primary" id="dispDone">Done</button></div>
   </div>
@@ -1618,8 +1625,10 @@ async function toggleDone(id){
   // round tracked time up to the next whole minute on completion
   if(t.done && t.actualMs>0) t.actualMs=ceilMinuteMs(t.actualMs);
   await saveDay(); render();
-  if(t.done){ haptic(18); const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]'); celebrate(li);
-    if(state.tasks.length && state.tasks.every(x=>x.done)){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); }
+  if(t.done){ haptic(18); const li=document.querySelector('.task[data-id="'+t.id+'"]')||document.querySelector('.cal-block[data-id="'+t.id+'"]');
+    const allDone=state.tasks.length && state.tasks.every(x=>x.done);
+    if(fxWhen!=='day' || allDone) celebrate(li);
+    if(allDone){ toast('Everything done — nice work today. 🎉'); setTimeout(()=>celebrate(null),180); }
     else toastAction('Completed.','Undo',async()=>{
       t.done=false; t.actualMs=prevActual; t.running=prevRunning; t.startedAt=prevStarted; state.activeId=prevActive;
       await saveDay(); render(); pushDoneToTodoist(t);
@@ -3763,7 +3772,9 @@ function buildFxChoices(){
   wrap.addEventListener('click',e=>{ const b=e.target.closest('button[data-fx]'); if(b) setFx(b.dataset.fx); });
   wrap.dataset.built='1';
 }
-function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode(); document.getElementById('dispDialog').showModal(); }
+function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); buildDetailFields(); markDetailFields(); markDetailsMode();
+  const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
+  document.getElementById('dispDialog').showModal(); }
 function setWide(v){ dispWide=v; try{ localStorage.setItem(LS_PREFIX+'_wide',v?'1':'0'); }catch(e){} applyDisplay(); }
 function setScale(s){ dispScale=s; try{ localStorage.setItem(LS_PREFIX+'_scale',String(s)); }catch(e){} applyDisplay(); markSizes(); }
 function toggleTheme(){
@@ -3832,15 +3843,24 @@ function scheduleNotifications(){
       notifyTimers.push(id); } });
 }
 let fxMode='confetti';
-function loadFx(){ try{ fxMode=localStorage.getItem(LS_PREFIX+'_fx')||'confetti'; }catch(e){} }
+function loadFx(){ try{ fxMode=localStorage.getItem(LS_PREFIX+'_fx')||'confetti';
+  fxIntensity=parseFloat(localStorage.getItem(LS_PREFIX+'_fxint'))||1; fxWhen=localStorage.getItem(LS_PREFIX+'_fxwhen')||'each'; }catch(e){} }
 function setFx(v){ fxMode=v; try{ localStorage.setItem(LS_PREFIX+'_fx',v); }catch(e){} markFx(); if(v!=='none') celebrate(null); }
+let fxIntensity=1, fxWhen='each';
+function fxN(base){ return Math.max(1,Math.min(900,Math.round(base*fxIntensity))); }  // scale a particle count by intensity
+let fxPrevT=null;
+function setFxInt(v){ fxIntensity=v; try{localStorage.setItem(LS_PREFIX+'_fxint',String(v));}catch(e){}
+  const l=document.getElementById('fxIntVal'); if(l)l.textContent=fxIntensity.toFixed(1)+'×';
+  clearTimeout(fxPrevT); fxPrevT=setTimeout(()=>{ if(fxMode!=='none') celebrate(null); },220); }
+function setFxWhen(w){ fxWhen=w; try{localStorage.setItem(LS_PREFIX+'_fxwhen',w);}catch(e){} markFxWhen(); }
+function markFxWhen(){ document.querySelectorAll('#fxWhenSeg button').forEach(b=>b.classList.toggle('on',b.dataset.w===fxWhen)); }
 function markFx(){ document.querySelectorAll('#fxChoices button').forEach(b=>b.classList.toggle('on',b.dataset.fx===fxMode)); }
 function fxHost(){ return document.getElementById('confetti'); }
 function fxPiece(cls){ const el=document.createElement('div'); el.className=cls; return el; }
 // full-screen confetti — pieces seeded across the whole width, slow drift down
 function fxConfetti(){
   const host=fxHost(); if(!host)return;
-  const N=Math.min(180,Math.max(70,Math.round(innerWidth/8)));
+  const N=fxN(Math.min(180,Math.max(70,Math.round(innerWidth/8))));
   for(let i=0;i<N;i++){
     const bit=fxPiece('confetti-bit');
     bit.style.background=CONFETTI_COLORS[i%CONFETTI_COLORS.length];
@@ -3856,7 +3876,7 @@ function fxConfetti(){
 }
 // lots of radiating bursts across the screen, staggered over time
 function fxBurst(host,cx,cy,color){
-  const P=40+Math.floor(Math.random()*18);
+  const P=fxN(40+Math.floor(Math.random()*18));
   const spread=110+Math.random()*170;
   for(let i=0;i<P;i++){
     const bit=fxPiece('confetti-bit');
@@ -3874,7 +3894,7 @@ function fxBurst(host,cx,cy,color){
 }
 function fxFireworks(){
   const host=fxHost(); if(!host)return;
-  const BURSTS=22;
+  const BURSTS=Math.min(64,Math.round(22*fxIntensity));
   for(let b=0;b<BURSTS;b++) setTimeout(()=>{
     const cx=innerWidth*(0.08+Math.random()*0.84), cy=innerHeight*(0.08+Math.random()*0.5);
     fxBurst(host,cx,cy,CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)]);
@@ -3883,7 +3903,7 @@ function fxFireworks(){
 // emoji rain
 function fxEmoji(){
   const host=fxHost(); if(!host)return; const set=['🎉','🎊','✨','🥳','💥','⭐','🌟'];
-  const N=Math.min(80,Math.max(40,Math.round(innerWidth/14)));
+  const N=fxN(Math.min(80,Math.max(40,Math.round(innerWidth/14))));
   for(let i=0;i<N;i++){
     const s=fxPiece('fx-emoji'); s.textContent=set[i%set.length];
     s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(-30-Math.random()*60)+'px';
@@ -3898,7 +3918,7 @@ function fxEmoji(){
 // twinkling stars rising
 function fxStars(){
   const host=fxHost(); if(!host)return; const set=['✨','⭐','🌟','💫'];
-  const N=46;
+  const N=fxN(46);
   for(let i=0;i<N;i++){
     const s=fxPiece('fx-emoji'); s.textContent=set[i%set.length];
     s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(innerHeight+20)+'px';
@@ -3914,7 +3934,7 @@ function fxStars(){
 // balloons floating up
 function fxBalloons(){
   const host=fxHost(); if(!host)return; const cols=['🎈','🎈','🎈'];
-  const N=16;
+  const N=fxN(16);
   for(let i=0;i<N;i++){
     const s=fxPiece('fx-emoji'); s.textContent=cols[i%cols.length];
     s.style.left=(Math.random()*innerWidth)+'px'; s.style.top=(innerHeight+50)+'px';
@@ -3987,6 +4007,8 @@ document.getElementById('dispWide').addEventListener('change',e=>setWide(e.targe
 document.getElementById('dispNotify').addEventListener('change',e=>setNotify(e.target.checked));
 document.getElementById('densitySeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setDensity(b.dataset.d); });
 document.getElementById('detModeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-m]'); if(b) setDetailsMode(b.dataset.m); });
+document.getElementById('fxIntInput').addEventListener('input',e=>setFxInt(parseFloat(e.target.value)));
+document.getElementById('fxWhenSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-w]'); if(b) setFxWhen(b.dataset.w); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
