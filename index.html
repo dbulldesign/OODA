@@ -698,6 +698,10 @@
   .cal-cap-fill.over{background:var(--cap-over)}
   .cal-range{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;white-space:nowrap}
   .cal-range input{border:1px solid var(--line-strong);border-radius:6px;padding:5px 6px;font-size:12.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
+  /* native time/date pickers render dark-on-dark in dark mode — make their icons legible */
+  :root[data-theme="dark"] input[type="time"],:root[data-theme="dark"] input[type="date"]{color-scheme:dark}
+  :root[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
+  :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1) brightness(1.6)}
   .cal-arrange{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .aa-toggle{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);cursor:pointer;white-space:nowrap}
   .aa-btn{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink-soft);border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer;font-family:var(--display);white-space:nowrap}
