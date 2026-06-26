@@ -642,6 +642,7 @@
   .wk-tasks{display:flex;flex-direction:column;gap:4px;min-height:24px}
   .wk-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);padding:3px 4px;border-radius:6px;cursor:grab;touch-action:none;background:var(--surface-2)}
   .wk-item:hover{background:var(--paper)}
+  .wk-item.sel,.mo-item.sel{outline:2px solid var(--accent);outline-offset:-1px}
   .wk-item.dragging{opacity:.4}
   .wk-item.done{opacity:.5;text-decoration:line-through}
   .wk-item .cdot{width:7px;height:7px;border-radius:2px;flex:0 0 auto}
@@ -2074,10 +2075,13 @@ function taskRow(t){
   const nameEl=li.querySelector('.name');
   nameEl.addEventListener('blur',()=>renameTask(t.id,nameEl.textContent));
   nameEl.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();nameEl.blur();} });
+  // right-clicking the editable name would otherwise drop a caret in it (acting like
+  // a click) and pop the browser's editing menu — suppress that and show our menu
+  nameEl.addEventListener('mousedown',e=>{ if(e.button===2){ e.preventDefault(); } });
   li.querySelector('.go').addEventListener('click',()=>toggleRun(t.id));
   li.querySelector('.check').addEventListener('click',()=>toggleDone(t.id));
   li.querySelector('.menu-btn').addEventListener('click',e=>openTaskMenu(t.id,e.currentTarget));
-  li.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
+  li.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
   const dtog=li.querySelector('.det-toggle');
   if(dtog) dtog.addEventListener('click',e=>{ e.stopPropagation();
     if(expandedTasks.has(t.id))expandedTasks.delete(t.id); else expandedTasks.add(t.id); render(); });
@@ -2309,6 +2313,20 @@ function calendarMenu(mins){ return [
   {icon:'☰',label:'Back to List',run:()=>setView('list')},
   {icon:'⚙',label:'Settings',run:()=>openSettings()},
 ]; }
+// right-click menu for a task shown in Week / Month (it may live on another day,
+// so actions navigate or operate cross-day rather than assuming it's loaded now)
+function dayItemMenu(id,srcKey){
+  const when=new Date(srcKey.slice(4)+'T12:00:00');
+  return [
+    {icon:'✎',label:'Open / edit details',run:async()=>{ await gotoDate(when); openTaskEditor(id); }},
+    {icon:'▦',label:'Open this day',run:()=>{ gotoDate(when).then(()=>{ setDayCols(1); setView('day'); }); }},
+    {sep:true},
+    {icon:'→',label:'Move to next day',run:async()=>{ const dst=dayKeyFor(new Date(when.getTime()+86400000));
+      const ok=await moveTaskBetweenDays(srcKey,id,dst); if(ok){ render(); toast('Moved to next day.'); } }},
+    {icon:'←',label:'Move to previous day',run:async()=>{ const dst=dayKeyFor(new Date(when.getTime()-86400000));
+      const ok=await moveTaskBetweenDays(srcKey,id,dst); if(ok){ render(); toast('Moved to previous day.'); } }},
+  ];
+}
 // one global handler — element-level menus (tasks/blocks) run first and bail out here
 document.addEventListener('contextmenu',e=>{
   // keep the native menu where editing/links matter, and inside open dialogs
@@ -2739,7 +2757,7 @@ async function renderMulti(){
       b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
       b.style.left='calc('+(info.col/info.cols*100)+'% + 1px)'; b.style.width='calc('+(100/info.cols)+'% - 3px)'; b.style.right='auto';
       b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span></div><span class="cb-s">'+hmFromMin(t.scheduledMin)+' · '+escapeHtml(taskProjectLabel(t))+'</span>';
-      b.addEventListener('contextmenu',e=>{ e.preventDefault(); if(key===dayKey()) openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); else openMultiEditor(key,t.id); });
+      b.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); if(key===dayKey()) openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); else showMenu(dayItemMenu(t.id,key),{x:e.clientX,y:e.clientY}); });
       attachMultiDrag(b,t,key,START,END);
       canvas.appendChild(b); });
     col.appendChild(canvas); mbody.appendChild(col);
@@ -2760,20 +2778,22 @@ function attachMultiDrag(b,t,srcKey,START,END){
   let moved=false,ghost=null,downX=0,downY=0;
   function colAt(x,y){ for(const c of document.querySelectorAll('#calView .multi-col')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; }
   function overBacklog(x,y){ if(!lastBacklog)return false; const r=lastBacklog.getBoundingClientRect(); return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom; }
-  function down(e){ downX=e.clientX; downY=e.clientY; moved=false; try{b.setPointerCapture(e.pointerId);}catch(_){ } e.preventDefault(); e.stopPropagation(); }
+  function down(e){ if(e.button===2) return; downX=e.clientX; downY=e.clientY; moved=false; try{b.setPointerCapture(e.pointerId);}catch(_){ } e.preventDefault(); e.stopPropagation(); }
   function mv(e){ const dx=e.clientX-downX, dy=e.clientY-downY;
     if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; b.classList.add('dragging'); ghost=document.createElement('div'); ghost.className='cal-ghost'; document.body.appendChild(ghost); }
     if(moved){ const c=colAt(e.clientX,e.clientY); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.toggle('drop',x===c));
       if(lastBacklog) lastBacklog.classList.toggle('drop',overBacklog(e.clientX,e.clientY));
       let label=t.name; if(c){ const cv=c.querySelector('.multi-canvas'); const r=cv.getBoundingClientRect(); let mins=Math.max(START,Math.min(END-SNAP,snap(START+(e.clientY-r.top)/PXM))); label=hmFromMin(mins)+' · '+t.name; }
       ghost.textContent=overBacklog(e.clientX,e.clientY)?'release to unschedule':label; ghost.style.left=e.clientX+'px'; ghost.style.top=e.clientY+'px'; } }
-  async function up(e){ b.removeEventListener('pointermove',mv); b.removeEventListener('pointerup',up); b.removeEventListener('pointercancel',up);
+  async function up(e){ if(e.button===2) return;       // ignore right-click release
+    b.removeEventListener('pointermove',mv); b.removeEventListener('pointerup',up); b.removeEventListener('pointercancel',up);
     try{b.releasePointerCapture(e.pointerId);}catch(_){ }
     if(ghost) ghost.remove(); document.querySelectorAll('#calView .multi-col').forEach(x=>x.classList.remove('drop')); if(lastBacklog) lastBacklog.classList.remove('drop');
     b.classList.remove('dragging');
-    if(!moved){
-      if(inspectorOn() && srcKey===dayKey()){ daySel=t.id; document.querySelectorAll('#calView .cal-block.sel').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); renderInspector(); }
-      else openMultiEditor(srcKey,t.id);
+    if(!moved){       // tap selects only — drag to move, right-click for actions
+      document.querySelectorAll('#calView .multi-block.sel,#calView .cal-block.sel').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel');
+      if(inspectorOn() && srcKey===dayKey()){ daySel=t.id; renderInspector(); }
       return; }
     if(overBacklog(e.clientX,e.clientY)){ await dayAwareUpdate(srcKey,t.id,x=>{ x.scheduledMin=null; x.pinned=false; }); renderMulti(); toast('Unscheduled.'); return; }
     const c=colAt(e.clientX,e.clientY); if(!c){ renderMulti(); return; }
@@ -2851,9 +2871,10 @@ function attachBlockDrag(b,t,START,END){
     if(!mode) return; const m=mode; mode=null; b.classList.remove('dragging');
     if(lastBacklog) lastBacklog.classList.remove('drop');
     try{ b.releasePointerCapture(e.pointerId); }catch(_){}
-    if(!moved){ daySel=t.id;
-      if(inspectorOn()){ document.querySelectorAll('#calView .cal-block.sel').forEach(x=>x.classList.remove('sel')); b.classList.add('sel'); renderInspector(); }
-      else if(m==='move') openTaskEditor(t.id);
+    if(!moved){ daySel=t.id;       // a tap just selects the block — drag to move/resize, right-click for actions
+      document.querySelectorAll('#calView .cal-block.sel,#calView .multi-block.sel').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel');
+      if(inspectorOn()) renderInspector();
       return; }
     if(m==='move' && overBacklog(e)){ t.scheduledMin=null; saveDay(); render(); toast('Removed from calendar.'); return; }
     if(m==='move'){ t.scheduledMin=Math.max(START,Math.min(END-SNAP,snap(START+parseFloat(b.style.top)/PXM))); pushTimeToTodoist(t); haptic(12); }
@@ -2861,7 +2882,7 @@ function attachBlockDrag(b,t,START,END){
     maybeAutoArrange(); saveDay(); render();
     const moved2=document.querySelector('.cal-block[data-id="'+t.id+'"]'); if(moved2) moved2.classList.add('pop');
   }
-  b.addEventListener('pointerdown',e=>{ if(e.target.classList.contains('cal-rz')) down(e,'resize'); else down(e,'move'); });
+  b.addEventListener('pointerdown',e=>{ if(e.button===2) return; if(e.target.classList.contains('cal-rz')) down(e,'resize'); else down(e,'move'); });
   b.addEventListener('pointermove',move);
   b.addEventListener('pointerup',up);
   b.addEventListener('pointercancel',up);
@@ -2976,6 +2997,7 @@ async function renderWeek(){
         (t.scheduledMin!=null?'<span class="wk-t">'+hmFromMin(t.scheduledMin)+'</span>':'')+
         '<span class="wk-nm">'+escapeHtml(t.name)+'</span>';
       it.addEventListener('pointerdown',e=>startWeekDrag(e,t,dayKeyFor(d),it));
+      it.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); showMenu(dayItemMenu(t.id,dayKeyFor(d)),{x:e.clientX,y:e.clientY}); });
       lc.appendChild(it);
     });
     col.appendChild(lc);
@@ -2987,6 +3009,7 @@ async function renderWeek(){
 function startWeekDrag(e,t,srcKey,itemEl){ startDayDrag(e,t,srcKey,itemEl,'#weekView .wk-col'); }
 // drag a task item from one day-cell/column to another (week or month grids)
 function startDayDrag(e,t,srcKey,itemEl,cellSel){
+  if(e.button===2) return;       // let right-click open the context menu, not start a drag
   let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
   try{ itemEl.setPointerCapture(e.pointerId); }catch(_){}
   function cellAt(x,y){ for(const c of document.querySelectorAll(cellSel)){ const r=c.getBoundingClientRect();
@@ -2996,10 +3019,13 @@ function startDayDrag(e,t,srcKey,itemEl,cellSel){
     if(!moved && Math.abs(dx)+Math.abs(dy)>6){ moved=true; itemEl.classList.add('dragging');
       ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
     if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; mark(cellAt(ev.clientX,ev.clientY)); } }
-  async function up(ev){ itemEl.removeEventListener('pointermove',mv); itemEl.removeEventListener('pointerup',up); itemEl.removeEventListener('pointercancel',up);
+  async function up(ev){ if(ev.button===2) return;       // ignore right-click release
+    itemEl.removeEventListener('pointermove',mv); itemEl.removeEventListener('pointerup',up); itemEl.removeEventListener('pointercancel',up);
     try{ itemEl.releasePointerCapture(ev.pointerId); }catch(_){}
     if(ghost) ghost.remove(); document.querySelectorAll(cellSel).forEach(x=>x.classList.remove('drop'));
-    if(!moved){ await gotoDate(new Date(srcKey.slice(4)+'T12:00:00')); openTaskEditor(t.id); return; }   // tap → open details
+    if(!moved){       // tap selects/highlights only — drag to move, right-click for actions
+      document.querySelectorAll(cellSel+' .wk-item.sel,'+cellSel+' .mo-item.sel').forEach(x=>x.classList.remove('sel'));
+      itemEl.classList.add('sel'); return; }
     const c=cellAt(ev.clientX,ev.clientY);
     if(c && c.dataset.key && c.dataset.key!==srcKey){ const ok=await moveTaskBetweenDays(srcKey,t.id,c.dataset.key);
       if(ok){ render(); updateConnUI(); toast('Moved to '+new Date(c.dataset.key.slice(4)+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})); } }
@@ -3034,6 +3060,7 @@ async function renderMonth(){
     sorted.slice(0,3).forEach(t=>{ const ch=chById(t.channelId); const it=document.createElement('div'); it.className='mo-item'+(t.done?' done':''); it.dataset.id=t.id;
       it.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="mo-nm">'+escapeHtml(t.name)+'</span>';
       it.addEventListener('pointerdown',e=>startDayDrag(e,t,dayKeyFor(d),it,'#monthView .mo-cell'));
+      it.addEventListener('contextmenu',e=>{ e.preventDefault(); e.stopPropagation(); showMenu(dayItemMenu(t.id,dayKeyFor(d)),{x:e.clientX,y:e.clientY}); });
       cell.appendChild(it); });
     if(sorted.length>3){ const more=document.createElement('div'); more.className='mo-more'; more.textContent='+'+(sorted.length-3)+' more';
       more.addEventListener('click',()=>{ gotoDate(d).then(()=>setView('day')); }); cell.appendChild(more); }
