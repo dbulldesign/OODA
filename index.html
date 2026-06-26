@@ -60,6 +60,18 @@
   html.glass .vtab,html.glass .btn-mini,html.glass .theme-btn,html.glass .add select,html.glass .add input.est,
   html.glass .set-grid button,html.glass .day-span,html.glass .disp-sizes button{
     background:var(--glass-2);border-color:var(--glass-brd)}
+  /* Selected segmented buttons/tabs: the frosted-surface rule above strips their
+     solid dark background but leaves light text, making the active item vanish.
+     Give every "on" control a solid accent fill with white text in glass mode. */
+  html.glass .vtab.on,html.glass .disp-sizes button.on,html.glass .day-span button.on,
+  html.glass .layout-seg button.on,html.glass .rev-range button.on,html.glass .fx-choices button.on,
+  html.glass .btn-mini.on,html.glass .phase span.on,html.glass .set-grid button.on{
+    background:var(--accent,#3F7A56)!important;color:#fff!important;border-color:transparent!important}
+  /* backdrop-filter on the scrolling timeline forces a full re-blur every scroll
+     frame, which makes the Day view scroll feel stuck/janky in glass mode. Keep
+     the frosted blocks but drop the live blur from the scroll container itself. */
+  html.glass .cal-grid{-webkit-backdrop-filter:none;backdrop-filter:none}
+  html.glass .cal-scroll{will-change:scroll-position}
   html.glass .now.active{background:var(--glass-surface)}
   html.glass .task.running{background:var(--glass-surface)}
   html.glass .viewtabs{border-color:var(--glass-brd);background:transparent}
@@ -83,11 +95,12 @@
   html.wide .wrap{max-width:100%}
   .disp-sizes{display:flex;gap:6px}
   .disp-sizes button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
-    padding:6px 14px;cursor:pointer;font-family:var(--display);line-height:1}
-  .disp-sizes button:nth-child(1){font-size:13px}
-  .disp-sizes button:nth-child(2){font-size:15px}
-  .disp-sizes button:nth-child(3){font-size:17px}
-  .disp-sizes button:nth-child(4){font-size:19px}
+    padding:6px 14px;cursor:pointer;font-family:var(--display);line-height:1;font-size:13px}
+  /* the text-size picker is the only segmented control whose options preview their size */
+  #dispSizes button:nth-child(1){font-size:13px}
+  #dispSizes button:nth-child(2){font-size:15px}
+  #dispSizes button:nth-child(3){font-size:17px}
+  #dispSizes button:nth-child(4){font-size:19px}
   .disp-sizes button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
   .fx-choices{display:flex;gap:6px;flex-wrap:wrap}
   .fx-choices button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;
