@@ -3870,14 +3870,25 @@ async function syncTodoist(silent){
     const filter=encodeURIComponent(state.todoist.filter||'today');
     const tasks=await tdGetAll('/tasks/filter?query='+filter+'&limit=200');
     let added=0,updated=0;
+    // Where each Todoist task currently lives on OTHER days, so we don't keep
+    // re-importing onto today a task the user has moved/carried to another day.
+    const elsewhere=new Map();
+    try{ const dkeys=(await slist('day:')).filter(k=>k!==dayKey());
+      for(const k of dkeys){ const r=await sget(k); if(r&&r.tasks) r.tasks.forEach(t=>{ if(t.todoistId) elsewhere.set(t.todoistId,k); }); }
+    }catch(e){}
     tasks.forEach(td=>{
-      const existing=state.tasks.find(t=>t.todoistId===td.id);
       const est=tdEstimate(td);
       const meta=buildTdMeta(td,projMap,sectMap);
-      if(existing){
-        existing.name=td.content;
-        if(est&&!existing.estimateMin)existing.estimateMin=est;
-        existing.todoistMeta=meta;
+      const onToday=state.tasks.find(t=>t.todoistId===td.id);
+      if(elsewhere.has(td.id)){
+        // it's been placed on another day — leave it there; clear any stray copy on today
+        if(onToday && !onToday.done && (onToday.actualMs||0)===0){ if(state.activeId===onToday.id)state.activeId=null; state.tasks=state.tasks.filter(t=>t!==onToday); }
+        return;
+      }
+      if(onToday){
+        onToday.name=td.content;
+        if(est&&!onToday.estimateMin)onToday.estimateMin=est;
+        onToday.todoistMeta=meta;
         updated++;
       } else {
         state.tasks.push({id:uid(),name:td.content,channelId:matchChannel(meta.projectName),
@@ -4271,6 +4282,13 @@ async function moveTaskBetweenDays(srcKey,id,dstKey){
   srcTasks.splice(idx,1);
   if(srcKey===dayKey()){ if(state.activeId===id) state.activeId=null; await saveDay(); }
   else { await ssetDay(srcKey,srcRec); }
+  // reschedule the task in Todoist too, so a later sync agrees it lives on the new day
+  if(t.todoistId && tdConnected()){
+    const iso=dstKey.slice(4);   // 'YYYY-MM-DD'
+    if(t.todoistMeta){ const rec=t.todoistMeta.due&&t.todoistMeta.due.recurring;
+      t.todoistMeta.due={date:iso,datetime:'',string:iso,recurring:!!rec}; }
+    enqueueTd({kind:'update',taskLocalId:t.id,todoistId:t.todoistId,payload:{due_date:iso}});
+  }
   if(dstKey===dayKey()){ state.tasks.push(t); await saveDay(); }
   else { const dstRec=await sget(dstKey)||{date:dstKey.slice(4),tasks:[],reflection:'',closed:false}; dstRec.tasks=dstRec.tasks||[]; dstRec.tasks.push(t); await ssetDay(dstKey,dstRec); }
   schedulePush();
@@ -5136,6 +5154,14 @@ document.getElementById('qaEst').addEventListener('keydown',e=>{ if(e.key==='Ent
 document.getElementById('qaDesc').addEventListener('input',e=>{ e.target.style.height='auto'; e.target.style.height=Math.min(120,e.target.scrollHeight)+'px'; });
 ['qaChannel','qaDate','qaSched','qaPrio'].forEach(id=>document.getElementById(id).addEventListener('change',syncQaPills));
 ['qaEst','qaLabels'].forEach(id=>document.getElementById(id).addEventListener('input',syncQaPills));
+// dismiss the keyboard from a text field → close the sheet (but tapping a date/
+// time/priority picker just moves focus within the sheet, so it stays open)
+document.getElementById('addSheet').addEventListener('focusout',e=>{
+  if(!['qaName','qaDesc','qaEst','qaLabels'].includes(e.target&&e.target.id)) return;
+  setTimeout(()=>{ const d=document.getElementById('addDialog'), sheet=document.getElementById('addSheet');
+    if(d.open && d.classList.contains('open') && !sheet.contains(document.activeElement)) closeAddSheet();
+  },240);
+});
 // sticky now/capacity strip — reveal once the capacity card scrolls off the top
 (function(){ const arc=document.querySelector('.arc-card'), strip=document.getElementById('miniStrip');
   if(!arc||!strip||!('IntersectionObserver' in window)) return;
