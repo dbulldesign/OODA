@@ -491,7 +491,7 @@
   dialog.sheet{max-width:none;width:100%;height:100%;max-height:none;margin:0;padding:0;border:0;background:transparent;
     overflow:hidden;display:none;inset:0}
   dialog.sheet[open]{display:flex;align-items:flex-end;justify-content:center}
-  dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
+  dialog.sheet::backdrop{background:rgba(0,0,0,.28);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
   .sheet-card{width:100%;max-width:620px;background:var(--surface);border:1px solid var(--line-strong);border-bottom:0;
     border-radius:20px 20px 0 0;padding:8px 16px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.3);
     transform:translateY(110%);transition:transform .34s cubic-bezier(.32,.72,0,1)}
@@ -505,12 +505,15 @@
   .sheet-desc::placeholder{color:var(--ink-faint)}
   .sheet-pills{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;margin:6px 0 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .sheet-pills::-webkit-scrollbar{display:none}
-  .qa-pill{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);
-    background:var(--surface-2);border-radius:18px;padding:7px 11px;font-size:13px;color:var(--ink);cursor:pointer}
-  .qa-pill .qa-ic{font-size:13px;opacity:.85}
-  .qa-pill input,.qa-pill select{border:0;background:none;color:var(--ink);font-size:13px;font-family:var(--display);outline:none;max-width:118px;padding:0}
-  .qa-pill input[type=date],.qa-pill input[type=time]{min-width:0;width:auto}
-  .qa-pill input::placeholder{color:var(--ink-soft)}
+  .qa-pill{position:relative;flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);
+    background:var(--surface-2);border-radius:18px;padding:8px 13px;font-size:13px;color:var(--ink);cursor:pointer;white-space:nowrap}
+  .qa-pill.set{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,var(--surface-2))}
+  .qa-pill .qa-lab{pointer-events:none}
+  /* the real control sits invisibly over the pill so a tap opens its native picker */
+  .qa-native{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:0;margin:0;padding:0;cursor:pointer;font-size:16px;-webkit-appearance:none;appearance:none}
+  .qa-pill.qa-text{padding:0}
+  .qa-pill.qa-text input{border:0;background:none;color:var(--ink);font-size:13px;font-family:var(--display);outline:none;width:96px;padding:8px 13px}
+  .qa-pill.qa-text input::placeholder{color:var(--ink-soft)}
   .sheet-actions{display:flex;align-items:center;gap:10px;margin-top:12px}
   .sheet-hint{flex:1;font-size:11.5px;color:var(--ink-faint)}
   .sheet-send{border:0;background:var(--accent);color:#fff;border-radius:12px;padding:11px 18px;font-size:15px;font-weight:600;
@@ -1363,12 +1366,12 @@
       placeholder="Task name  (try: report tomorrow 2pm ~45m #Work)">
     <textarea id="qaDesc" class="sheet-desc" rows="1" placeholder="Description"></textarea>
     <div class="sheet-pills">
-      <label class="qa-pill"><span class="qa-ic">＃</span><select id="qaChannel" aria-label="Project / channel"></select></label>
-      <label class="qa-pill"><span class="qa-ic">📅</span><input id="qaDate" type="date" aria-label="Due day"></label>
-      <label class="qa-pill"><span class="qa-ic">🕑</span><input id="qaSched" type="time" step="300" aria-label="Schedule at"></label>
-      <label class="qa-pill"><span class="qa-ic">⏱</span><input id="qaEst" type="text" inputmode="decimal" placeholder="Estimate" aria-label="Estimate"></label>
-      <label class="qa-pill"><span class="qa-ic">🚩</span><select id="qaPrio" aria-label="Priority"><option value="1">Priority</option><option value="4">P1</option><option value="3">P2</option><option value="2">P3</option></select></label>
-      <label class="qa-pill"><span class="qa-ic">🏷</span><input id="qaLabels" type="text" placeholder="Labels" aria-label="Labels"></label>
+      <span class="qa-pill"><span class="qa-lab" id="labProj">Project</span><select id="qaChannel" class="qa-native" aria-label="Project / channel"></select></span>
+      <span class="qa-pill"><span class="qa-lab" id="labDate">Date</span><input id="qaDate" type="date" class="qa-native" aria-label="Due day"></span>
+      <span class="qa-pill"><span class="qa-lab" id="labSched">Time</span><input id="qaSched" type="time" step="300" class="qa-native" aria-label="Schedule at"></span>
+      <span class="qa-pill"><span class="qa-lab" id="labPrio">Priority</span><select id="qaPrio" class="qa-native" aria-label="Priority"><option value="1">No priority</option><option value="4">P1 — urgent</option><option value="3">P2 — high</option><option value="2">P3 — medium</option></select></span>
+      <label class="qa-pill qa-text"><input id="qaEst" type="text" inputmode="decimal" placeholder="Estimate" aria-label="Estimate"></label>
+      <label class="qa-pill qa-text"><input id="qaLabels" type="text" placeholder="Labels" aria-label="Labels"></label>
     </div>
     <div class="sheet-actions">
       <span class="sheet-hint">Tap above to dismiss</span>
@@ -1997,10 +2000,22 @@ function openAddDialog(){
   if(sel&&src){ sel.innerHTML=src.innerHTML; sel.value=src.value; }
   ['qaName','qaDesc','qaEst','qaSched','qaDate','qaLabels'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('qaPrio').value='1';
+  syncQaPills();
   const d=document.getElementById('addDialog'); d.showModal();
   requestAnimationFrame(()=>d.classList.add('open'));     // slide the sheet up
   // raise the keyboard right after — focus the title field
   const n=document.getElementById('qaName'); setTimeout(()=>{ try{ n.focus({preventScroll:true}); }catch(e){ try{n.focus();}catch(_){}}},90);
+}
+// keep each pill showing its chosen value (or its default label)
+function syncQaPills(){
+  const set=(inputId,labId,fn,isSet)=>{ const inp=document.getElementById(inputId), lab=document.getElementById(labId);
+    if(!inp||!lab) return; lab.textContent=fn(inp); const pill=lab.closest('.qa-pill'); if(pill) pill.classList.toggle('set',isSet(inp)); };
+  const ch=document.getElementById('qaChannel'), lp=document.getElementById('labProj');
+  if(ch&&lp){ const o=ch.options[ch.selectedIndex]; lp.textContent=o?o.textContent:'Project'; }   // always shows the channel name
+  set('qaDate','labDate',i=>i.value?new Date(i.value+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'}):'Date',i=>!!i.value);
+  set('qaSched','labSched',i=>{ const m=minFromHM(i.value); return m!=null?hmFromMin(m):'Time'; },i=>!!i.value);
+  set('qaPrio','labPrio',i=>i.value==='1'?'Priority':('P'+({4:1,3:2,2:3}[i.value]||'')),i=>i.value!=='1');
+  ['qaEst','qaLabels'].forEach(id=>{ const inp=document.getElementById(id); if(inp){ const pill=inp.closest('.qa-pill'); if(pill) pill.classList.toggle('set',!!inp.value.trim()); } });
 }
 function closeAddSheet(){
   const d=document.getElementById('addDialog'); if(!d.open) return;
@@ -5119,6 +5134,8 @@ document.getElementById('addDialog').addEventListener('cancel',e=>{ e.preventDef
 document.getElementById('qaName').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
 document.getElementById('qaEst').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
 document.getElementById('qaDesc').addEventListener('input',e=>{ e.target.style.height='auto'; e.target.style.height=Math.min(120,e.target.scrollHeight)+'px'; });
+['qaChannel','qaDate','qaSched','qaPrio'].forEach(id=>document.getElementById(id).addEventListener('change',syncQaPills));
+['qaEst','qaLabels'].forEach(id=>document.getElementById(id).addEventListener('input',syncQaPills));
 // sticky now/capacity strip — reveal once the capacity card scrolls off the top
 (function(){ const arc=document.querySelector('.arc-card'), strip=document.getElementById('miniStrip');
   if(!arc||!strip||!('IntersectionObserver' in window)) return;
