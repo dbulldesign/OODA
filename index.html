@@ -453,9 +453,11 @@
     border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;flex:none;white-space:nowrap}
   .update-bar #updateDismiss{background:none;color:var(--surface);border-color:transparent;padding:7px 8px;font-weight:400}
   .app-ver{color:var(--ink-faint);font-size:11px;font-family:var(--mono)}
-  .toast.has-action{display:inline-flex;align-items:center;gap:12px;text-align:left}
-  .toast-act{background:none;border:1px solid var(--surface);color:var(--surface);border-radius:6px;
-    padding:3px 12px;font-size:12.5px;font-weight:600;cursor:pointer;flex:none}
+  /* action toasts stack the message over a right-aligned button so neither gets squished */
+  .toast.has-action{display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:left;
+    width:min(92vw,380px);max-width:none;line-height:1.4}
+  .toast-act{align-self:flex-end;background:none;border:1px solid var(--surface);color:var(--surface);border-radius:7px;
+    padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;flex:none;white-space:nowrap}
   .toast-act:hover{background:var(--surface);color:var(--ink)}
   /* bulk selection */
   .sel-cb{flex:none;width:18px;height:18px;margin-right:2px;accent-color:var(--accent,#3b7);cursor:pointer;display:none}
