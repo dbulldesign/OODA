@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>OODA — plan, track, close out</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
@@ -487,6 +487,35 @@
   dialog{border:1px solid var(--line-strong);border-radius:12px;padding:0;max-width:420px;width:92%;background:var(--surface);color:var(--ink);
     max-height:88vh;max-height:88dvh;overflow:auto}
   dialog::backdrop{background:rgba(31,42,44,.35)}
+  /* ---------- bottom-sheet add (Todoist-style quick add) ---------- */
+  dialog.sheet{max-width:none;width:100%;height:100%;max-height:none;margin:0;padding:0;border:0;background:transparent;
+    overflow:hidden;display:none;inset:0}
+  dialog.sheet[open]{display:flex;align-items:flex-end;justify-content:center}
+  dialog.sheet::backdrop{background:rgba(0,0,0,.45)}
+  .sheet-card{width:100%;max-width:620px;background:var(--surface);border:1px solid var(--line-strong);border-bottom:0;
+    border-radius:20px 20px 0 0;padding:8px 16px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.3);
+    transform:translateY(110%);transition:transform .34s cubic-bezier(.32,.72,0,1)}
+  dialog.sheet.open .sheet-card{transform:translateY(0)}
+  .sheet-grab{width:38px;height:4px;border-radius:3px;background:var(--line-strong);margin:4px auto 12px;opacity:.8}
+  .sheet-title{width:100%;border:0;background:none;color:var(--ink);font-size:19px;font-weight:600;font-family:var(--display);
+    padding:2px 2px 6px;outline:none}
+  .sheet-title::placeholder{color:var(--ink-faint);font-weight:500}
+  .sheet-desc{width:100%;border:0;background:none;color:var(--ink-soft);font-size:14px;font-family:var(--display);
+    padding:2px;outline:none;resize:none;min-height:24px;max-height:120px;line-height:1.4}
+  .sheet-desc::placeholder{color:var(--ink-faint)}
+  .sheet-pills{display:flex;gap:8px;overflow-x:auto;padding:10px 0 4px;margin:6px 0 2px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .sheet-pills::-webkit-scrollbar{display:none}
+  .qa-pill{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-strong);
+    background:var(--surface-2);border-radius:18px;padding:7px 11px;font-size:13px;color:var(--ink);cursor:pointer}
+  .qa-pill .qa-ic{font-size:13px;opacity:.85}
+  .qa-pill input,.qa-pill select{border:0;background:none;color:var(--ink);font-size:13px;font-family:var(--display);outline:none;max-width:118px;padding:0}
+  .qa-pill input[type=date],.qa-pill input[type=time]{min-width:0;width:auto}
+  .qa-pill input::placeholder{color:var(--ink-soft)}
+  .sheet-actions{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .sheet-hint{flex:1;font-size:11.5px;color:var(--ink-faint)}
+  .sheet-send{border:0;background:var(--accent);color:#fff;border-radius:12px;padding:11px 18px;font-size:15px;font-weight:600;
+    cursor:pointer;font-family:var(--display);min-width:84px}
+  .sheet-send:active{transform:scale(.96)}
   /* help guide */
   dialog.help{max-width:640px}
   .help-intro{font-size:13px;color:var(--ink-soft);margin:0 0 12px}
@@ -1327,23 +1356,23 @@
   </div>
 </dialog>
 
-<dialog id="addDialog">
-  <div class="dlg-in">
-    <h3>New task</h3>
-    <div class="td-field">
-      <input id="qaName" type="text" spellcheck="false" autocomplete="off" placeholder="What needs doing?  (#project @label p1 2pm ~45m)">
+<dialog id="addDialog" class="sheet">
+  <div class="sheet-card" id="addSheet">
+    <div class="sheet-grab"></div>
+    <input id="qaName" class="sheet-title" type="text" spellcheck="false" autocomplete="off" enterkeyhint="done"
+      placeholder="Task name  (try: report tomorrow 2pm ~45m #Work)">
+    <textarea id="qaDesc" class="sheet-desc" rows="1" placeholder="Description"></textarea>
+    <div class="sheet-pills">
+      <label class="qa-pill"><span class="qa-ic">＃</span><select id="qaChannel" aria-label="Project / channel"></select></label>
+      <label class="qa-pill"><span class="qa-ic">📅</span><input id="qaDate" type="date" aria-label="Due day"></label>
+      <label class="qa-pill"><span class="qa-ic">🕑</span><input id="qaSched" type="time" step="300" aria-label="Schedule at"></label>
+      <label class="qa-pill"><span class="qa-ic">⏱</span><input id="qaEst" type="text" inputmode="decimal" placeholder="Estimate" aria-label="Estimate"></label>
+      <label class="qa-pill"><span class="qa-ic">🚩</span><select id="qaPrio" aria-label="Priority"><option value="1">Priority</option><option value="4">P1</option><option value="3">P2</option><option value="2">P3</option></select></label>
+      <label class="qa-pill"><span class="qa-ic">🏷</span><input id="qaLabels" type="text" placeholder="Labels" aria-label="Labels"></label>
     </div>
-    <div class="te-grid">
-      <div class="td-field"><label>Channel</label><select id="qaChannel"></select></div>
-      <div class="td-field"><label>Priority</label>
-        <select id="qaPrio"><option value="1">None</option><option value="2">P3</option><option value="3">P2</option><option value="4">P1</option></select></div>
-      <div class="td-field"><label>Schedule at (today)</label><input id="qaSched" type="time" step="300"></div>
-      <div class="td-field"><label>Estimate</label><input id="qaEst" type="text" inputmode="decimal" placeholder="30m, 1h 15m"></div>
-    </div>
-    <div class="dlg-actions">
-      <span style="flex:1"></span>
-      <button id="qaCancel">Cancel</button>
-      <button class="primary" id="qaAdd">Add task</button>
+    <div class="sheet-actions">
+      <span class="sheet-hint">Tap above to dismiss</span>
+      <button class="sheet-send" id="qaAdd" aria-label="Add task">Add ↑</button>
     </div>
   </div>
 </dialog>
@@ -1966,39 +1995,51 @@ async function addTask(){
 function openAddDialog(){
   const sel=document.getElementById('qaChannel'), src=document.getElementById('addChannel');
   if(sel&&src){ sel.innerHTML=src.innerHTML; sel.value=src.value; }
-  document.getElementById('qaName').value='';
-  document.getElementById('qaEst').value='';
-  document.getElementById('qaSched').value='';
+  ['qaName','qaDesc','qaEst','qaSched','qaDate','qaLabels'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
   document.getElementById('qaPrio').value='1';
-  document.getElementById('addDialog').showModal();
-  const n=document.getElementById('qaName'); setTimeout(()=>{ try{ n.focus(); }catch(e){} },40);
+  const d=document.getElementById('addDialog'); d.showModal();
+  requestAnimationFrame(()=>d.classList.add('open'));     // slide the sheet up
+  // raise the keyboard right after — focus the title field
+  const n=document.getElementById('qaName'); setTimeout(()=>{ try{ n.focus({preventScroll:true}); }catch(e){ try{n.focus();}catch(_){}}},90);
+}
+function closeAddSheet(){
+  const d=document.getElementById('addDialog'); if(!d.open) return;
+  d.classList.remove('open');
+  if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();   // drop the keyboard
+  setTimeout(()=>{ try{ d.close(); }catch(e){} },300);
 }
 async function quickAddSubmit(){
   const raw=document.getElementById('qaName').value.trim();
-  if(!raw){ document.getElementById('addDialog').close(); return; }
+  if(!raw){ closeAddSheet(); return; }
   const p=parseQuickAdd(raw);
   const name=p.name||raw;
   const estMin = p.estimateMin || hoursToMin(document.getElementById('qaEst').value);
   const prio = Math.max(p.priority||1, parseInt(document.getElementById('qaPrio').value)||1);
   const schedVal=minFromHM(document.getElementById('qaSched').value);
+  const desc=document.getElementById('qaDesc').value.trim();
+  const extraLabels=document.getElementById('qaLabels').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const labels=[...new Set([...p.labels,...extraLabels])];
+  const dateVal=document.getElementById('qaDate').value;        // yyyy-mm-dd
+  const dueDate = dateVal ? new Date(dateVal+'T12:00:00') : p.dueDate;
   const channelId = p.projectName ? matchChannel(p.projectName) : document.getElementById('qaChannel').value;
   const t={id:uid(),name,channelId,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
     scheduledMin:(schedVal!=null?snap(schedVal):(p.scheduledMin!=null?snap(p.scheduledMin):null))};
-  if(p.labels.length||prio>1||p.dueDate||p.projectName){
-    t.todoistMeta={projectId:'',projectName:p.projectName||'',section:'',labels:p.labels.slice(),priority:prio,
-      due:p.dueDate?{date:dayKeyFor(p.dueDate).slice(4),datetime:'',string:p.dueString,recurring:false}:null,
-      description:'',rawContent:name,url:'',commentCount:0};
+  if(labels.length||prio>1||dueDate||p.projectName||desc){
+    t.todoistMeta={projectId:'',projectName:p.projectName||'',section:'',labels:labels.slice(),priority:prio,
+      due:dueDate?{date:dayKeyFor(dueDate).slice(4),datetime:'',string:p.dueString||'',recurring:false}:null,
+      description:desc,rawContent:name,url:'',commentCount:0};
   }
-  const targetKey = p.dueDate ? dayKeyFor(p.dueDate) : dayKey();
-  document.getElementById('addDialog').close();
-  autoCreateInTodoist(t,p);
+  const targetKey = dueDate ? dayKeyFor(dueDate) : dayKey();
+  closeAddSheet();
+  autoCreateInTodoist(t,{...p,labels,priority:prio,dueString:p.dueString||(dateVal||'')});
   if(targetKey===dayKey()){ state.tasks.unshift(t); await saveDay(); render(); toast('Added.'); }
-  else { await addTaskToDay(targetKey,t); render(); toast('Added to '+fmtDateRel(p.dueDate)); }
+  else { await addTaskToDay(targetKey,t); render(); toast('Added to '+fmtDateRel(dueDate)); }
 }
 // queue a Todoist create for a brand-new local task when auto-create is on
 function autoCreateInTodoist(t,p){
   if(!tdConnected() || state.todoist.autocreate===false || t.todoistId) return;
   const payload={content:t.name, priority:(p&&p.priority)||1, labels:(p&&p.labels&&p.labels.slice())||[]};
+  if(t.todoistMeta&&t.todoistMeta.description) payload.description=t.todoistMeta.description;
   if(t.estimateMin>0){ payload.duration=t.estimateMin; payload.duration_unit='minute'; }
   if(p&&p.dueString){ payload.due_string=p.dueString; }
   enqueueTd({kind:'create',taskLocalId:t.id,payload});
@@ -5072,10 +5113,12 @@ document.getElementById('dsStat').addEventListener('click',openSyncDialog);
 // mobile bottom tab bar + FAB
 document.getElementById('tabbar').addEventListener('click',e=>{ const b=e.target.closest('.tb'); if(b){ haptic(8); setView(b.dataset.v); } });
 document.getElementById('fabAdd').addEventListener('click',()=>{ haptic(8); openAddDialog(); });
-document.getElementById('qaCancel').addEventListener('click',()=>document.getElementById('addDialog').close());
 document.getElementById('qaAdd').addEventListener('click',quickAddSubmit);
+document.getElementById('addDialog').addEventListener('click',e=>{ if(e.target.id==='addDialog') closeAddSheet(); });   // tap above the sheet
+document.getElementById('addDialog').addEventListener('cancel',e=>{ e.preventDefault(); closeAddSheet(); });           // Esc / back
 document.getElementById('qaName').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
 document.getElementById('qaEst').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); quickAddSubmit(); } });
+document.getElementById('qaDesc').addEventListener('input',e=>{ e.target.style.height='auto'; e.target.style.height=Math.min(120,e.target.scrollHeight)+'px'; });
 // sticky now/capacity strip — reveal once the capacity card scrolls off the top
 (function(){ const arc=document.querySelector('.arc-card'), strip=document.getElementById('miniStrip');
   if(!arc||!strip||!('IntersectionObserver' in window)) return;
