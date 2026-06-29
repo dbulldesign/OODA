@@ -106,6 +106,12 @@
      the frosted blocks but drop the live blur from the scroll container itself. */
   html.glass .cal-grid{-webkit-backdrop-filter:none;backdrop-filter:none}
   html.glass .cal-scroll{will-change:scroll-position}
+  /* A live backdrop-blur on every repeated list/board row repaints on each hover
+     and mouse-move (the "strobe"). Drop the blur from rows — they keep the
+     translucent glass tint — so only the few large surfaces stay frosted. */
+  html.glass .task,html.glass .completed,html.glass .bd-col,html.glass .tpl-row,
+  html.glass .rev-card,html.glass .help-card,html.glass .cal-block,html.glass .cal-chip{
+    -webkit-backdrop-filter:none;backdrop-filter:none}
   /* context menus must stay legible — keep them (near-)opaque so content behind
      them doesn't bleed through and wash out items like the red Delete */
   html.glass .menu,html.glass .ac-menu{background:color-mix(in srgb,var(--surface) 94%,transparent)!important;
@@ -561,13 +567,12 @@
     .task:hover .go,.task:hover .check,.task:hover .menu-btn,.task .go.running,.task .check.done{opacity:1}
   }
   /* view transitions (cross-fade); respects reduced-motion via JS guard */
-  ::view-transition-old(root),::view-transition-new(root){animation-duration:.26s}
-  @media (prefers-reduced-motion:no-preference){
-    ::view-transition-old(root){animation:vt-out .24s cubic-bezier(.4,0,.2,1) both}
-    ::view-transition-new(root){animation:vt-in .28s cubic-bezier(.4,0,.2,1) both}
-    @keyframes vt-out{to{opacity:0;transform:translateY(-6px) scale(.994)}}
-    @keyframes vt-in{from{opacity:0;transform:translateY(10px) scale(.994)}}
-  }
+  /* plain opacity crossfade between views — transforms/scale on the whole page
+     snapshot are what made the switch feel jerky on desktop */
+  ::view-transition-old(root){animation:vt-fade .18s ease both}
+  ::view-transition-new(root){animation:vt-fade .18s ease reverse both}
+  @keyframes vt-fade{from{opacity:1}to{opacity:0}}
+  @media (prefers-reduced-motion:reduce){ ::view-transition-old(root),::view-transition-new(root){animation:none} }
   /* command palette */
   dialog.cmdk{max-width:560px;width:92%;top:12vh;margin-top:0;border-radius:14px}
   dialog.cmdk::backdrop{background:rgba(31,42,44,.4)}
@@ -806,7 +811,7 @@
     .cal-block.dragging,.cal-block.flip,.cal-block.dc-ghost{transition:none}
     .cal-chip{transition:transform .14s ease,box-shadow .14s ease,background .14s ease}
     .cal-chip:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.14)}
-    .task{transition:background-color .15s ease}
+    .task{transition:border-color .2s ease,opacity .2s ease,background-color .15s ease}
     .menu button{transition:background .12s ease}
     .aa-btn,.btn-mini,.theme-btn,.vtab{transition:transform .12s ease,background .14s ease,color .14s ease}
     .aa-btn:active,.btn-mini:active{transform:scale(.94)}
