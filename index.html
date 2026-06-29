@@ -323,6 +323,13 @@
   .task .times .sched-tag{cursor:pointer}
   .inline-edit{font-family:var(--mono);font-size:12px;width:74px;border:1px solid var(--accent);border-radius:6px;
     padding:2px 5px;background:var(--surface);color:var(--ink);outline:none}
+  .lg-head{display:flex;align-items:center;gap:8px;padding:8px 6px 6px;margin-top:6px;cursor:pointer;
+    font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.02em;border-bottom:1px solid var(--line)}
+  .lg-head .dot{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+  .lg-head .lg-name{color:var(--ink);text-transform:none;letter-spacing:0}
+  .lg-head .lg-meta{margin-left:auto;color:var(--ink-faint);font-weight:500}
+  .lg-head .lg-tw .icon{width:14px;height:14px;transition:transform .15s}
+  .lg-head.collapsed .lg-tw .icon{transform:rotate(-90deg)}
   .tdtag{font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--todoist);
     border:1px solid var(--todoist);border-radius:4px;padding:1px 3px;margin-right:6px;line-height:1}
   /* todoist metadata chips */
@@ -1168,8 +1175,9 @@
     </select>
     <select id="filterSel" class="ctlsel" title="Filter tasks"></select>
     <input id="searchInp" class="ctlsearch" type="search" placeholder="Search…" autocomplete="off">
-    <div class="layout-seg" id="layoutSeg" title="List / board layout">
-      <button data-l="list" class="on" title="List">▤</button>
+    <div class="layout-seg" id="layoutSeg" title="List / grouped / board layout">
+      <button data-l="list" class="on" title="Flat list">▤</button>
+      <button data-l="grouped" title="Grouped by project">▤▤</button>
       <button data-l="board" title="Board">▦</button>
     </div>
     <button id="selBtn" class="btn-mini" title="Select multiple tasks">Select</button>
@@ -2427,7 +2435,8 @@ function render(){
   list.innerHTML='';
   const all=sortedTasks();
   const active=all.filter(t=>!t.done), done=all.filter(t=>t.done);
-  active.forEach(t=>list.appendChild(taskRow(t)));
+  if(listLayout==='grouped'){ renderGroupedList(active); }
+  else active.forEach(t=>list.appendChild(taskRow(t)));
   // completed: collapsed section at the bottom
   const cw=document.getElementById('completedWrap'), cl=document.getElementById('completedList');
   const openComp = showCompleted || !!searchQuery;
@@ -2513,6 +2522,24 @@ function taskRow(t){
       toggleSubtask(t.todoistId,cb.dataset.sid,cb.checked); cb.closest('.d-sub').classList.toggle('done',cb.checked); }));
   }
   return li;
+}
+/* ---------- grouped list (by project / channel) ---------- */
+let collapsedGroups=new Set();
+function renderGroupedList(active){
+  const list=document.getElementById('taskList');
+  const groups=new Map();
+  active.forEach(t=>{ const key=taskProject(t)||chById(t.channelId).name||'No project';
+    if(!groups.has(key)) groups.set(key,[]); groups.get(key).push(t); });
+  [...groups.keys()].sort((a,b)=>a.localeCompare(b)).forEach(key=>{
+    const arr=groups.get(key); const mins=arr.reduce((s,t)=>s+(t.estimateMin||0),0);
+    const col=(arr[0]&&chById(arr[0].channelId).color)||'var(--ink-soft)';
+    const hd=document.createElement('div'); hd.className='lg-head'+(collapsedGroups.has(key)?' collapsed':'');
+    hd.innerHTML='<span class="lg-tw">'+CHEV+'</span><span class="dot" style="background:'+col+'"></span>'+
+      '<span class="lg-name">'+escapeHtml(key)+'</span><span class="lg-meta">'+arr.length+(mins?' · '+minFmt(mins*60000):'')+'</span>';
+    hd.addEventListener('click',()=>{ if(collapsedGroups.has(key))collapsedGroups.delete(key); else collapsedGroups.add(key); render(); });
+    list.appendChild(hd);
+    if(!collapsedGroups.has(key)) arr.forEach(t=>list.appendChild(taskRow(t)));
+  });
 }
 /* ---------- bulk selection ---------- */
 function toggleSelectMode(on){
