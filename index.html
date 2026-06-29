@@ -447,6 +447,13 @@
   .focus-ch .dot{width:11px;height:11px;border-radius:50%}
   .focus-name{font-size:clamp(24px,5vw,40px);font-weight:680;line-height:1.15;letter-spacing:-.02em}
   .focus-clock{font-family:var(--mono);font-size:clamp(40px,10vw,72px);font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--accent)}
+  .focus-pomo{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:6px 0 2px}
+  .focus-pomo .pomo-ph{font-weight:600;color:var(--ink)}
+  .focus-pomo .pomo-time{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:18px;color:var(--accent)}
+  .focus-pomo.break .pomo-time{color:var(--now)}
+  .focus-pomo .pomo-rd{font-size:12px;color:var(--ink-faint)}
+  .focus-pomo .pomo-go,.focus-pomo .pomo-skip{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:var(--display)}
+  .focus-pomo .pomo-go{border-color:var(--accent);color:var(--accent)}
   .focus-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   .focus-acts button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:10px;
     padding:11px 20px;font-size:14px;cursor:pointer;font-family:var(--display)}
@@ -1234,6 +1241,7 @@
     <div class="focus-ch" id="focusCh"></div>
     <div class="focus-name" id="focusName">Nothing tracking</div>
     <div class="focus-clock" id="focusClock">0:00:00</div>
+    <div class="focus-pomo" id="focusPomo" style="display:none"></div>
     <div class="focus-acts">
       <button id="focusStop">Pause</button>
       <button class="primary" id="focusDone">Complete</button>
@@ -1698,6 +1706,17 @@
         <span id="goalUnit" class="goal-unit"></span>
       </div>
       <p class="td-hint">A progress bar appears under the capacity arc; hit it to build a 🔥 streak.</p>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Pomodoro</div>
+      <label class="td-check" style="margin:0"><input type="checkbox" id="pomoOn"> Pomodoro work/break timer in Focus mode</label>
+      <div class="goal-set" id="pomoRow" style="display:none;margin-top:8px;flex-wrap:wrap">
+        <span class="goal-unit">Focus</span><input id="pomoWork" type="number" min="5" max="90" step="5"> min
+        <span class="goal-unit">Break</span><input id="pomoBreak" type="number" min="1" max="30" step="1"> min
+        <span class="goal-unit">Long break</span><input id="pomoLong" type="number" min="5" max="45" step="5"> min
+        <span class="goal-unit">every</span><input id="pomoRounds" type="number" min="2" max="8" step="1"> rounds
+      </div>
+      <p class="td-hint">When on, Focus mode runs work/break cycles with a chime; long break after every few rounds.</p>
     </div>
     <div class="set-group">
       <div class="set-h">Working hours</div>
@@ -2809,6 +2828,49 @@ function nextAfter(t){ return state.tasks.filter(x=>!x.done && x.id!==(t&&t.id))
   .sort((a,b)=>((a.scheduledMin==null?1e9:a.scheduledMin)-(b.scheduledMin==null?1e9:b.scheduledMin)))[0]||null; }
 function openFocus(){ focusOpen=true; document.getElementById('focusView').style.display='flex'; renderFocus(); }
 function closeFocus(){ focusOpen=false; document.getElementById('focusView').style.display='none'; }
+/* ---------- Pomodoro (optional, in Focus mode) ---------- */
+let pomo={on:false,work:25,brk:5,long:15,rounds:4};
+let pomoPhase='work', pomoEnd=0, pomoCount=0, pomoActive=false;
+function loadPomo(){ try{ const r=localStorage.getItem(LS_PREFIX+'_pomo'); if(r) pomo={...pomo,...JSON.parse(r)}; }catch(e){} }
+function savePomo(){ try{ localStorage.setItem(LS_PREFIX+'_pomo',JSON.stringify(pomo)); }catch(e){} }
+function markPomo(){
+  const c=document.getElementById('pomoOn'); if(c) c.checked=pomo.on;
+  const r=document.getElementById('pomoRow'); if(r) r.style.display=pomo.on?'flex':'none';
+  const s=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+  s('pomoWork',pomo.work); s('pomoBreak',pomo.brk); s('pomoLong',pomo.long); s('pomoRounds',pomo.rounds);
+}
+function commitPomo(){
+  pomo.on=document.getElementById('pomoOn').checked;
+  const n=(id,d)=>{ const v=parseInt(document.getElementById(id).value); return isNaN(v)?d:v; };
+  pomo.work=n('pomoWork',25); pomo.brk=n('pomoBreak',5); pomo.long=n('pomoLong',15); pomo.rounds=n('pomoRounds',4);
+  savePomo(); markPomo(); if(!pomo.on) pomoActive=false; if(focusOpen) renderFocus();
+}
+function pomoStartCycle(){ if(!pomo.on) return; pomoActive=true; pomoPhase='work'; pomoCount=0; pomoEnd=Date.now()+pomo.work*60000;
+  const t=focusTarget(); if(t&&!t.running) toggleRun(t.id); playSound('start'); renderFocus(); }
+function pomoAdvance(){
+  if(pomoPhase==='work'){ pomoCount++; const long=(pomoCount%pomo.rounds===0);
+    pomoPhase=long?'long':'break'; pomoEnd=Date.now()+(long?pomo.long:pomo.brk)*60000;
+    const t=focusTarget(); if(t&&t.running) toggleRun(t.id);          // pause work during break
+    playSound('break'); haptic(20); toast((long?'Long break':'Break time')+' — '+(long?pomo.long:pomo.brk)+' min.');
+  } else { pomoPhase='work'; pomoEnd=Date.now()+pomo.work*60000;
+    const t=focusTarget(); if(t&&!t.running) toggleRun(t.id);          // resume work
+    playSound('start'); haptic(20); toast('Back to focus — '+pomo.work+' min.');
+  }
+  renderFocus();
+}
+function pomoSkip(){ if(pomoActive) pomoAdvance(); }
+function pomoTick(){ if(pomoActive && pomo.on && Date.now()>=pomoEnd) pomoAdvance(); }
+function renderPomo(){
+  const el=document.getElementById('focusPomo'); if(!el) return;
+  if(!pomo.on){ el.style.display='none'; pomoActive=false; return; }
+  el.style.display='block';
+  if(!pomoActive){ el.innerHTML='<button class="pomo-go" id="pomoGo">🍅 Start Pomodoro</button>'; return; }
+  const rem=Math.max(0,Math.ceil((pomoEnd-Date.now())/1000)), mm=Math.floor(rem/60), ss=rem%60;
+  const label=pomoPhase==='work'?'🍅 Focus':(pomoPhase==='long'?'🌴 Long break':'☕ Break');
+  el.classList.toggle('break',pomoPhase!=='work');
+  el.innerHTML='<span class="pomo-ph">'+label+'</span><span class="pomo-time">'+mm+':'+String(ss).padStart(2,'0')+'</span>'+
+    '<span class="pomo-rd">round '+(pomoCount+(pomoPhase==='work'?1:0))+'</span><button class="pomo-skip" id="pomoSkip">Skip ›</button>';
+}
 function renderFocus(){ if(!focusOpen) return; const t=focusTarget();
   const nameEl=document.getElementById('focusName'),clockEl=document.getElementById('focusClock'),chEl=document.getElementById('focusCh'),
     stop=document.getElementById('focusStop'),done=document.getElementById('focusDone'),nextEl=document.getElementById('focusNext'),nextBtn=document.getElementById('focusNextBtn');
@@ -2819,6 +2881,7 @@ function renderFocus(){ if(!focusOpen) return; const t=focusTarget();
   stop.style.display=''; done.style.display=''; stop.textContent=t.running?'Pause':'Start';
   const nx=nextAfter(t); nextBtn.style.display=nx?'':'none';
   nextEl.textContent = nx? ('Next: '+nx.name) : 'Last one — finish strong.';
+  renderPomo();
 }
 async function focusStartStop(){ const t=focusTarget(); if(t){ await toggleRun(t.id); renderFocus(); } }
 async function focusComplete(){ const t=focusTarget(); if(t){ await toggleDone(t.id); renderFocus(); } }
@@ -2841,7 +2904,10 @@ function renderPhase(){
   set('ph-reflect',allDone);
   function set(id,on){ document.getElementById(id).classList.toggle('on',!!on); }
 }
-function startTick(){ clearInterval(tick); tick=setInterval(()=>{ if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); if(focusOpen) renderFocus(); } },1000); }
+function startTick(){ clearInterval(tick); tick=setInterval(()=>{
+  if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); }
+  if(focusOpen){ if(pomo.on&&pomoActive) pomoTick(); renderFocus(); }   // keep Pomodoro counting through breaks
+},1000); }
 /* periodic background sync — pull Todoist + cloud every few minutes */
 let autoSyncTimer=null;
 function startAutoSync(){ clearInterval(autoSyncTimer); autoSyncTimer=setInterval(autoSyncTick, 5*60*1000); }
@@ -5383,7 +5449,7 @@ showVersion();
 function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION;
   const gt=document.getElementById('goalType'); if(gt) gt.value=goalType;
   const gv=document.getElementById('goalValue'); if(gv) gv.value=goalValue;
-  updateGoalUnit(); markWorkHours();
+  updateGoalUnit(); markWorkHours(); markPomo();
   document.getElementById('settingsDialog').showModal(); }
 document.getElementById('settingsBtn').addEventListener('click',openSettings);
 document.getElementById('settingsDone').addEventListener('click',()=>document.getElementById('settingsDialog').close());
@@ -5445,6 +5511,8 @@ document.getElementById('soundVol').addEventListener('input',e=>setSoundVol(pars
 document.getElementById('goalType').addEventListener('change',e=>setGoalType(e.target.value));
 document.getElementById('goalValue').addEventListener('input',e=>setGoalValue(parseFloat(e.target.value)));
 ['whOn','whLunchOn','whStart','whEnd','whLunchStart','whLunchEnd'].forEach(id=>document.getElementById(id).addEventListener('change',commitWorkHours));
+['pomoOn','pomoWork','pomoBreak','pomoLong','pomoRounds'].forEach(id=>document.getElementById(id).addEventListener('change',commitPomo));
+document.getElementById('focusPomo').addEventListener('click',e=>{ if(e.target.closest('#pomoGo')) pomoStartCycle(); else if(e.target.closest('#pomoSkip')) pomoSkip(); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -5853,7 +5921,7 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
   try{ loadAutoTheme(); applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,loadWorkHours,loadBacklogSort,loadZoom,
+  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,loadWorkHours,loadBacklogSort,loadZoom,loadPomo,
    applyDisplay,applyDensityAccent,applyPalette,applyFont,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink,armAutoTheme]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
