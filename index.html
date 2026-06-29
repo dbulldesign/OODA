@@ -104,7 +104,7 @@
   html.glass .now,html.glass .arc-card,html.glass .reflect,html.glass dialog,html.glass .cal-grid,
   html.glass .cal-backlog,html.glass .task,html.glass .completed,html.glass .help-card,html.glass .bd-col,
   html.glass .menu,html.glass .ac-menu,html.glass .sa-results,html.glass .bulk-bar,html.glass .cal-inspector,
-  html.glass .rev-card,html.glass .tpl-row{
+  html.glass .rev-card,html.glass .tpl-row,html.glass .chan-pop{
     background:var(--glass-surface)!important;
     -webkit-backdrop-filter:blur(var(--glass-blur,18px)) saturate(1.5);backdrop-filter:blur(var(--glass-blur,18px)) saturate(1.5);
     border:1px solid var(--glass-brd);
@@ -112,6 +112,7 @@
   /* lighter chrome elements: translucent but no heavy blur for perf */
   html.glass .add input.name,html.glass .ctlsel,html.glass .ctlsearch,html.glass .sync-btn,html.glass .cstat,
   html.glass .vtab,html.glass .btn-mini,html.glass .theme-btn,html.glass .add select,html.glass .add input.est,
+  html.glass .chan-btn,html.glass .chan-search,
   html.glass .set-grid button,html.glass .day-span,html.glass .disp-sizes button{
     background:var(--glass-2);border-color:var(--glass-brd)}
   /* Selected segmented buttons/tabs: the frosted-surface rule above strips their
@@ -357,9 +358,9 @@
   .task .dot.sched-grab{box-shadow:0 0 0 3px var(--now-soft)}
   .task .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
   .task .row1{display:flex;align-items:flex-start;gap:11px}
-  .task .name{flex:1;min-width:0;font-size:15px;line-height:1.35;overflow-wrap:anywhere;cursor:text}
+  .task .name{flex:1;min-width:0;font-size:16px;line-height:1.35;overflow-wrap:anywhere;cursor:text}
   .task.done .name{text-decoration:line-through}
-  .task .times{font-family:var(--mono);font-size:14px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center;gap:2px}
+  .task .times{font-family:var(--mono);font-size:15px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center;gap:2px}
   .task .times .act{color:var(--ink);font-weight:600}
   .task .times .act.over{color:var(--over)}
   .task .times .est{cursor:pointer;border-radius:4px;padding:0 2px}
@@ -392,14 +393,14 @@
     border:1px solid var(--todoist);border-radius:4px;padding:1px 3px;margin-right:6px;line-height:1}
   /* todoist metadata chips */
   .meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
-  .chip{font-size:11px;line-height:1;padding:3px 7px;border-radius:11px;border:1px solid var(--line-strong);
+  .chip{font-size:12.5px;line-height:1.1;padding:4px 9px;border-radius:11px;border:1px solid var(--line-strong);
     color:var(--ink-soft);background:var(--surface-2);white-space:nowrap;display:inline-flex;align-items:center;gap:4px}
   .chip.proj{color:var(--ink);font-weight:500}
   .chip.due.over{color:var(--over);border-color:var(--over)}
   .chip.label::before{content:'@';opacity:.55}
   .chip.prio{font-weight:700;border-color:transparent;color:#fff}
   .chip.prio.p1{background:#B14233}.chip.prio.p2{background:#C2752A}.chip.prio.p3{background:#2E6B9E}
-  .chip.chan{color:var(--ink)}.chip.chan .dot{width:7px;height:7px;border-radius:50%}
+  .chip.chan{color:var(--ink)}.chip.chan .dot{width:8px;height:8px;border-radius:50%}
   .chip.repeat{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
   .est-hint{margin-top:5px;border:1px dashed var(--accent);background:var(--surface-2);color:var(--ink);
     border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}
