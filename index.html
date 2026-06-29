@@ -2174,6 +2174,8 @@ async function toggleRun(id){
     // multiple timers can run at once — hand the now-card focus to another live timer
     state.activeId = (state.activeId===id) ? (state.tasks.find(o=>o.running&&o.id!==id)||{}).id||null : state.activeId;
     if(t.adhoc){ t.estimateMin=Math.max(SNAP,Math.ceil(t.actualMs/60000)); reflowCascade(t.id); }   // block spans start→stop
+    else if(t.scheduledMin!=null){ const span=nowMinutes()-t.scheduledMin;   // freeze the grown block so it doesn't snap back to the estimate
+      if(span>(t.estimateMin||0)) t.estimateMin=ceilSnap(span); }
     if(t.scheduledMin!=null) t.pinned=true;   // stopping locks the block in place so it won't be re-arranged
   }
   else {
@@ -2879,6 +2881,8 @@ function ceilSnap(m){ return Math.max(SNAP,Math.ceil(m/SNAP)*SNAP); }
 function blockDur(t){
   const planned=Math.max(t.estimateMin||30, SNAP);
   if(!t.running) return planned;
+  // a running, scheduled task stretches in real time from its start up to NOW
+  if(t.scheduledMin!=null){ const span=nowMinutes()-t.scheduledMin; if(span>planned) return span; return planned; }
   return Math.max(planned,ceilSnap(Math.ceil(liveActual(t)/60000)));
 }
 function scheduledActive(){ return state.tasks.filter(t=>t.scheduledMin!=null && !t.done); }
