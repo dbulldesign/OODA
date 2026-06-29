@@ -3013,11 +3013,10 @@ async function bulkBlocks(a){
   else if(a==='del'){ ids.forEach(id=>{ const i=state.tasks.findIndex(x=>x.id===id); if(i>=0){ if(state.tasks[i].running)state.activeId=null; state.tasks.splice(i,1); } }); blockSel.clear(); }
   saveDay(); renderDay(); toast('Updated '+ts.length+' block'+(ts.length===1?'':'s')+'.');
 }
-// The timeline shows the full day and the page scrolls. When the Day view is first
-// opened we nudge the window once so "now" is in view (no per-render scrolling).
+// Opening the Day view starts at the top (like the other tabs) rather than
+// jumping down to the current-time line.
 function scrollDayToNow(){
-  const nl=document.querySelector('#calView .cal-now');
-  if(nl){ const y=nl.getBoundingClientRect().top+window.scrollY; window.scrollTo({top:Math.max(0,y-200)}); }
+  window.scrollTo({top:0});
 }
 function setDayCols(n){ dayCols=n; dayScrollPending=true; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
 /* ---------- multi-day (N-day) time grid ---------- */
