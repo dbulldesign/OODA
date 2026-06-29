@@ -247,8 +247,10 @@
          filament connects & lights, the glow emanates outside like a real
          bulb; it pulses while a timer runs and bursts when a task completes.
          Theme-tinted: line = ink, glow/lit filament = accent. ---- */
-  .brand{display:flex;align-items:center;gap:9px}
-  .brand-mark{width:38px;height:38px;flex:0 0 auto;display:block;overflow:visible}
+  .brand{display:flex;align-items:center;gap:11px}
+  /* the bulb glyph is top-heavy (glass high, base low) so nudge it down a hair
+     to optically centre it with the OODA wordmark */
+  .brand-mark{width:50px;height:50px;flex:0 0 auto;display:block;overflow:visible;transform:translateY(2px)}
   .bm-h0,.bm-h1,.bm-h2{stop-color:var(--bulb-glow)}
   .bm-glass,.bm-base{stroke:var(--ink);stroke-width:16}
   .bm-fila{stroke:var(--ink);stroke-width:14}
@@ -266,8 +268,10 @@
   .brand-mark{transition:filter .5s ease}
   .brand-mark.lit{filter:drop-shadow(0 0 2.5px var(--bulb-glow))}
   .brand-mark.lit .bm-fila{stroke:var(--bulb-glow);transition:stroke .5s ease}
-  /* a timer is running: the aura breathes (light pulsing outside the glass) */
-  .brand-mark.running{animation:bm-glow 2.4s ease-in-out infinite}
+  /* a timer is running: the aura breathes IN SYNC with the now-card dot.
+     Both read the shared --pulse (0→1→0) driven by one rAF loop, so they
+     pulse on exactly the same beat. */
+  .brand-mark.running{filter:drop-shadow(0 0 calc(1px + var(--pulse,0)*6px) var(--bulb-glow));transition:none}
   .brand-mark.running .bm-fila{stroke:var(--bulb-glow)}
   @keyframes bm-glow{0%,100%{filter:drop-shadow(0 0 1px var(--bulb-glow))}50%{filter:drop-shadow(0 0 6px var(--bulb-glow))}}
   /* a sync is running: the bulb flickers, like it's working */
@@ -298,11 +302,8 @@
   .now.active .now-prog{opacity:1}
   .now-prog.over{background:var(--over)}
   .now .pulse{width:14px;height:14px;border-radius:50%;background:var(--line-strong);flex:0 0 auto}
-  .now.active .pulse{background:var(--now)}
-  @media (prefers-reduced-motion:no-preference){
-    .now.active .pulse{animation:breathe 2.2s ease-in-out infinite}
-    @keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(194,117,42,.5)}50%{box-shadow:0 0 0 9px rgba(194,117,42,0)}}
-  }
+  /* the active-timer dot pulses on the shared --pulse beat (same as the brand bulb) */
+  .now.active .pulse{background:var(--now);box-shadow:0 0 0 calc(var(--pulse,0)*9px) rgba(194,117,42,calc(.5*(1 - var(--pulse,0))))}
   .now .label{flex:1;min-width:0}
   .now .label .what{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .now .label .what-input{width:100%;border:0;border-bottom:1px dashed var(--line-strong);background:none;color:var(--ink);
@@ -3333,11 +3334,21 @@ function renderArc(){
   }
   renderGoal();
 }
+/* one shared pulse beat (0→1→0) driving the brand bulb glow AND the now-card
+   dot, so they breathe on exactly the same rhythm while a timer runs */
+let pulseRAF=null;
+function startPulseBeat(){ if(pulseRAF!=null) return;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches){ document.documentElement.style.setProperty('--pulse','.5'); return; }
+  const period=2200;
+  const loop=t=>{ const p=(1-Math.cos((t/period)*2*Math.PI))/2; document.documentElement.style.setProperty('--pulse',p.toFixed(3)); pulseRAF=requestAnimationFrame(loop); };
+  pulseRAF=requestAnimationFrame(loop); }
+function stopPulseBeat(){ if(pulseRAF!=null){ cancelAnimationFrame(pulseRAF); pulseRAF=null; } document.documentElement.style.setProperty('--pulse','0'); }
 function renderNow(){
   const card=document.getElementById('nowCard');
   const whatEl=document.getElementById('nowWhat'), inp=document.getElementById('nowNameInp');
   const running=state.tasks.filter(x=>x.running);
   const bm=document.getElementById('brandMark'); if(bm) bm.classList.toggle('running',running.length>0);
+  if(running.length) startPulseBeat(); else stopPulseBeat();
   // keep activeId pointing at a live timer so the now-card's Stop always works
   if(!running.some(x=>x.id===state.activeId)) state.activeId = running[0]?running[0].id:null;
   const t=state.tasks.find(x=>x.id===state.activeId && x.running) || running[0];
