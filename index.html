@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>OODA — plan, track, close out</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" sizes="32x32" id="faviconLink" href="icons/favicon-32.png?v=2">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" id="faviconLink" href="icons/favicon-32.png?v=3">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=3">
 <meta name="theme-color" content="#EBE8E0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -22,6 +22,7 @@
     --over:#B14233; --over-soft:#F0D8D2;
     --cap-over:#D9822B; --cap-over-soft:#F2DEC2;
     --accent:#3F7A56;
+    --bulb-glow:#F2A33C;   /* warm orange filament/glow for the brand bulb (theme-independent) */
     --todoist:#E44332;
     --radius:10px;
     --display:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
@@ -248,10 +249,10 @@
          Theme-tinted: line = ink, glow/lit filament = accent. ---- */
   .brand{display:flex;align-items:center;gap:9px}
   .brand-mark{width:38px;height:38px;flex:0 0 auto;display:block;overflow:visible}
-  .bm-h0,.bm-h1,.bm-h2{stop-color:var(--accent)}
+  .bm-h0,.bm-h1,.bm-h2{stop-color:var(--bulb-glow)}
   .bm-glass,.bm-base{stroke:var(--ink);stroke-width:16}
   .bm-fila{stroke:var(--ink);stroke-width:14}
-  .bm-rays line{stroke:var(--accent)}
+  .bm-rays line{stroke:var(--bulb-glow)}
   /* draw-in (once on load) */
   .bm-glass,.bm-base{stroke-dasharray:1400;stroke-dashoffset:1400;animation:bm-od 1.3s ease-out .2s forwards}
   .bm-fila{stroke-dasharray:520;stroke-dashoffset:520;animation:bm-fd .55s ease 1.35s forwards}
@@ -263,21 +264,21 @@
   .bm-halo{opacity:0;transform-box:fill-box;transform-origin:center}
   .bm-rays{opacity:0;transform-box:view-box;transform-origin:256px 188px}
   .brand-mark{transition:filter .5s ease}
-  .brand-mark.lit{filter:drop-shadow(0 0 2.5px var(--accent))}
-  .brand-mark.lit .bm-fila{stroke:var(--accent);transition:stroke .5s ease}
+  .brand-mark.lit{filter:drop-shadow(0 0 2.5px var(--bulb-glow))}
+  .brand-mark.lit .bm-fila{stroke:var(--bulb-glow);transition:stroke .5s ease}
   /* a timer is running: the aura breathes (light pulsing outside the glass) */
   .brand-mark.running{animation:bm-glow 2.4s ease-in-out infinite}
-  .brand-mark.running .bm-fila{stroke:var(--accent)}
-  @keyframes bm-glow{0%,100%{filter:drop-shadow(0 0 1px var(--accent))}50%{filter:drop-shadow(0 0 6px var(--accent))}}
+  .brand-mark.running .bm-fila{stroke:var(--bulb-glow)}
+  @keyframes bm-glow{0%,100%{filter:drop-shadow(0 0 1px var(--bulb-glow))}50%{filter:drop-shadow(0 0 6px var(--bulb-glow))}}
   /* a sync is running: the bulb flickers, like it's working */
   .brand-mark.syncing{animation:bm-flicker 1.1s steps(1,end) infinite}
-  @keyframes bm-flicker{0%,100%{filter:drop-shadow(0 0 1px var(--accent))}20%{filter:drop-shadow(0 0 6px var(--accent))}35%{filter:drop-shadow(0 0 0 transparent)}55%{filter:drop-shadow(0 0 5px var(--accent))}70%{filter:drop-shadow(0 0 1px var(--accent))}}
+  @keyframes bm-flicker{0%,100%{filter:drop-shadow(0 0 1px var(--bulb-glow))}20%{filter:drop-shadow(0 0 6px var(--bulb-glow))}35%{filter:drop-shadow(0 0 0 transparent)}55%{filter:drop-shadow(0 0 5px var(--bulb-glow))}70%{filter:drop-shadow(0 0 1px var(--bulb-glow))}}
   /* task completed: one-shot bright flash + sunburst rays (set/cleared in JS) */
   .brand-mark.burst{animation:bm-glow2 .9s ease-out}
   .brand-mark.burst .bm-halo{animation:bm-burst .9s ease-out}
   .brand-mark.burst .bm-rays{animation:bm-raysout .9s ease-out}
-  .brand-mark.burst .bm-fila{stroke:var(--accent)}
-  @keyframes bm-glow2{0%{filter:drop-shadow(0 0 2px var(--accent))}28%{filter:drop-shadow(0 0 12px var(--accent))}100%{filter:drop-shadow(0 0 2px var(--accent))}}
+  .brand-mark.burst .bm-fila{stroke:var(--bulb-glow)}
+  @keyframes bm-glow2{0%{filter:drop-shadow(0 0 2px var(--bulb-glow))}28%{filter:drop-shadow(0 0 12px var(--bulb-glow))}100%{filter:drop-shadow(0 0 2px var(--bulb-glow))}}
   @keyframes bm-burst{0%{opacity:0;transform:scale(.6)}26%{opacity:.8;transform:scale(1.45)}100%{opacity:0;transform:scale(1.7)}}
   @keyframes bm-raysout{0%{opacity:0;transform:scale(.55)}30%{opacity:.95;transform:scale(1.15)}100%{opacity:0;transform:scale(1.4)}}
   @media (prefers-reduced-motion:reduce){

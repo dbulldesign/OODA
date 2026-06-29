@@ -4,7 +4,7 @@
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const path = require('path');
 const ICONS = path.join(__dirname, '..', 'icons');
-const TILE = '#222B2D', LINE = '#EDE7D8', ACC = '#5FA37A';
+const TILE = '#222B2D', LINE = '#EDE7D8', ACC = '#F2A33C';   // warm-orange filament glow
 
 const glass = 'M 230 298 C 196 290 150 250 150 196 C 150 120 196 86 256 86 C 316 86 362 120 362 196 C 362 250 316 290 282 298';
 const base = 'M 280 300 C 298 305 298 315 279 317 L 234 317 C 215 318 215 329 234 330 L 279 330 C 298 332 298 342 279 343 L 234 343 C 218 345 221 354 236 355 L 262 355 C 275 356 275 365 261 366';
