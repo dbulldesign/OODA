@@ -1084,6 +1084,14 @@
   .cal-inspector .ins-acts button:hover{background:var(--surface);border-color:var(--ink-soft)}
   .cal-inspector .ins-acts button.wide{grid-column:1/-1}
   .cal-inspector .ins-acts button.danger{color:var(--over);border-color:var(--over)}
+  .cal-inspector .ins-edit{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column}
+  .cal-inspector .ins-edit label{display:block;font-size:11px;color:var(--ink-soft);margin:9px 0 4px;letter-spacing:.03em;text-transform:uppercase}
+  .cal-inspector .ins-edit input,.cal-inspector .ins-edit select{width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:7px;padding:8px 9px;font-size:13px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
+  .cal-inspector .ins-edit select{font-family:var(--display)}
+  .cal-inspector .ins-edit input:focus,.cal-inspector .ins-edit select:focus{outline:none;border-color:var(--accent)}
+  .cal-inspector .ins-edit input[type=time],.cal-inspector .ins-edit input[type=date]{font-family:var(--mono)}
+  .cal-inspector .ins-row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cal-inspector .ins-row2>div{min-width:0}
   @media (min-width:1200px){
     html.day-view .wrap{max-width:1200px}
     html.day-view.wide .wrap{max-width:none}
@@ -5953,29 +5961,69 @@ function renderInspector(){
   const t=daySel && state.tasks.find(x=>x.id===daySel && x.scheduledMin!=null);
   if(!t){ box.innerHTML='<div class="ins-empty"><b>Details</b><br>Select a block — click it or use <kbd>j</kbd>/<kbd>k</kbd> — to see and act on it here.</div>'; return; }
   const ch=chById(t.channelId); const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000;
+  const m=t.todoistMeta||{}; const connected=tdConnected();
+  const prio=m.priority||1; const dueStr=(m.due&&(m.due.string||m.due.date))||'';
   box.innerHTML=
     '<div class="ins-ch"><span class="dot" style="background:'+ch.color+'"></span>'+escapeHtml(ch.name)+(t.pinned?' · 📌 pinned':'')+'</div>'+
     '<div class="ins-name">'+escapeHtml(t.name)+'</div>'+
     '<div class="ins-stats"><span class="ins-chip">⏱ '+hmFromMin(t.scheduledMin)+'</span>'+
       (t.estimateMin?'<span class="ins-chip">'+t.estimateMin+'m est</span>':'')+
       '<span class="ins-chip"'+(over?' style="color:var(--over)"':'')+'>'+durFmt(act)+' tracked</span></div>'+
-    taskMetaHtml(t)+
     '<div class="ins-acts">'+
       '<button data-a="run">'+(t.running?'⏸ Pause':((t.done||act>0)?'▶ Resume':'▶ Start'))+'</button>'+
       '<button data-a="done">'+(t.done?'↺ Reopen':'✓ Complete')+'</button>'+
       '<button data-a="pin">📌 '+(t.pinned?'Unpin':'Pin')+'</button>'+
       '<button data-a="unsched">↩ Unschedule</button>'+
-      '<button data-a="edit" class="wide">✎ Edit / schedule</button>'+
-      '<button data-a="del" class="wide danger">✕ Delete</button>'+
+      '<button data-a="dup">⎘ Duplicate</button>'+
+      '<button data-a="del" class="danger">✕ Delete</button>'+
+    '</div>'+
+    '<div class="ins-edit">'+
+      '<label>Title</label><input id="inspTitle" type="text" spellcheck="false" value="'+escapeHtml(t.name)+'">'+
+      '<div class="ins-row2">'+
+        '<div><label>Schedule</label><input id="inspSched" type="time" step="300" value="'+hmInput(t.scheduledMin)+'"></div>'+
+        '<div><label>Length</label><input id="inspEst" type="text" inputmode="decimal" placeholder="30m" value="'+(t.estimateMin?minToDurationStr(t.estimateMin):'')+'"></div>'+
+      '</div>'+
+      '<div class="ins-row2">'+
+        '<div><label>Priority</label><select id="inspPrio"><option value="1"'+(prio===1?' selected':'')+'>None</option><option value="2"'+(prio===2?' selected':'')+'>P3</option><option value="3"'+(prio===3?' selected':'')+'>P2</option><option value="4"'+(prio===4?' selected':'')+'>P1</option></select></div>'+
+        '<div><label>Move to day</label><input id="inspDate" type="date" value="'+dayKey().slice(4)+'"></div>'+
+      '</div>'+
+      '<label>Due (natural language)</label><input id="inspDue" type="text" spellcheck="false" placeholder="tomorrow 9am" value="'+escapeHtml(dueStr)+'">'+
+      (connected?'<label>Project</label><select id="inspProj"></select>':'')+
+      '<label>Labels</label><input id="inspLabels" type="text" spellcheck="false" placeholder="errand, focus" value="'+escapeHtml((m.labels||[]).join(', '))+'">'+
     '</div>';
+  if(connected){ const s=box.querySelector('#inspProj'); s.innerHTML='<option value="">—</option>'+tdProjects().map(p=>'<option value="'+p.id+'"'+(p.id===m.projectId?' selected':'')+'>'+escapeHtml(p.name)+'</option>').join(''); }
   box.querySelector('.ins-acts').addEventListener('click',e=>{ const b=e.target.closest('button[data-a]'); if(!b)return; const a=b.dataset.a;
     if(a==='run'){ if(!t.running&&(t.done||act>0)) resumeTask(t.id); else toggleRun(t.id); }
     else if(a==='done') toggleDone(t.id);
     else if(a==='pin') togglePin(t.id);
     else if(a==='unsched'){ t.scheduledMin=null; t.pinned=false; daySel=null; saveDay().then(()=>render()); }
-    else if(a==='edit') openTaskEditor(t.id);
+    else if(a==='dup') duplicateTask(t.id);
     else if(a==='del'){ const id=t.id; daySel=null; removeTask(id); }
   });
+  // commit edits when a field changes (blur / select change)
+  ['inspTitle','inspSched','inspEst','inspPrio','inspDue','inspProj','inspLabels'].forEach(id=>{ const el=box.querySelector('#'+id);
+    if(el) el.addEventListener('change',()=>inspectorCommit(t.id)); });
+  const dEl=box.querySelector('#inspDate'); if(dEl) dEl.addEventListener('change',e=>{ const tk=e.target.value?'day:'+e.target.value:dayKey(); if(tk!==dayKey()){ const id=t.id; daySel=null; moveTaskToDate(id,tk).then(ok=>{ if(ok){ render(); toast('Moved to '+fmtDateRel(new Date(tk.slice(4)+'T12:00:00'))); } }); } });
+}
+function inspectorCommit(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t) return;
+  const g=k=>document.getElementById(k);
+  const title=(g('inspTitle')&&g('inspTitle').value.trim())||t.name;
+  const estMin=g('inspEst')?hoursToMin(g('inspEst').value):t.estimateMin;
+  const schedM=g('inspSched')?minFromHM(g('inspSched').value):t.scheduledMin;
+  const prio=g('inspPrio')?(parseInt(g('inspPrio').value)||1):1;
+  const due=g('inspDue')?g('inspDue').value.trim():'';
+  const labels=g('inspLabels')?g('inspLabels').value.split(',').map(s=>s.trim()).filter(Boolean):[];
+  const projectId=g('inspProj')?g('inspProj').value:'';
+  t.name=title; t.estimateMin=estMin; if(schedM!=null) t.scheduledMin=schedM;
+  const linked=!!t.todoistId, connected=tdConnected(), hasAny=!!(due||prio>1||labels.length||projectId);
+  if(linked||hasAny){ const mm=t.todoistMeta||(t.todoistMeta={projectId:'',projectName:'',section:'',labels:[],priority:1,due:null,description:'',rawContent:'',url:'',commentCount:0});
+    mm.priority=prio; mm.labels=labels; mm.rawContent=title;
+    mm.due = due? {date:(mm.due&&mm.due.date)||'',datetime:(mm.due&&mm.due.datetime)||'',string:due,recurring:(mm.due&&mm.due.recurring)||false}:null;
+    if(projectId){ mm.projectId=projectId; mm.projectName=tdProjName(projectId); if(mm.projectName) t.channelId=matchChannel(mm.projectName); }
+  }
+  if(linked&&connected){ enqueueTd({kind:'update',taskLocalId:t.id,todoistId:t.todoistId,payload:buildTaskPayload({title,due,prio,estMin,labels})}); if(projectId) enqueueTd({kind:'move',taskLocalId:t.id,todoistId:t.todoistId,projectId}); }
+  maybeAutoArrange(); saveDay(); renderCal();
 }
 function dayBlocks(){ return scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin); }
 function daySelMove(dir){ const arr=dayBlocks(); if(!arr.length){ daySel=null; return; }
