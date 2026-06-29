@@ -838,7 +838,9 @@
   .dash-card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     display:flex;flex-direction:column;overflow:hidden;min-height:0;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s,opacity .15s,outline-color .15s}
   .dash-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.10)}
-  .dash-card.dragging{opacity:.35}
+  .dash-card.dragging{opacity:.4;pointer-events:none;outline:2px dashed var(--accent);outline-offset:-2px}
+  .dash-card.resizing{outline:2px solid var(--accent);outline-offset:-2px;z-index:5}
+  .dash-card.resizing .dc-resize{opacity:1}
   .dash-card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px}
   .dc-head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid var(--line);
     cursor:grab;user-select:none;flex:0 0 auto;background:var(--surface-2);touch-action:none}
@@ -2759,11 +2761,13 @@ function ensureDashDayKeys(){ if(dashDayKeys||dashDayKeysLoading) return; dashDa
   slist('day:').then(keys=>{ dashDayKeys=new Set(keys); dashDayKeysLoading=false;
     if(viewMode==='list'&&listLayout==='dashboard'&&document.querySelector('.dm-cal')) renderDashboard(); }).catch(()=>{dashDayKeysLoading=false;}); }
 
-function renderDashboard(){
+function renderDashboard(animate){
   loadDash();
-  const dv=document.getElementById('dashView'); if(!dv) return; dv.innerHTML='';
+  const dv=document.getElementById('dashView'); if(!dv) return;
+  const prev = animate ? dashCaptureRects() : null;       // FLIP: remember where cards are
+  dv.innerHTML='';
   const tb=document.createElement('div'); tb.className='dash-toolbar';
-  tb.innerHTML='<span class="dt-title">Dashboard — drag headers to move, drag corner to resize</span><button id="dashAdd">+ Add module</button><button id="dashReset">Reset</button>';
+  tb.innerHTML='<span class="dt-title">Dashboard — drag a header to move, drag the corner to resize</span><button id="dashAdd">+ Add module</button><button id="dashReset">Reset</button>';
   dv.appendChild(tb);
   const grid=document.createElement('div'); grid.className='dash-grid';
   const W=dv.clientWidth||(document.querySelector('.wrap')||{}).clientWidth||900;
@@ -2772,6 +2776,7 @@ function renderDashboard(){
   dashMods.forEach(m=>{
     const w=Math.min(m.w,cols);
     const card=document.createElement('div'); card.className='dash-card'; card.dataset.id=m.id;
+    if(dashDrag&&dashDrag.id===m.id) card.classList.add('dragging');
     card.style.gridColumn='span '+w; card.style.gridRow='span '+Math.max(1,m.h);
     const meta=DASH_META[m.type]||{title:m.type,icon:'▦'};
     const head=document.createElement('div'); head.className='dc-head';
@@ -2781,55 +2786,74 @@ function renderDashboard(){
     const rz=document.createElement('span'); rz.className='dc-resize'; rz.title='Drag to resize';
     card.append(head,body,rz);
     head.addEventListener('pointerdown',e=>{ if(e.target.closest('.dc-tools'))return; dashDragStart(e,m.id); });
-    head.querySelector('.dc-x').addEventListener('click',()=>{ dashMods=dashMods.filter(x=>x.id!==m.id); saveDash(); renderDashboard(); });
+    head.querySelector('.dc-x').addEventListener('click',()=>{ dashMods=dashMods.filter(x=>x.id!==m.id); saveDash(); renderDashboard(true); });
     rz.addEventListener('pointerdown',e=>dashResizeStart(e,m.id));
     grid.appendChild(card);
   });
   dv.appendChild(grid);
   tb.querySelector('#dashAdd').addEventListener('click',dashAddMenu);
-  tb.querySelector('#dashReset').addEventListener('click',()=>{ if(confirm('Reset dashboard to the default layout?')){ dashMods=DASH_DEFAULT.map(x=>({...x,id:dashId()})); saveDash(); renderDashboard(); } });
+  tb.querySelector('#dashReset').addEventListener('click',()=>{ if(confirm('Reset dashboard to the default layout?')){ dashMods=DASH_DEFAULT.map(x=>({...x,id:dashId()})); saveDash(); renderDashboard(true); } });
+  if(prev) dashFLIP(prev, dashDrag?dashDrag.id:null);       // slide cards from old → new spots
   if(!dashResizeBound){ dashResizeBound=true; let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(viewMode==='list'&&listLayout==='dashboard') renderDashboard(); },180); }); }
 }
+/* FLIP helpers: animate cards smoothly between layouts (reorder + resize reflow) */
+function dashCaptureRects(){ const m=new Map(); document.querySelectorAll('#dashView .dash-card').forEach(c=>m.set(c.dataset.id,c.getBoundingClientRect())); return m; }
+function dashFLIP(prev,exclude){ if(!prev) return;
+  document.querySelectorAll('#dashView .dash-card').forEach(c=>{ if(exclude&&c.dataset.id===exclude) return;
+    const p=prev.get(c.dataset.id); if(!p) return; const n=c.getBoundingClientRect();
+    const dx=Math.round(p.left-n.left), dy=Math.round(p.top-n.top); if(!dx&&!dy) return;
+    c.style.transition='none'; c.style.transform='translate('+dx+'px,'+dy+'px)';
+    requestAnimationFrame(()=>{ c.style.transition='transform .2s cubic-bezier(.2,.7,.3,1)'; c.style.transform='translate(0,0)';
+      setTimeout(()=>{ c.style.transition=''; c.style.transform=''; },210); }); }); }
 function dashLiveTick(){ const el=document.querySelector('[data-focustime]'); if(!el) return;
   const t=state.tasks.find(x=>x.id===el.getAttribute('data-focustime'));
   if(t&&t.running){ const act=liveActual(t); el.textContent=durFmt(act); el.classList.toggle('over',t.estimateMin>0&&act>t.estimateMin*60000); }
   else renderDashboard(); }
-/* drag a module to reorder */
+/* drag a module — reorders LIVE so the grid reflows in real time under the cursor */
 function dashDragStart(e,id){ if(e.button!=null&&e.button!==0) return; e.preventDefault();
   const card=e.currentTarget.closest('.dash-card'); card.classList.add('dragging');
+  try{ e.currentTarget.setPointerCapture&&e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
   const ghost=document.createElement('div'); ghost.className='dash-drag-ghost';
   ghost.textContent=(DASH_META[modById(id).type]||{}).title||'module'; document.body.appendChild(ghost);
-  dashDrag={id,card,ghost,targetId:null,after:false};
-  const move=ev=>dashDragMove(ev), up=ev=>{ dashDragEnd(); window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+  dashDrag={id,ghost,overId:null,overAfter:null};
+  const move=ev=>dashDragMove(ev), up=()=>{ dashDragEnd(); window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
   window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); dashDragMove(e); }
-function dashDragMove(ev){ if(!dashDrag) return;
+function dashDragMove(ev){ if(!dashDrag) return; ev.preventDefault&&ev.preventDefault();
   dashDrag.ghost.style.left=(ev.clientX+12)+'px'; dashDrag.ghost.style.top=(ev.clientY+12)+'px';
   const el=document.elementFromPoint(ev.clientX,ev.clientY); const card=el&&el.closest?el.closest('.dash-card'):null;
-  document.querySelectorAll('.dash-card.drop-target').forEach(c=>c.classList.remove('drop-target'));
-  if(card&&card!==dashDrag.card){ card.classList.add('drop-target'); const r=card.getBoundingClientRect();
-    dashDrag.targetId=card.dataset.id; dashDrag.after=(ev.clientY>r.top+r.height/2); } else dashDrag.targetId=null; }
-function dashDragEnd(){ if(!dashDrag) return; const {id,ghost,targetId,after}=dashDrag; ghost.remove();
-  document.querySelectorAll('.drop-target,.dragging').forEach(c=>c.classList.remove('drop-target','dragging'));
-  if(targetId&&targetId!==id){ const from=dashMods.findIndex(m=>m.id===id); const mv=dashMods.splice(from,1)[0];
-    let to=dashMods.findIndex(x=>x.id===targetId); if(after) to+=1; dashMods.splice(to,0,mv); saveDash(); renderDashboard(); }
+  if(!card||card.dataset.id===dashDrag.id) return;
+  const targetId=card.dataset.id; const r=card.getBoundingClientRect(); const after=ev.clientY>r.top+r.height/2;
+  if(dashDrag.overId===targetId&&dashDrag.overAfter===after) return;    // no boundary crossed → no churn
+  dashDrag.overId=targetId; dashDrag.overAfter=after;
+  const from=dashMods.findIndex(m=>m.id===dashDrag.id); const mv=dashMods.splice(from,1)[0];
+  let to=dashMods.findIndex(m=>m.id===targetId); if(after) to+=1;
+  to=Math.max(0,Math.min(dashMods.length,to)); dashMods.splice(to,0,mv);
+  saveDash(); renderDashboard(true); }
+function dashDragEnd(){ if(!dashDrag) return; dashDrag.ghost.remove();
+  document.querySelectorAll('#dashView .dash-card.dragging').forEach(c=>c.classList.remove('dragging'));
   dashDrag=null; }
-/* drag the corner to resize (snaps to grid) */
+/* drag the corner to resize — the card grows/shrinks in real time and the rest
+   of the grid reflows smoothly around it */
 function dashResizeStart(e,id){ e.preventDefault(); e.stopPropagation();
   const card=e.currentTarget.closest('.dash-card'); const grid=card.parentElement; const cols=+grid.dataset.cols;
   const gs=getComputedStyle(grid); const gap=parseFloat(gs.gap)||14; const rowH=parseFloat(gs.gridAutoRows)||158;
-  const colW=(grid.clientWidth-gap*(cols-1))/cols; const m=modById(id); const sw=m.w, sh=m.h, sx=e.clientX, sy=e.clientY;
+  const colW=(grid.clientWidth-gap*(cols-1))/cols; const m=modById(id); const sw=Math.min(m.w,cols), sh=m.h, sx=e.clientX, sy=e.clientY;
+  card.classList.add('resizing'); let lw=sw, lh=sh;
+  try{ e.currentTarget.setPointerCapture&&e.currentTarget.setPointerCapture(e.pointerId); }catch(_){}
   const move=ev=>{ const w=Math.max(1,Math.min(cols,sw+Math.round((ev.clientX-sx)/(colW+gap))));
     const h=Math.max(1,Math.min(4,sh+Math.round((ev.clientY-sy)/(rowH+gap))));
-    card.style.gridColumn='span '+w; card.style.gridRow='span '+h; card._w=w; card._h=h; };
+    if(w===lw&&h===lh) return; const prev=dashCaptureRects();
+    card.style.gridColumn='span '+w; card.style.gridRow='span '+h; lw=w; lh=h;
+    dashFLIP(prev, id); };                                  // animate the others; the card itself snaps instantly
   const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up);
-    if(card._w){ m.w=card._w; m.h=card._h; saveDash(); renderDashboard(); } };
+    card.classList.remove('resizing'); if(lw!==m.w||lh!==m.h){ m.w=lw; m.h=lh; saveDash(); } renderDashboard(); };
   window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); }
 function dashAddMenu(e){ const old=document.querySelector('.dash-add-pop'); if(old){ old.remove(); return; }
   const pop=document.createElement('div'); pop.className='dash-add-pop';
   Object.keys(DASH_META).forEach(type=>{ const b=document.createElement('button');
     b.innerHTML='<span style="opacity:.8">'+DASH_META[type].icon+'</span> '+DASH_META[type].title;
     b.addEventListener('click',()=>{ const def=DASH_DEFAULT.find(d=>d.type===type)||{w:1,h:1};
-      dashMods.push({id:dashId(),type,w:def.w,h:def.h}); saveDash(); pop.remove(); renderDashboard(); });
+      dashMods.push({id:dashId(),type,w:def.w,h:def.h}); saveDash(); pop.remove(); renderDashboard(true); });
     pop.appendChild(b); });
   document.body.appendChild(pop); const r=e.currentTarget.getBoundingClientRect();
   pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-10))+'px'; pop.style.top=(r.bottom+6)+'px';
