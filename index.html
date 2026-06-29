@@ -330,6 +330,19 @@
   .lg-head .lg-meta{margin-left:auto;color:var(--ink-faint);font-weight:500}
   .lg-head .lg-tw .icon{width:14px;height:14px;transition:transform .15s}
   .lg-head.collapsed .lg-tw .icon{transform:rotate(-90deg)}
+  .date{cursor:pointer}
+  .date-pop{position:fixed;z-index:1200;background:var(--surface);border:1px solid var(--line-strong);border-radius:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.25);padding:10px;width:248px}
+  .date-pop .dp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:13px;color:var(--ink)}
+  .date-pop .dp-nav{border:0;background:var(--surface-2);color:var(--ink);border-radius:7px;width:28px;height:28px;cursor:pointer;font-size:15px}
+  .date-pop .dp-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+  .date-pop .dp-dow{font-size:10px;color:var(--ink-faint);padding:2px 0}
+  .date-pop .dp-day{position:relative;border:0;background:none;color:var(--ink);border-radius:7px;height:30px;cursor:pointer;font-size:12.5px;font-family:var(--display)}
+  .date-pop .dp-day:hover{background:var(--surface-2)}
+  .date-pop .dp-day.today{color:var(--accent);font-weight:700}
+  .date-pop .dp-day.sel{background:var(--accent);color:#fff}
+  .date-pop .dp-day.has::after{content:'';position:absolute;left:50%;bottom:4px;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent)}
+  .date-pop .dp-day.sel.has::after{background:#fff}
   .tdtag{font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--todoist);
     border:1px solid var(--todoist);border-radius:4px;padding:1px 3px;margin-right:6px;line-height:1}
   /* todoist metadata chips */
@@ -1085,7 +1098,7 @@
     <div>
       <div class="datenav">
         <button id="dPrev" class="dnav" title="Previous day">‹</button>
-        <span class="date" id="dateLabel">—</span>
+        <span class="date" id="dateLabel" title="Pick a date">—</span>
         <button id="dNext" class="dnav" title="Next day">›</button>
         <button id="dToday" class="dtoday" style="display:none">Today</button>
       </div>
@@ -1934,6 +1947,40 @@ function fmtDateRel(d){
 function updateDateLabel(){
   const el=document.getElementById('dateLabel'); if(el) el.textContent=fmtDateRel(viewDate);
   const td=document.getElementById('dToday'); if(td) td.style.display=isSameDay(viewDate,new Date())?'none':'inline-block';
+}
+/* ---------- mini-month date picker (header) ---------- */
+let dpMonth=null;
+function closeDatePicker(){ const p=document.getElementById('datePop'); if(p)p.remove(); document.removeEventListener('click',dpOutside,true); }
+function dpOutside(e){ const p=document.getElementById('datePop'); if(p&&!p.contains(e.target)&&!e.target.closest('#dateLabel')) closeDatePicker(); }
+function toggleDatePicker(){ if(document.getElementById('datePop')){ closeDatePicker(); return; }
+  dpMonth=new Date(viewDate); dpMonth.setDate(1); dpMonth.setHours(12,0,0,0); renderDatePicker(); }
+async function renderDatePicker(){
+  let p=document.getElementById('datePop');
+  if(!p){ p=document.createElement('div'); p.id='datePop'; p.className='date-pop'; document.body.appendChild(p);
+    setTimeout(()=>document.addEventListener('click',dpOutside,true),0); }
+  const y=dpMonth.getFullYear(), mo=dpMonth.getMonth();
+  // which days this month have tasks (only read existing records)
+  const tasked=new Set();
+  try{ const keys=await slist('day:'); const pre='day:'+y+'-'+String(mo+1).padStart(2,'0');
+    for(const k of keys){ if(k.startsWith(pre)){ const r=await sget(k); if(r&&r.tasks&&r.tasks.length) tasked.add(k.slice(4)); } }
+  }catch(e){}
+  const dows=weekStart==='sun'?['S','M','T','W','T','F','S']:['M','T','W','T','F','S','S'];
+  const first=new Date(y,mo,1,12); const lead=weekStart==='sun'?first.getDay():((first.getDay()+6)%7);
+  const dim=new Date(y,mo+1,0).getDate();
+  let html='<div class="dp-head"><button class="dp-nav" data-dp="prev">‹</button>'+
+    '<b>'+dpMonth.toLocaleDateString(undefined,{month:'long',year:'numeric'})+'</b>'+
+    '<button class="dp-nav" data-dp="next">›</button></div>'+
+    '<div class="dp-grid">'+dows.map(d=>'<span class="dp-dow">'+d+'</span>').join('');
+  for(let i=0;i<lead;i++) html+='<span></span>';
+  const todayStr=dayKeyFor(new Date()).slice(4), selStr=dayKeyFor(viewDate).slice(4);
+  for(let d=1;d<=dim;d++){ const ds=y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    html+='<button class="dp-day'+(ds===todayStr?' today':'')+(ds===selStr?' sel':'')+(tasked.has(ds)?' has':'')+'" data-day="'+ds+'">'+d+'</button>'; }
+  html+='</div>';
+  p.innerHTML=html;
+  const r=document.getElementById('dateLabel').getBoundingClientRect();
+  p.style.top=(r.bottom+6)+'px'; p.style.left=Math.max(8,Math.min(r.left,innerWidth-260))+'px';
+  p.onclick=e=>{ const nav=e.target.closest('[data-dp]'); if(nav){ dpMonth.setMonth(dpMonth.getMonth()+(nav.dataset.dp==='next'?1:-1)); renderDatePicker(); return; }
+    const day=e.target.closest('[data-day]'); if(day){ closeDatePicker(); gotoDate(new Date(day.dataset.day+'T12:00:00')); } };
 }
 async function loadDay(){
   const day=await sget(dayKey());
@@ -5692,6 +5739,7 @@ document.getElementById('layoutSeg').addEventListener('click',e=>{ const b=e.tar
 document.getElementById('dPrev').addEventListener('click',()=>navStep(-1));
 document.getElementById('dNext').addEventListener('click',()=>navStep(1));
 document.getElementById('dToday').addEventListener('click',()=>gotoDate(new Date()));
+document.getElementById('dateLabel').addEventListener('click',toggleDatePicker);
 document.getElementById('sortSel').addEventListener('change',e=>{ sortMode=e.target.value; try{localStorage.setItem(LS_PREFIX+'_sort',sortMode);}catch(_){} render(); });
 document.getElementById('filterSel').addEventListener('change',e=>{ filterKey=e.target.value; render(); });
 document.getElementById('searchInp').addEventListener('input',e=>{ searchQuery=e.target.value.trim(); if(!searchQuery){ searchAll=false; document.getElementById('searchAllBtn').classList.remove('on'); } render(); });
