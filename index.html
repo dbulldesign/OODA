@@ -241,6 +241,28 @@
   .net-dot.off{background:var(--over);box-shadow:0 0 0 2px rgba(177,66,51,.22)}
   .date{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft)}
   h1{font-size:30px;margin:2px 0 0;font-weight:650;letter-spacing:-.02em}
+  /* ---- animated OODA brand mark: draws in on load, then breathes; spins while syncing ---- */
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand-mark{width:38px;height:38px;flex:0 0 auto;border-radius:10px;display:block;
+    animation:bm-breathe 3.6s ease-in-out 1.5s infinite}
+  .bm-ring{stroke-dasharray:100;stroke-dashoffset:100;animation:bm-draw 1s ease-out .15s forwards}
+  .bm-head{opacity:0;transform:scale(.3);transform-box:fill-box;transform-origin:center;animation:bm-head .34s cubic-bezier(.34,1.56,.64,1) .9s forwards}
+  .bm-dot{opacity:0;transform-box:fill-box;transform-origin:center;animation:bm-dotin .5s ease .5s forwards, bm-dotpulse 3.6s ease-in-out 1.5s infinite}
+  .bm-rot{transform-box:view-box;transform-origin:256px 256px}
+  @keyframes bm-draw{to{stroke-dashoffset:0}}
+  @keyframes bm-head{to{opacity:1;transform:scale(1)}}
+  @keyframes bm-dotin{to{opacity:1}}
+  @keyframes bm-dotpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.16)}}
+  @keyframes bm-breathe{0%,100%{box-shadow:0 0 0 0 rgba(216,145,46,0)}50%{box-shadow:0 0 15px 1px rgba(216,145,46,.45)}}
+  /* while a sync is running: stop the breathe, spin the loop continuously */
+  .brand-mark.syncing{animation:none}
+  .brand-mark.syncing .bm-rot{animation:bm-spin .9s linear infinite}
+  .brand-mark.syncing .bm-dot{animation:none;opacity:1}
+  @keyframes bm-spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){
+    .brand-mark,.bm-ring,.bm-head,.bm-dot,.brand-mark.syncing .bm-rot{animation:none}
+    .bm-ring{stroke-dashoffset:0}.bm-head{opacity:1;transform:none}.bm-dot{opacity:1}
+  }
   .phase{display:flex;align-items:center;gap:4px;font-size:12px}
   .phase span{padding:5px 11px;border:1px solid var(--line-strong);border-radius:20px;color:var(--ink-faint);letter-spacing:.03em}
   .phase span.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -1139,7 +1161,17 @@
         <button id="dNext" class="dnav" title="Next day">›</button>
         <button id="dToday" class="dtoday" style="display:none">Today</button>
       </div>
-      <h1>OODA</h1>
+      <div class="brand">
+        <svg class="brand-mark" id="brandMark" viewBox="0 0 512 512" aria-hidden="true" title="OODA">
+          <rect width="512" height="512" rx="112" fill="#222B2D"/>
+          <g class="bm-rot">
+            <path class="bm-ring" pathLength="100" d="M 194.2 358.9 A 120 120 0 1 1 317.8 358.9" fill="none" stroke="#D8912E" stroke-width="38" stroke-linecap="round"/>
+            <path class="bm-head" d="M 274.9 384.6 L 309.2 329.0 L 340.1 380.5 Z" fill="#D8912E"/>
+          </g>
+          <circle class="bm-dot" cx="256" cy="256" r="26" fill="#ECE7DC"/>
+        </svg>
+        <h1>OODA</h1>
+      </div>
     </div>
     <div class="head-right">
       <div class="phase">
@@ -4494,6 +4526,7 @@ function updateConnUI(){
   if(ss){ const base = !storeOk ? 'In-memory only (won’t persist here)' : (online?'Saved to this device':'Offline — saved locally');
     ss.textContent = base + (pending?(' · '+pending+' to sync'):''); }
   const spin=document.getElementById('syncSpin'); if(spin) spin.classList.toggle('on',busy);
+  const bm=document.getElementById('brandMark'); if(bm) bm.classList.toggle('syncing',busy);
   const smt=document.getElementById('syncMetaText'); const sm=document.getElementById('syncMeta');
   if(smt){
     if(busy){ smt.textContent='Syncing…'; }
