@@ -302,8 +302,10 @@
   .now.active .now-prog{opacity:1}
   .now-prog.over{background:var(--over)}
   .now .pulse{width:14px;height:14px;border-radius:50%;background:var(--line-strong);flex:0 0 auto}
-  /* the active-timer dot pulses on the shared --pulse beat (same as the brand bulb) */
-  .now.active .pulse{background:var(--now);box-shadow:0 0 0 calc(var(--pulse,0)*9px) rgba(194,117,42,calc(.5*(1 - var(--pulse,0))))}
+  /* the active-timer dot pulses on the shared --pulse beat (same as the brand
+     bulb) AND peaks at the same phase — a glow that grows+brightens toward the
+     peak, so the dot and the bulb flash together rather than in opposition */
+  .now.active .pulse{background:var(--now);box-shadow:0 0 calc(3px + var(--pulse,0)*9px) calc(var(--pulse,0)*1.5px) rgba(194,117,42,calc(.3 + .55*var(--pulse,0)))}
   .now .label{flex:1;min-width:0}
   .now .label .what{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .now .label .what-input{width:100%;border:0;border-bottom:1px dashed var(--line-strong);background:none;color:var(--ink);
