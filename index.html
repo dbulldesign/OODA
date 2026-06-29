@@ -767,7 +767,7 @@
   .wk-col.today .wk-dom{color:var(--now)}
   .wk-meta{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
   .wk-tasks{display:flex;flex-direction:column;gap:4px;min-height:24px}
-  .wk-item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink);padding:3px 4px;border-radius:6px;cursor:grab;touch-action:none;background:var(--surface-2)}
+  .wk-item{display:flex;align-items:center;gap:5px;font-size:calc(12px * var(--grid-zoom,1));color:var(--ink);padding:3px 4px;border-radius:6px;cursor:grab;touch-action:none;background:var(--surface-2)}
   .wk-item:hover{background:var(--paper)}
   .wk-item.sel,.mo-item.sel{outline:2px solid var(--accent);outline-offset:-1px}
   .wk-item.dragging{opacity:.4}
@@ -781,7 +781,7 @@
   .mo-head{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
   .mo-dow{text-align:center;font-size:10.5px;text-transform:uppercase;color:var(--ink-faint);letter-spacing:.05em}
   .mo-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-  .mo-cell{min-height:84px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
+  .mo-cell{min-height:calc(84px * var(--grid-zoom,1));background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;display:flex;flex-direction:column;gap:2px;overflow:hidden}
   .mo-cell.out{opacity:.4}
   .mo-cell.today{border-color:var(--now)}
   .mo-cell.sel{box-shadow:inset 0 0 0 2px var(--line-strong)}
@@ -789,7 +789,7 @@
   .mo-cell.drop{outline:2px dashed var(--now);outline-offset:-2px;background:var(--now-soft)}
   .mo-dnum{font-size:12px;font-weight:600;color:var(--ink-soft);cursor:pointer;align-self:flex-start;padding:0 2px;border-radius:4px}
   .mo-cell.today .mo-dnum{color:var(--now)}
-  .mo-item{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--ink);background:var(--surface-2);border-radius:4px;padding:1px 4px;cursor:grab;touch-action:none;white-space:nowrap;overflow:hidden}
+  .mo-item{display:flex;align-items:center;gap:4px;font-size:calc(10.5px * var(--grid-zoom,1));color:var(--ink);background:var(--surface-2);border-radius:4px;padding:1px 4px;cursor:grab;touch-action:none;white-space:nowrap;overflow:hidden}
   .mo-item.dragging{opacity:.4}
   .mo-item .cdot{width:6px;height:6px;border-radius:2px;flex:0 0 auto}
   .mo-item .mo-nm{overflow:hidden;text-overflow:ellipsis}
@@ -1823,7 +1823,19 @@ let daySel=null;                                     // keyboard-selected calend
 let dayCols=1;                                        // Day view: 1 day or a 3-day multi-column grid
 let calDragging=false;                                // true while dragging a block — pauses the tick's re-render so the drag isn't interrupted
 let dayScrollPending=false;                            // request a one-time scroll-to-now when the Day view is (re)opened
-const PXM=1;  // day view: 1px per minute
+let PXM=1;  // day view: pixels per minute (Ctrl/⌘ + scroll to zoom)
+function loadZoom(){ try{ const p=parseFloat(localStorage.getItem(LS_PREFIX+'_daypxm')); if(p>=0.4&&p<=4) PXM=p;
+  const g=parseFloat(localStorage.getItem(LS_PREFIX+'_gridzoom')); if(g>=0.7&&g<=2) document.documentElement.style.setProperty('--grid-zoom',g); }catch(e){} }
+function setDayZoom(p){ PXM=Math.max(0.4,Math.min(4,Math.round(p*20)/20)); try{localStorage.setItem(LS_PREFIX+'_daypxm',String(PXM));}catch(e){} renderCal(); }
+function setGridZoom(g){ g=Math.max(0.7,Math.min(2,Math.round(g*20)/20)); document.documentElement.style.setProperty('--grid-zoom',g); try{localStorage.setItem(LS_PREFIX+'_gridzoom',String(g));}catch(e){} }
+function gridZoom(){ const v=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-zoom')); return isNaN(v)?1:v; }
+// Ctrl/⌘ + wheel zooms the calendar views without zooming the page
+window.addEventListener('wheel',e=>{
+  if(!(e.ctrlKey||e.metaKey)) return;
+  if(viewMode==='day'){ if(!e.target.closest('#calView')) return; e.preventDefault(); setDayZoom(PXM*(e.deltaY<0?1.12:0.89)); }
+  else if(viewMode==='week'){ if(!e.target.closest('#weekView')) return; e.preventDefault(); setGridZoom(gridZoom()*(e.deltaY<0?1.08:0.93)); }
+  else if(viewMode==='month'){ if(!e.target.closest('#monthView')) return; e.preventDefault(); setGridZoom(gridZoom()*(e.deltaY<0?1.08:0.93)); }
+},{passive:false});
 function calStart(){ return (state.dayStartH??6)*60; }
 function calEnd(){ return (state.dayEndH??22)*60; }
 
@@ -5837,7 +5849,7 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
   try{ loadAutoTheme(); applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,loadWorkHours,loadBacklogSort,
+  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,loadWorkHours,loadBacklogSort,loadZoom,
    applyDisplay,applyDensityAccent,applyPalette,applyFont,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink,armAutoTheme]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
