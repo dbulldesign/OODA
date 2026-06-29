@@ -753,6 +753,11 @@
   .board{display:flex;gap:10px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px}
   .bd-col{flex:0 0 250px;min-width:250px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:9px;display:flex;flex-direction:column;gap:8px}
   .bd-col.drop{outline:2px dashed var(--now);outline-offset:-2px}
+  #boardView.matrix{display:grid;grid-template-columns:1fr 1fr;gap:10px;overflow:visible}
+  .mx-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px;display:flex;flex-direction:column;gap:8px;min-height:120px}
+  .mx-cell.drop{outline:2px dashed var(--accent);outline-offset:-2px}
+  .mx-hd{font-size:12.5px;font-weight:600;color:var(--ink-soft)}
+  @media (max-width:620px){ #boardView.matrix{grid-template-columns:1fr} }
   .bd-hd{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink)}
   .bd-hd .dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
   .bd-hd .bd-ct{margin-left:auto;font-size:11px;color:var(--ink-faint);font-weight:500}
@@ -1196,6 +1201,7 @@
       <button data-l="list" class="on" title="Flat list">▤</button>
       <button data-l="grouped" title="Grouped by project">▤▤</button>
       <button data-l="board" title="Board">▦</button>
+      <button data-l="matrix" title="Priority matrix">⊞</button>
     </div>
     <button id="selBtn" class="btn-mini" title="Select multiple tasks">Select</button>
     <button id="searchAllBtn" class="btn-mini" title="Search across every day" style="display:none">All days</button>
@@ -2496,11 +2502,14 @@ function render(){
   if(dayView){ if(dayCols>1) renderMulti(); else renderDay(); renderArc(); renderNow(); renderPhase(); return; }
   // list view — flat list or board (kanban by channel)
   const board=document.getElementById('boardView');
-  if(listLayout==='board'){
-    list.style.display='none'; board.style.display='flex';
+  if(listLayout==='board'||listLayout==='matrix'){
+    list.style.display='none'; board.style.display=listLayout==='matrix'?'grid':'flex';
+    board.classList.toggle('matrix',listLayout==='matrix');
     document.getElementById('completedWrap').style.display='none';
-    renderBoard(); renderArc(); renderNow(); renderPhase(); return;
+    if(listLayout==='matrix') renderMatrix(); else renderBoard();
+    renderArc(); renderNow(); renderPhase(); return;
   }
+  board.classList.remove('matrix');
   list.style.display=''; board.style.display='none';
   list.innerHTML='';
   const all=sortedTasks();
@@ -2703,7 +2712,47 @@ function renderBoard(){
     bv.appendChild(col);
   });
 }
-function boardCard(t){
+// Eisenhower classifiers
+function taskUrgent(t){ const d=t.todoistMeta&&t.todoistMeta.due; const ds=d&&(d.date||'').slice(0,10); return !!(ds && ds<=todayKey().slice(4)); }
+function taskImportant(t){ return ((t.todoistMeta&&t.todoistMeta.priority)||1)>=3; }
+function renderMatrix(){
+  const bv=document.getElementById('boardView'); bv.innerHTML='';
+  const tasks=sortedTasks().filter(t=>!t.done);
+  [{t:'🔴 Do — urgent & important',imp:true,urg:true},
+   {t:'🔵 Schedule — important, not urgent',imp:true,urg:false},
+   {t:'🟠 Quick — urgent, not important',imp:false,urg:true},
+   {t:'⚪ Later — neither',imp:false,urg:false}].forEach(q=>{
+    const cell=document.createElement('div'); cell.className='mx-cell'; cell.dataset.imp=q.imp?'1':'0'; cell.dataset.urg=q.urg?'1':'0';
+    const hd=document.createElement('div'); hd.className='mx-hd'; hd.textContent=q.t; cell.appendChild(hd);
+    const items=tasks.filter(t=>taskImportant(t)===q.imp && taskUrgent(t)===q.urg);
+    if(!items.length){ const e=document.createElement('div'); e.className='bd-empty'; e.textContent='—'; cell.appendChild(e); }
+    items.forEach(t=>cell.appendChild(boardCard(t,startMatrixDrag)));
+    bv.appendChild(cell);
+  });
+}
+function startMatrixDrag(e,t,el){
+  let moved=false,ghost=null; const sx=e.clientX,sy=e.clientY;
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  const cellAt=(x,y)=>{ for(const c of document.querySelectorAll('#boardView .mx-cell')){ const r=c.getBoundingClientRect(); if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return c; } return null; };
+  function mv(ev){ const dx=ev.clientX-sx,dy=ev.clientY-sy;
+    if(!moved&&Math.abs(dx)+Math.abs(dy)>6){ moved=true; el.classList.add('dragging'); ghost=document.createElement('div'); ghost.className='cal-ghost'; ghost.textContent=t.name; document.body.appendChild(ghost); }
+    if(moved){ ghost.style.left=ev.clientX+'px'; ghost.style.top=ev.clientY+'px'; const c=cellAt(ev.clientX,ev.clientY); document.querySelectorAll('#boardView .mx-cell').forEach(x=>x.classList.toggle('drop',x===c)); } }
+  function up(ev){ el.removeEventListener('pointermove',mv); el.removeEventListener('pointerup',up); el.removeEventListener('pointercancel',up);
+    try{ el.releasePointerCapture(ev.pointerId); }catch(_){}
+    if(ghost) ghost.remove(); document.querySelectorAll('#boardView .mx-cell').forEach(x=>x.classList.remove('drop'));
+    if(!moved){ openTaskEditor(t.id); return; }
+    const c=cellAt(ev.clientX,ev.clientY); if(!c) return;
+    const imp=c.dataset.imp==='1', urg=c.dataset.urg==='1';
+    const m=t.todoistMeta||(t.todoistMeta={projectId:'',projectName:'',section:'',labels:[],priority:1,due:null,description:'',rawContent:t.name,url:'',commentCount:0});
+    m.priority=imp?4:1;
+    m.due = urg? {date:todayKey().slice(4),datetime:'',string:'today',recurring:(m.due&&m.due.recurring)||false} : null;
+    if(t.todoistId&&tdConnected()) enqueueTd({kind:'update',taskLocalId:t.id,todoistId:t.todoistId,payload:{priority:m.priority,due_string:urg?'today':'no date'}});
+    saveDay(); render();
+  }
+  el.addEventListener('pointermove',mv); el.addEventListener('pointerup',up); el.addEventListener('pointercancel',up);
+  e.preventDefault();
+}
+function boardCard(t,dragFn){
   const ch=chById(t.channelId); const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000;
   const el=document.createElement('div'); el.className='bd-card'+(t.running?' running':'')+(t.done?' done':''); el.dataset.id=t.id;
   const times=(t.todoistId?'TD · ':'')+(t.scheduledMin!=null?hmFromMin(t.scheduledMin)+' · ':'')+(t.estimateMin?t.estimateMin+'m · ':'')+
@@ -2714,7 +2763,7 @@ function boardCard(t){
     taskMetaHtml(t)+
     '<div class="bd-meta-line">'+times+'</div>';
   el.querySelector('.check').addEventListener('click',e=>{ e.stopPropagation(); toggleDone(t.id); });
-  el.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; startBoardDrag(e,t,el); });
+  el.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; (dragFn||startBoardDrag)(e,t,el); });
   return el;
 }
 function startBoardDrag(e,t,el){
