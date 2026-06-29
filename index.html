@@ -565,14 +565,14 @@
   @media (hover:hover) and (pointer:fine){
     .task .go,.task .check,.task .menu-btn{opacity:.45;transition:opacity .14s}
     .task:hover .go,.task:hover .check,.task:hover .menu-btn,.task .go.running,.task .check.done{opacity:1}
+    .task:hover{background:var(--surface-2)}   /* smooth, cheap row highlight (no layout shift) */
   }
   /* view transitions (cross-fade); respects reduced-motion via JS guard */
-  /* plain opacity crossfade between views — transforms/scale on the whole page
-     snapshot are what made the switch feel jerky on desktop */
-  ::view-transition-old(root){animation:vt-fade .18s ease both}
-  ::view-transition-new(root){animation:vt-fade .18s ease reverse both}
-  @keyframes vt-fade{from{opacity:1}to{opacity:0}}
-  @media (prefers-reduced-motion:reduce){ ::view-transition-old(root),::view-transition-new(root){animation:none} }
+  /* lightweight per-container fade on view switch (no whole-page snapshot) */
+  @media (prefers-reduced-motion:no-preference){
+    .viewfade{animation:viewfade .2s ease}
+    @keyframes viewfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  }
   /* command palette */
   dialog.cmdk{max-width:560px;width:92%;top:12vh;margin-top:0;border-radius:14px}
   dialog.cmdk::backdrop{background:rgba(31,42,44,.4)}
@@ -2358,8 +2358,9 @@ function taskRow(t){
   if(dtog) dtog.addEventListener('click',e=>{ e.stopPropagation();
     if(expandedTasks.has(t.id))expandedTasks.delete(t.id); else expandedTasks.add(t.id); render(); });
   if(detHtml && t.todoistId && detailFields.has('subtasks')){
+    // only fetch sub-tasks when the details are actually visible — a hover preload
+    // here re-rendered the whole list on mouse-move (the jerky highlight)
     if(detailsMode!=='click' || expandedTasks.has(t.id)) loadSubtasks(t.id);
-    else li.addEventListener('mouseenter',()=>loadSubtasks(t.id),{once:true});
     li.querySelectorAll('.subtask-cb').forEach(cb=>cb.addEventListener('change',e=>{ e.stopPropagation();
       toggleSubtask(t.todoistId,cb.dataset.sid,cb.checked); cb.closest('.d-sub').classList.toggle('done',cb.checked); }));
   }
@@ -4854,8 +4855,16 @@ function taskDetailRows(t){
 function markAccent(){ document.querySelectorAll('#accentRow .accent-sw').forEach(b=>b.classList.toggle('on',b.dataset.c.toLowerCase()===(accent||'').toLowerCase())); }
 /* cross-fade view changes when supported (and motion isn't reduced) */
 function applyViewTransition(fn){
-  if(document.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches){ try{ document.startViewTransition(()=>fn()); return; }catch(e){} }
+  // The View Transitions API snapshots the whole (large) page each switch, which
+  // hitches on desktop. Instead just render, then play a cheap fade on the one
+  // visible view container — animating a single element, not a page snapshot.
   fn();
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for(const id of ['taskList','calView','weekView','monthView','boardView']){
+    const el=document.getElementById(id);
+    if(el && el.offsetParent!==null){ el.classList.remove('viewfade'); void el.offsetWidth; el.classList.add('viewfade');
+      el.addEventListener('animationend',()=>el.classList.remove('viewfade'),{once:true}); }
+  }
 }
 function applyDisplay(){
   document.documentElement.classList.toggle('wide',dispWide);
