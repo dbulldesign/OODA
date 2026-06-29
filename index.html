@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>OODA — plan, track, close out</title>
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" id="faviconLink" href="icons/favicon-32.png?v=2">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2">
 <meta name="theme-color" content="#EBE8E0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -6301,6 +6301,8 @@ window.addEventListener('offline',updateConnUI);
   __oodaBooted=true;   // UI is interactive — later async hiccups shouldn't trip the recovery bar
   // light the brand bulb once the line-art has drawn itself in
   try{ setTimeout(()=>{ const bm=document.getElementById('brandMark'); if(bm) bm.classList.add('lit'); }, 1950); }catch(e){}
+  // bust the tab favicon cache on every deploy so the icon tracks the build
+  try{ const fl=document.getElementById('faviconLink'); if(fl) fl.href='icons/favicon-32.png?v='+APP_VERSION; }catch(e){}
   try{ updateConnUI(); }catch(e){}
   // Everything below is best-effort and each step is isolated so one failure
   // can't skip the rest. Sync runs FIRST (before the heavier history/estimate
