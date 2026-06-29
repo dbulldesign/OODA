@@ -1993,6 +1993,7 @@ async function loadDay(){
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   const rt=document.getElementById('reflectText'); if(rt) rt.value=state.reflection;
   await seedRecurringForViewedDay();
+  histReset();
 }
 /* ---------- local recurring tasks ---------- */
 function dayMatchesRepeat(d, r){
@@ -2119,7 +2120,25 @@ async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} 
   await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],updatedAt:Date.now()}); schedulePush(); }
 // write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
 async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
-async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); }
+async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); histCommitSoon(); }
+/* ---------- undo / redo (per-day, coarse snapshots of state.tasks) ---------- */
+let histPrev=null, undoStack=[], redoStack=[], histT=null, histSuppress=false;
+function histReset(){ histPrev=JSON.stringify(state.tasks); undoStack=[]; redoStack=[]; }
+function histCommitSoon(){ if(histSuppress) return; clearTimeout(histT); histT=setTimeout(()=>{
+  if(histSuppress||calDragging||state.tasks.some(t=>t.running)) return;   // don't snapshot mid-timer/drag
+  const cur=JSON.stringify(state.tasks);
+  if(histPrev==null){ histPrev=cur; return; }
+  if(cur===histPrev) return;
+  undoStack.push(histPrev); if(undoStack.length>60) undoStack.shift(); histPrev=cur; redoStack=[];
+},400); }
+async function doUndo(){ if(!undoStack.length){ toast('Nothing to undo.'); return; }
+  histSuppress=true; redoStack.push(histPrev); histPrev=undoStack.pop();
+  state.tasks=JSON.parse(histPrev); state.activeId=(state.tasks.find(t=>t.running)||{}).id||null;
+  await saveDay(); render(); histSuppress=false; toast('Undone.'); }
+async function doRedo(){ if(!redoStack.length){ toast('Nothing to redo.'); return; }
+  histSuppress=true; undoStack.push(histPrev); histPrev=redoStack.pop();
+  state.tasks=JSON.parse(histPrev); state.activeId=(state.tasks.find(t=>t.running)||{}).id||null;
+  await saveDay(); render(); histSuppress=false; toast('Redone.'); }
 
 /* ---------- task ops ---------- */
 /* ---------- quick-add natural-language parsing ----------
@@ -5884,6 +5903,8 @@ function cmdkCommands(){ return [
   {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
   {label:'Start timer now',hint:'track',run:()=>startAdHocTimer()},
   {label:'Focus mode',hint:'focus',run:()=>openFocus()},
+  {label:'Undo',hint:'⌘Z',run:()=>doUndo()},
+  {label:'Redo',hint:'⌘⇧Z',run:()=>doRedo()},
   {label:'Reschedule selected…',hint:'when',run:()=>openResched()},
   {label:'Sync now',hint:'sync',run:()=>doManualSync()},
   {label:'Go to Today',hint:'nav',run:()=>gotoDate(new Date())},
@@ -5929,6 +5950,12 @@ document.getElementById('cmdkInput').addEventListener('keydown',e=>{
 });
 document.getElementById('cmdkList').addEventListener('click',e=>{ const it=e.target.closest('.cmdk-item[data-i]'); if(it) cmdkRun(+it.dataset.i); });
 document.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); openCmdk(); } });
+// ⌘Z / ⌘⇧Z (Ctrl on Windows) — undo / redo, except while typing in a field
+document.addEventListener('keydown',e=>{
+  if(!(e.metaKey||e.ctrlKey) || e.key.toLowerCase()!=='z') return;
+  const t=e.target; if(t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable)) return;
+  e.preventDefault(); if(e.shiftKey) doRedo(); else doUndo();
+});
 /* ---------- sync activity log ---------- */
 const syncLog=[];
 function logSync(msg){ if(!msg)return; syncLog.unshift({t:Date.now(),msg}); if(syncLog.length>60)syncLog.length=60; }
