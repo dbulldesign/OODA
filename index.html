@@ -2255,7 +2255,7 @@ function buildFilterOptions(){
   if(sel.value!==cur) filterKey='all';
 }
 function setView(v){
-  viewMode=v; calSel=null; if(v==='day') dayScrollPending=true; try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
+  viewMode=v; calSel=null; if(v==='day'){ dayScrollPending=true; try{ window.scrollTo(0,0); }catch(e){} } try{ localStorage.setItem(LS_PREFIX+'_view',v); }catch(e){}
   if(v!=='day'){ if(typeof blockSel!=='undefined') blockSel.clear(); const cb=document.getElementById('calBulk'); if(cb) cb.remove(); }
   document.getElementById('vbList').classList.toggle('on',v==='list');
   document.getElementById('vbDay').classList.toggle('on',v==='day');
@@ -3020,10 +3020,12 @@ async function bulkBlocks(a){
   else if(a==='del'){ ids.forEach(id=>{ const i=state.tasks.findIndex(x=>x.id===id); if(i>=0){ if(state.tasks[i].running)state.activeId=null; state.tasks.splice(i,1); } }); blockSel.clear(); }
   saveDay(); renderDay(); toast('Updated '+ts.length+' block'+(ts.length===1?'':'s')+'.');
 }
-// Opening the Day view starts at the top (like the other tabs) rather than
-// jumping down to the current-time line.
+// Opening the Day view starts at the top (like the other tabs). The List view
+// may have been scrolled down; swapping in the tall Day content triggers scroll
+// anchoring that fights a single reset, so re-apply across a few frames.
 function scrollDayToNow(){
-  window.scrollTo({top:0});
+  const top=()=>{ try{ window.scrollTo(0,0); document.documentElement.scrollTop=0; if(document.body) document.body.scrollTop=0; }catch(e){} };
+  top(); requestAnimationFrame(top); setTimeout(top,80);
 }
 function setDayCols(n){ dayCols=n; dayScrollPending=true; try{localStorage.setItem(LS_PREFIX+'_daycols',String(n));}catch(e){} render(); }
 /* ---------- multi-day (N-day) time grid ---------- */
