@@ -825,6 +825,86 @@
   .bd-hd{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink)}
   .bd-hd .dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
   .bd-hd .bd-ct{margin-left:auto;font-size:11px;color:var(--ink-faint);font-weight:500}
+  /* ---------- Dashboard layout (resizable, movable, interactive modules) ---------- */
+  #dashView{display:none}
+  .dash-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .dash-toolbar .dt-title{font-size:13px;color:var(--ink-soft);margin-right:auto;letter-spacing:.02em}
+  .dash-toolbar button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:9px;padding:6px 12px;font-size:12.5px;cursor:pointer;font-family:var(--display)}
+  .dash-toolbar button:hover{background:var(--surface);border-color:var(--ink-soft)}
+  .dash-grid{display:grid;grid-auto-rows:158px;gap:14px;grid-auto-flow:row dense}
+  .dash-card{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    display:flex;flex-direction:column;overflow:hidden;min-height:0;box-shadow:0 1px 3px rgba(0,0,0,.05);transition:box-shadow .15s,opacity .15s,outline-color .15s}
+  .dash-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.10)}
+  .dash-card.dragging{opacity:.35}
+  .dash-card.drop-target{outline:2px dashed var(--accent);outline-offset:-2px}
+  .dc-head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid var(--line);
+    cursor:grab;user-select:none;flex:0 0 auto;background:var(--surface-2);touch-action:none}
+  .dc-head:active{cursor:grabbing}
+  .dc-head .dc-ic{font-size:13px;opacity:.85}
+  .dc-title{font-size:12.5px;font-weight:650;color:var(--ink);letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dc-tools{margin-left:auto;display:flex;gap:2px;opacity:0;transition:opacity .12s}
+  .dash-card:hover .dc-tools{opacity:1}
+  .dc-tools button{border:none;background:transparent;color:var(--ink-faint);cursor:pointer;font-size:14px;line-height:1;padding:2px 5px;border-radius:6px}
+  .dc-tools button:hover{background:var(--surface);color:var(--ink)}
+  .dc-body{flex:1 1 auto;min-height:0;padding:11px;overflow:auto;font-size:13px}
+  .dc-body.pad0{padding:0}
+  .dc-empty{color:var(--ink-faint);font-size:12.5px;text-align:center;padding:18px 8px}
+  .dc-resize{position:absolute;right:2px;bottom:2px;width:16px;height:16px;cursor:nwse-resize;opacity:0;transition:opacity .12s;touch-action:none;
+    background:linear-gradient(135deg,transparent 50%,var(--ink-faint) 50%,var(--ink-faint) 60%,transparent 60%,transparent 72%,var(--ink-faint) 72%,var(--ink-faint) 82%,transparent 82%)}
+  .dash-card:hover .dc-resize{opacity:.6}
+  .dash-card .dash-tasks{margin:0;padding:0;list-style:none}
+  .dm-agenda{display:flex;flex-direction:column;gap:1px}
+  .dm-ag{display:flex;align-items:center;gap:8px;padding:6px 7px;border-radius:7px}
+  .dm-ag:hover{background:var(--surface-2)}
+  .dm-ag.running{background:var(--now-soft)}
+  .dm-ag.past{opacity:.5}
+  .dm-ag .t{font-family:var(--mono);font-size:12px;color:var(--ink-soft);flex:0 0 auto;width:48px}
+  .dm-ag .dot{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+  .dm-ag .nm{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+  .dm-ag .pp{border:none;background:transparent;cursor:pointer;color:var(--ink-faint);font-size:13px;padding:0 3px}
+  .dm-ag .pp:hover{color:var(--accent)}
+  .dm-nowline{height:0;border-top:2px solid var(--now);margin:2px 6px;position:relative}
+  .dm-nowline::after{content:'now';position:absolute;right:0;top:-8px;font-size:9px;color:var(--now);background:var(--surface);padding:0 4px}
+  .dm-stat{display:flex;flex-direction:column;gap:7px}
+  .dm-bar{display:flex;align-items:center;gap:8px;font-size:12px}
+  .dm-bar .nm{width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-soft)}
+  .dm-bar .track{flex:1;height:9px;border-radius:5px;background:var(--surface-2);overflow:hidden}
+  .dm-bar .fill{height:100%;border-radius:5px}
+  .dm-bar .vv{font-family:var(--mono);font-size:11px;color:var(--ink-faint);flex:0 0 auto}
+  .dm-cap{display:flex;align-items:center;gap:14px;height:100%}
+  .dm-cap .ring{flex:0 0 auto}
+  .dm-cap .cap-info{display:flex;flex-direction:column;gap:3px}
+  .dm-cap .big{font-size:22px;font-weight:700;color:var(--ink);font-family:var(--display)}
+  .dm-cap .sub{font-size:11.5px;color:var(--ink-soft)}
+  .dm-focus{display:flex;flex-direction:column;gap:6px;height:100%;justify-content:center}
+  .dm-focus .fnm{font-size:14px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dm-focus .ftime{font-family:var(--mono);font-size:24px;color:var(--now-deep);font-weight:600}
+  .dm-focus .ftime.over{color:var(--over)}
+  .dm-focus .frow{display:flex;gap:6px;margin-top:2px}
+  .dm-focus button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer}
+  .dm-focus button.go{background:var(--now);border-color:var(--now);color:#fff}
+  .dm-cal{user-select:none}
+  .dm-cal .cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .dm-cal .cal-h button{border:none;background:transparent;color:var(--ink-soft);cursor:pointer;font-size:14px;padding:0 6px}
+  .dm-cal .grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+  .dm-cal .wd{font-size:9px;color:var(--ink-faint);text-align:center;padding:2px 0}
+  .dm-cal .d{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:6px;cursor:pointer;color:var(--ink-soft)}
+  .dm-cal .d:hover{background:var(--surface-2)}
+  .dm-cal .d.other{color:var(--ink-faint);opacity:.5}
+  .dm-cal .d.today{background:var(--accent);color:#fff;font-weight:700}
+  .dm-cal .d.sel{outline:2px solid var(--accent);outline-offset:-2px}
+  .dm-cal .d.has::after{content:'';position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--accent)}
+  .dm-cal .d.today.has::after{background:#fff}
+  .dm-up{display:flex;flex-direction:column;gap:8px}
+  .dm-up .sec-l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin-bottom:3px}
+  .dm-up .od .nm{color:var(--over)}
+  .dm-notes{width:100%;height:100%;border:none;background:transparent;resize:none;color:var(--ink);font-family:var(--display);font-size:13px;line-height:1.5;outline:none}
+  .dash-add-pop{position:absolute;z-index:60;background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.22);display:grid;grid-template-columns:1fr 1fr;gap:4px;min-width:240px}
+  .dash-add-pop button{text-align:left;border:1px solid transparent;background:transparent;color:var(--ink);border-radius:7px;padding:8px 10px;font-size:12.5px;cursor:pointer;font-family:var(--display)}
+  .dash-add-pop button:hover{background:var(--surface-2);border-color:var(--line)}
+  .dash-drag-ghost{position:fixed;z-index:9999;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:9px;
+    padding:8px 12px;font-size:12.5px;font-weight:650;color:var(--ink);box-shadow:0 10px 28px rgba(0,0,0,.3);opacity:.95}
+  @media (max-width:560px){ .dash-grid{grid-auto-rows:140px} }
   .bd-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:9px 10px;cursor:grab;touch-action:none;
     box-shadow:0 1px 2px rgba(0,0,0,.05)}
   .bd-card.dragging{opacity:.4}
@@ -1300,6 +1380,7 @@
       <button data-l="grouped" title="Grouped by project">▤▤</button>
       <button data-l="board" title="Board">▦</button>
       <button data-l="matrix" title="Priority matrix">⊞</button>
+      <button data-l="dashboard" title="Dashboard">▦▦</button>
     </div>
     <button id="selBtn" class="btn-mini" title="Select multiple tasks">Select</button>
     <button id="searchAllBtn" class="btn-mini" title="Search across every day" style="display:none">All days</button>
@@ -1319,6 +1400,7 @@
 
   <ul class="tasks" id="taskList"></ul>
   <div class="board" id="boardView" style="display:none"></div>
+  <div id="dashView"></div>
   <div class="completed" id="completedWrap" style="display:none">
     <button class="comp-head" id="compHead"><span class="comp-caret">▸</span> <span id="compLabel">Completed</span></button>
     <ul class="tasks" id="completedList" style="display:none"></ul>
@@ -2588,9 +2670,10 @@ function render(){
   week.style.display = weekView?'':'none';
   month.style.display = monthView?'':'none';
   if(notList) document.getElementById('boardView').style.display='none';   // board is a list-only layout
+  { const dv=document.getElementById('dashView'); if(dv) dv.style.display='none'; }   // dashboard is a list-only layout
   document.documentElement.classList.toggle('day-view', dayView);          // enables the 3-pane wide layout
   // bulk-select + search-all controls only make sense in the flat list view
-  const flatList = !notList && listLayout!=='board';
+  const flatList = !notList && listLayout!=='board' && listLayout!=='dashboard';
   document.getElementById('selBtn').style.display = flatList?'':'none';
   document.getElementById('searchAllBtn').style.display = (flatList&&searchQuery)?'':'none';
   list.classList.toggle('selecting', selectMode && flatList);
@@ -2606,6 +2689,16 @@ function render(){
   if(dayView){ if(dayCols>1) renderMulti(); else renderDay(); renderArc(); renderNow(); renderPhase(); return; }
   // list view — flat list or board (kanban by channel)
   const board=document.getElementById('boardView');
+  const reflectEl=document.querySelector('.reflect');
+  if(listLayout==='dashboard'){
+    list.style.display='none'; board.style.display='none'; board.classList.remove('matrix');
+    document.getElementById('completedWrap').style.display='none';
+    document.getElementById('emptyState').style.display='none';
+    if(reflectEl) reflectEl.style.display='none';
+    const dv=document.getElementById('dashView'); dv.style.display='block';
+    renderDashboard(); renderArc(); renderNow(); renderPhase(); return;
+  }
+  if(reflectEl) reflectEl.style.display='';
   if(listLayout==='board'||listLayout==='matrix'){
     list.style.display='none'; board.style.display=listLayout==='matrix'?'grid':'flex';
     board.classList.toggle('matrix',listLayout==='matrix');
@@ -2632,6 +2725,185 @@ function render(){
   if(typeof refreshKbd==='function') refreshKbd();
   renderArc(); renderNow(); renderPhase();
 }
+/* =================== Dashboard (resizable, movable modules) =================== */
+let dashMods=null, dashDayKeys=null, dashCalMonth=0, dashResizeBound=false, dashDayKeysLoading=false, dashDrag=null;
+const DASH_META={
+  tasks:{title:'Tasks',icon:'☑'},
+  schedule:{title:'Today’s schedule',icon:'🕘'},
+  calendar:{title:'Calendar',icon:'▦'},
+  stats:{title:'Project stats',icon:'▥'},
+  capacity:{title:'Capacity & goal',icon:'◔'},
+  focus:{title:'Focus',icon:'◉'},
+  upcoming:{title:'Upcoming & overdue',icon:'⤴'},
+  notes:{title:'Notes',icon:'✎'},
+};
+const DASH_DEFAULT=[
+  {type:'tasks',w:2,h:2},{type:'schedule',w:2,h:2},
+  {type:'capacity',w:1,h:1},{type:'focus',w:1,h:1},{type:'stats',w:2,h:1},
+  {type:'calendar',w:1,h:2},{type:'upcoming',w:2,h:1},{type:'notes',w:1,h:1},
+];
+function dashId(){ return 'd'+Math.random().toString(36).slice(2,8); }
+function loadDash(){ if(dashMods) return;
+  try{ const raw=localStorage.getItem(LS_PREFIX+'_dash'); if(raw){ const arr=JSON.parse(raw);
+    if(Array.isArray(arr)&&arr.length){ dashMods=arr.filter(m=>DASH_META[m.type]).map(m=>({id:dashId(),type:m.type,w:m.w||1,h:m.h||1})); if(dashMods.length) return; } } }catch(e){}
+  dashMods=DASH_DEFAULT.map(x=>({...x,id:dashId()})); }
+function saveDash(){ try{ localStorage.setItem(LS_PREFIX+'_dash',JSON.stringify(dashMods.map(m=>({type:m.type,w:m.w,h:m.h})))); }catch(e){} }
+function modById(id){ return dashMods.find(m=>m.id===id); }
+function dashDurShort(ms){ const m=Math.round(ms/60000); if(m<60) return m+'m'; const h=Math.floor(m/60), r=m%60; return h+'h'+(r?r:''); }
+function dateKeyOf(d){ return 'day:'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function ensureDashDayKeys(){ if(dashDayKeys||dashDayKeysLoading) return; dashDayKeysLoading=true;
+  slist('day:').then(keys=>{ dashDayKeys=new Set(keys); dashDayKeysLoading=false;
+    if(viewMode==='list'&&listLayout==='dashboard'&&document.querySelector('.dm-cal')) renderDashboard(); }).catch(()=>{dashDayKeysLoading=false;}); }
+
+function renderDashboard(){
+  loadDash();
+  const dv=document.getElementById('dashView'); if(!dv) return; dv.innerHTML='';
+  const tb=document.createElement('div'); tb.className='dash-toolbar';
+  tb.innerHTML='<span class="dt-title">Dashboard — drag headers to move, drag corner to resize</span><button id="dashAdd">+ Add module</button><button id="dashReset">Reset</button>';
+  dv.appendChild(tb);
+  const grid=document.createElement('div'); grid.className='dash-grid';
+  const W=dv.clientWidth||(document.querySelector('.wrap')||{}).clientWidth||900;
+  const cols = W>980?4 : W>620?2 : 1; grid.dataset.cols=cols;
+  grid.style.gridTemplateColumns='repeat('+cols+',minmax(0,1fr))';
+  dashMods.forEach(m=>{
+    const w=Math.min(m.w,cols);
+    const card=document.createElement('div'); card.className='dash-card'; card.dataset.id=m.id;
+    card.style.gridColumn='span '+w; card.style.gridRow='span '+Math.max(1,m.h);
+    const meta=DASH_META[m.type]||{title:m.type,icon:'▦'};
+    const head=document.createElement('div'); head.className='dc-head';
+    head.innerHTML='<span class="dc-ic">'+meta.icon+'</span><span class="dc-title">'+meta.title+'</span><span class="dc-tools"><button class="dc-x" title="Remove module">✕</button></span>';
+    const body=document.createElement('div'); body.className='dc-body';
+    const fn=DASH_RENDER[m.type]; try{ if(fn) fn(body,m); }catch(e){ body.innerHTML='<div class="dc-empty">—</div>'; }
+    const rz=document.createElement('span'); rz.className='dc-resize'; rz.title='Drag to resize';
+    card.append(head,body,rz);
+    head.addEventListener('pointerdown',e=>{ if(e.target.closest('.dc-tools'))return; dashDragStart(e,m.id); });
+    head.querySelector('.dc-x').addEventListener('click',()=>{ dashMods=dashMods.filter(x=>x.id!==m.id); saveDash(); renderDashboard(); });
+    rz.addEventListener('pointerdown',e=>dashResizeStart(e,m.id));
+    grid.appendChild(card);
+  });
+  dv.appendChild(grid);
+  tb.querySelector('#dashAdd').addEventListener('click',dashAddMenu);
+  tb.querySelector('#dashReset').addEventListener('click',()=>{ if(confirm('Reset dashboard to the default layout?')){ dashMods=DASH_DEFAULT.map(x=>({...x,id:dashId()})); saveDash(); renderDashboard(); } });
+  if(!dashResizeBound){ dashResizeBound=true; let rt; window.addEventListener('resize',()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(viewMode==='list'&&listLayout==='dashboard') renderDashboard(); },180); }); }
+}
+function dashLiveTick(){ const el=document.querySelector('[data-focustime]'); if(!el) return;
+  const t=state.tasks.find(x=>x.id===el.getAttribute('data-focustime'));
+  if(t&&t.running){ const act=liveActual(t); el.textContent=durFmt(act); el.classList.toggle('over',t.estimateMin>0&&act>t.estimateMin*60000); }
+  else renderDashboard(); }
+/* drag a module to reorder */
+function dashDragStart(e,id){ if(e.button!=null&&e.button!==0) return; e.preventDefault();
+  const card=e.currentTarget.closest('.dash-card'); card.classList.add('dragging');
+  const ghost=document.createElement('div'); ghost.className='dash-drag-ghost';
+  ghost.textContent=(DASH_META[modById(id).type]||{}).title||'module'; document.body.appendChild(ghost);
+  dashDrag={id,card,ghost,targetId:null,after:false};
+  const move=ev=>dashDragMove(ev), up=ev=>{ dashDragEnd(); window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up); };
+  window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); dashDragMove(e); }
+function dashDragMove(ev){ if(!dashDrag) return;
+  dashDrag.ghost.style.left=(ev.clientX+12)+'px'; dashDrag.ghost.style.top=(ev.clientY+12)+'px';
+  const el=document.elementFromPoint(ev.clientX,ev.clientY); const card=el&&el.closest?el.closest('.dash-card'):null;
+  document.querySelectorAll('.dash-card.drop-target').forEach(c=>c.classList.remove('drop-target'));
+  if(card&&card!==dashDrag.card){ card.classList.add('drop-target'); const r=card.getBoundingClientRect();
+    dashDrag.targetId=card.dataset.id; dashDrag.after=(ev.clientY>r.top+r.height/2); } else dashDrag.targetId=null; }
+function dashDragEnd(){ if(!dashDrag) return; const {id,ghost,targetId,after}=dashDrag; ghost.remove();
+  document.querySelectorAll('.drop-target,.dragging').forEach(c=>c.classList.remove('drop-target','dragging'));
+  if(targetId&&targetId!==id){ const from=dashMods.findIndex(m=>m.id===id); const mv=dashMods.splice(from,1)[0];
+    let to=dashMods.findIndex(x=>x.id===targetId); if(after) to+=1; dashMods.splice(to,0,mv); saveDash(); renderDashboard(); }
+  dashDrag=null; }
+/* drag the corner to resize (snaps to grid) */
+function dashResizeStart(e,id){ e.preventDefault(); e.stopPropagation();
+  const card=e.currentTarget.closest('.dash-card'); const grid=card.parentElement; const cols=+grid.dataset.cols;
+  const gs=getComputedStyle(grid); const gap=parseFloat(gs.gap)||14; const rowH=parseFloat(gs.gridAutoRows)||158;
+  const colW=(grid.clientWidth-gap*(cols-1))/cols; const m=modById(id); const sw=m.w, sh=m.h, sx=e.clientX, sy=e.clientY;
+  const move=ev=>{ const w=Math.max(1,Math.min(cols,sw+Math.round((ev.clientX-sx)/(colW+gap))));
+    const h=Math.max(1,Math.min(4,sh+Math.round((ev.clientY-sy)/(rowH+gap))));
+    card.style.gridColumn='span '+w; card.style.gridRow='span '+h; card._w=w; card._h=h; };
+  const up=()=>{ window.removeEventListener('pointermove',move); window.removeEventListener('pointerup',up);
+    if(card._w){ m.w=card._w; m.h=card._h; saveDash(); renderDashboard(); } };
+  window.addEventListener('pointermove',move); window.addEventListener('pointerup',up); }
+function dashAddMenu(e){ const old=document.querySelector('.dash-add-pop'); if(old){ old.remove(); return; }
+  const pop=document.createElement('div'); pop.className='dash-add-pop';
+  Object.keys(DASH_META).forEach(type=>{ const b=document.createElement('button');
+    b.innerHTML='<span style="opacity:.8">'+DASH_META[type].icon+'</span> '+DASH_META[type].title;
+    b.addEventListener('click',()=>{ const def=DASH_DEFAULT.find(d=>d.type===type)||{w:1,h:1};
+      dashMods.push({id:dashId(),type,w:def.w,h:def.h}); saveDash(); pop.remove(); renderDashboard(); });
+    pop.appendChild(b); });
+  document.body.appendChild(pop); const r=e.currentTarget.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-10))+'px'; pop.style.top=(r.bottom+6)+'px';
+  setTimeout(()=>{ const off=ev=>{ if(!pop.contains(ev.target)){ pop.remove(); document.removeEventListener('pointerdown',off); } }; document.addEventListener('pointerdown',off); },0); }
+/* ---- module bodies ---- */
+function dmTasks(body){ body.classList.add('pad0'); const all=sortedTasks().filter(t=>!t.done);
+  if(!all.length){ body.innerHTML='<div class="dc-empty">No active tasks 🎉</div>'; return; }
+  const ul=document.createElement('ul'); ul.className='tasks dash-tasks'; all.forEach(t=>ul.appendChild(taskRow(t))); body.appendChild(ul); }
+function dmSchedule(body){ const blocks=scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  if(!blocks.length){ body.innerHTML='<div class="dc-empty">Nothing scheduled today</div>'; return; }
+  const now=nowMinutes(); const wrap=document.createElement('div'); wrap.className='dm-agenda'; let placed=false;
+  blocks.forEach(t=>{ if(!placed&&t.scheduledMin>now){ const nl=document.createElement('div'); nl.className='dm-nowline'; wrap.appendChild(nl); placed=true; }
+    const ch=chById(t.channelId); const past=!t.running&&(t.scheduledMin+(t.estimateMin||30)<=now);
+    const row=document.createElement('div'); row.className='dm-ag'+(t.running?' running':'')+(past?' past':'');
+    row.innerHTML='<span class="t">'+hmFromMin(t.scheduledMin)+'</span><span class="dot" style="background:'+ch.color+'"></span><span class="nm">'+escapeHtml(t.name)+'</span><button class="pp" title="Start/stop timer">'+(t.running?'⏸':'▶')+'</button>';
+    row.querySelector('.pp').addEventListener('click',ev=>{ ev.stopPropagation(); toggleRun(t.id); }); wrap.appendChild(row); });
+  if(!placed){ const nl=document.createElement('div'); nl.className='dm-nowline'; wrap.appendChild(nl); } body.appendChild(wrap); }
+function dmStats(body){ const map=new Map();
+  state.tasks.forEach(t=>{ const id=t.channelId||'_'; const e=map.get(id)||{ms:0,count:0}; e.ms+=liveActual(t); e.count++; map.set(id,e); });
+  const rows=[...map.entries()].map(([id,v])=>({ch:chById(id),...v})).sort((a,b)=>(b.ms-a.ms)||(b.count-a.count));
+  if(!rows.length){ body.innerHTML='<div class="dc-empty">No tasks yet</div>'; return; }
+  const max=Math.max(1,...rows.map(r=>r.ms||r.count*60000)); const wrap=document.createElement('div'); wrap.className='dm-stat';
+  rows.slice(0,8).forEach(r=>{ const basis=r.ms||r.count*60000; const pct=Math.max(5,Math.round(basis/max*100));
+    const div=document.createElement('div'); div.className='dm-bar';
+    div.innerHTML='<span class="nm">'+escapeHtml(r.ch.name)+'</span><span class="track"><span class="fill" style="width:'+pct+'%;background:'+r.ch.color+'"></span></span><span class="vv">'+(r.ms?dashDurShort(r.ms):r.count+'t')+'</span>';
+    wrap.appendChild(div); }); body.appendChild(wrap); }
+function dmCapacity(body){ const planned=scheduledActive().reduce((s,t)=>s+(t.estimateMin||0),0);
+  const capH=state.capacityHours||9, cap=capH*60; const pct=Math.min(1,cap?planned/cap:0); const over=planned>cap;
+  const done=state.tasks.filter(t=>t.done).length, total=state.tasks.length; const R=34, Cf=(2*Math.PI*R).toFixed(1);
+  const col=over?'var(--cap-over)':'var(--accent)'; const plannedH=Math.round(planned/6)/10;
+  body.innerHTML='<div class="dm-cap"><svg class="ring" width="84" height="84" viewBox="0 0 84 84">'+
+    '<circle cx="42" cy="42" r="'+R+'" fill="none" stroke="var(--surface-2)" stroke-width="9"/>'+
+    '<circle cx="42" cy="42" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="9" stroke-linecap="round" stroke-dasharray="'+Cf+'" stroke-dashoffset="'+(Cf*(1-pct)).toFixed(1)+'" transform="rotate(-90 42 42)"/>'+
+    '<text x="42" y="47" text-anchor="middle" font-size="16" font-weight="700" fill="var(--ink)">'+plannedH+'h</text></svg>'+
+    '<div class="cap-info"><div class="big">'+done+'/'+total+'</div><div class="sub">tasks done</div>'+
+    '<div class="sub">'+plannedH+'h planned · '+capH+'h capacity'+(over?' ⚠':'')+'</div></div></div>'; }
+function dmFocus(body){ const t=state.tasks.find(x=>x.id===state.activeId&&x.running)||state.tasks.find(x=>x.running);
+  if(t){ const act=liveActual(t); const over=t.estimateMin>0&&act>t.estimateMin*60000; const ch=chById(t.channelId);
+    body.innerHTML='<div class="dm-focus"><div class="fnm"><span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:'+ch.color+';margin-right:6px"></span>'+escapeHtml(t.name)+'</div>'+
+      '<div class="ftime'+(over?' over':'')+'" data-focustime="'+t.id+'">'+durFmt(act)+'</div>'+
+      '<div class="frow"><button class="go" data-fa="stop">⏸ Stop</button></div></div>';
+    body.querySelector('[data-fa=stop]').addEventListener('click',()=>toggleRun(t.id)); }
+  else { body.innerHTML='<div class="dm-focus"><div class="fnm" style="color:var(--ink-soft)">Nothing tracking</div><div class="frow"><button data-fa="start">▶ Start a timer</button></div></div>';
+    body.querySelector('[data-fa=start]').addEventListener('click',()=>{ if(typeof startAdHocTimer==='function') startAdHocTimer(); else { const a=document.getElementById('addName'); if(a) a.focus(); } }); } }
+function dmCalendar(body){ body.classList.add('dm-cal');
+  const base=new Date(viewDate); base.setDate(1); base.setMonth(base.getMonth()+dashCalMonth);
+  const y=base.getFullYear(), mo=base.getMonth();
+  const monthName=base.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+  const ws=(typeof weekStart!=='undefined'?weekStart:0);
+  let startDow=(new Date(y,mo,1).getDay()-ws+7)%7; const dim=new Date(y,mo+1,0).getDate();
+  const todayKey=dateKeyOf(new Date()), selKey=dayKey();
+  const wd=ws===1?['M','T','W','T','F','S','S']:['S','M','T','W','T','F','S'];
+  let h='<div class="cal-h"><button data-cm="-1">‹</button><span>'+monthName+'</span><button data-cm="1">›</button></div><div class="grid">';
+  wd.forEach(w=>h+='<div class="wd">'+w+'</div>');
+  for(let i=0;i<startDow;i++) h+='<div class="d other"></div>';
+  for(let d=1;d<=dim;d++){ const dk='day:'+y+'-'+String(mo+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const has=dashDayKeys&&dashDayKeys.has(dk);
+    h+='<div class="d'+(dk===todayKey?' today':'')+(dk===selKey?' sel':'')+(has?' has':'')+'" data-d="'+dk+'">'+d+'</div>'; }
+  h+='</div>'; body.innerHTML=h;
+  body.querySelectorAll('.d[data-d]').forEach(el=>el.addEventListener('click',()=>gotoDate(new Date(el.dataset.d.slice(4)+'T12:00:00'))));
+  body.querySelectorAll('[data-cm]').forEach(b=>b.addEventListener('click',()=>{ dashCalMonth+=(+b.dataset.cm); renderDashboard(); }));
+  ensureDashDayKeys(); }
+function dmUpcoming(body){ const now=nowMinutes(); const sched=scheduledActive().slice().sort((a,b)=>a.scheduledMin-b.scheduledMin);
+  const overdue=sched.filter(t=>!t.running&&(t.scheduledMin+(t.estimateMin||30)<=now));
+  const up=sched.filter(t=>t.scheduledMin>now).slice(0,5);
+  const backlog=state.tasks.filter(t=>t.scheduledMin==null&&!t.done).length;
+  const item=t=>{ const ch=chById(t.channelId); return '<div class="dm-ag"><span class="t">'+hmFromMin(t.scheduledMin)+'</span><span class="dot" style="background:'+ch.color+'"></span><span class="nm">'+escapeHtml(t.name)+'</span></div>'; };
+  let h='<div class="dm-up">';
+  if(overdue.length){ h+='<div class="od"><div class="sec-l">Overdue / running late</div>'+overdue.slice(0,4).map(item).join('')+'</div>'; }
+  h+='<div><div class="sec-l">Up next</div>'+(up.length?up.map(item).join(''):'<div class="dc-empty" style="padding:8px 0">Nothing left today</div>')+'</div>';
+  if(backlog) h+='<div class="sub" style="font-size:11.5px;color:var(--ink-soft)">'+backlog+' unscheduled in backlog</div>';
+  h+='</div>'; body.innerHTML=h; }
+function dmNotes(body){ body.classList.add('pad0'); const ta=document.createElement('textarea');
+  ta.className='dm-notes'; ta.placeholder='Notes / shutdown…'; ta.value=state.reflection||''; ta.style.padding='11px';
+  let tmr; ta.addEventListener('input',()=>{ state.reflection=ta.value; const main=document.getElementById('reflectText'); if(main) main.value=ta.value;
+    clearTimeout(tmr); tmr=setTimeout(()=>saveDay(),500); }); body.appendChild(ta); }
+const DASH_RENDER={tasks:dmTasks,schedule:dmSchedule,calendar:dmCalendar,stats:dmStats,capacity:dmCapacity,focus:dmFocus,upcoming:dmUpcoming,notes:dmNotes};
+
 // swap a small chip for an input to edit it in place (estimate / scheduled time)
 function inlineEditField(el,type,value,onCommit){
   const inp=document.createElement('input'); inp.type=type==='time'?'time':'text';
@@ -3182,7 +3454,7 @@ function renderPhase(){
   function set(id,on){ document.getElementById(id).classList.toggle('on',!!on); }
 }
 function startTick(){ clearInterval(tick); tick=setInterval(()=>{
-  if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); }
+  if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); if(viewMode==='list'&&listLayout==='dashboard') dashLiveTick(); }
   if(focusOpen){ if(pomo.on&&pomoActive) pomoTick(); renderFocus(); }   // keep Pomodoro counting through breaks
 },1000); }
 /* periodic background sync — pull Todoist + cloud every few minutes */
