@@ -883,6 +883,10 @@
   .cal-block.dragging{cursor:grabbing}
   .cal-block.running{outline:2px solid var(--now);outline-offset:1px;box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}
   @media (prefers-reduced-motion:no-preference){ .cal-block.running{animation:runpulse 2.2s ease-in-out infinite}
+    .cal-block.running.overest{animation:runpulse-over 2.2s ease-in-out infinite}
+    @keyframes runpulse-over{0%,100%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--over-soft)}50%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 6px var(--over-soft)}} }
+  .cal-block.running.overest{outline-color:var(--over)}
+  @media (prefers-reduced-motion:no-preference){ .cal-block.running{animation:runpulse 2.2s ease-in-out infinite}
     @keyframes runpulse{0%,100%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 3px var(--now-soft)}50%{box-shadow:inset 3px 0 0 rgba(0,0,0,.18),0 0 0 6px var(--now-soft)}} }
   .cal-block.dragging{opacity:.95;box-shadow:0 12px 28px rgba(0,0,0,.32);z-index:6;transform:scale(1.035);
     transition:transform .14s cubic-bezier(.34,1.56,.5,1),box-shadow .14s ease}
@@ -3044,15 +3048,16 @@ function setSnap(v){ SNAP=v; try{localStorage.setItem(LS_PREFIX+'_snap',String(v
 function markSnap(){ document.querySelectorAll('#snapSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.snap===SNAP)); }
 function snap(m){ return Math.round(m/SNAP)*SNAP; }
 function ceilSnap(m){ return Math.max(SNAP,Math.ceil(m/SNAP)*SNAP); }
+function nowMinutesFloat(){ const n=new Date(); return n.getHours()*60+n.getMinutes()+n.getSeconds()/60; }
 function blockDur(t){
   const planned=Math.max(t.estimateMin||30, SNAP);
   if(!t.running) return planned;
-  // a running, scheduled task stretches in real time from its start up to NOW
-  if(t.scheduledMin!=null){ const span=nowMinutes()-t.scheduledMin; if(span>planned) return span; return planned; }
+  // a running, scheduled task stretches in real time (to the second, no snapping) up to NOW
+  if(t.scheduledMin!=null){ const span=nowMinutesFloat()-t.scheduledMin; return span>planned?span:planned; }
   return Math.max(planned,ceilSnap(Math.ceil(liveActual(t)/60000)));
 }
 function scheduledActive(){ return state.tasks.filter(t=>t.scheduledMin!=null && !t.done); }
-function scheduleSig(){ return scheduledActive().map(t=>t.id+':'+t.scheduledMin+':'+blockDur(t)).sort().join('|'); }
+function scheduleSig(){ return scheduledActive().map(t=>t.id+':'+t.scheduledMin+':'+Math.round(blockDur(t))).sort().join('|'); }
 function scheduleRunningTask(t,force=false){
   if(!force && t.scheduledMin!=null) return;
   const mins=Math.max(calStart(),Math.min(calEnd()-SNAP,snap(nowMinutes())));
@@ -3230,7 +3235,8 @@ function renderDay(){
     const dur=blockDur(t);
     const h=Math.max(Math.min(dur*PXM,(END-START)*PXM-top),18);
     const info=lay[t.id]||{col:0,cols:1};
-    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':'')+(blockSel.has(t.id)?' multi-sel':''); b.dataset.id=t.id;
+    const overEst = t.running && t.estimateMin>0 && (nowMinutesFloat()-t.scheduledMin)>t.estimateMin;
+    const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(overEst?' overest':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':'')+(blockSel.has(t.id)?' multi-sel':''); b.dataset.id=t.id;
     b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
     b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
