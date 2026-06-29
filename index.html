@@ -1299,6 +1299,7 @@
         <span id="ph-work">Work</span>
         <span id="ph-reflect">Reflect</span>
         <button class="theme-toggle" id="themeBtn" role="switch" title="Toggle light / dark" aria-label="Toggle light / dark"><span class="tt-knob" id="themeKnob">☀️</span></button>
+        <button class="theme-btn" id="searchBtn" title="Search tasks &amp; projects (⌘K)" aria-label="Search">🔍</button>
         <button class="theme-btn" id="helpBtn" title="Help & guide">?</button>
         <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
       </div>
@@ -1864,7 +1865,7 @@
 
 <dialog id="cmdkDialog" class="cmdk">
   <div class="cmdk-in">
-    <input id="cmdkInput" type="text" placeholder="Type a command or task…" autocomplete="off" spellcheck="false">
+    <input id="cmdkInput" type="text" placeholder="Search any task, project, or command…" autocomplete="off" spellcheck="false">
     <div class="cmdk-list" id="cmdkList"></div>
     <div class="cmdk-foot">↑↓ to move · ↵ to run · esc to close</div>
   </div>
@@ -6496,10 +6497,31 @@ function cmdkCommands(){ return [
 function openCmdk(){
   if(document.getElementById('cmdkDialog').open) return;
   cmdkAll=cmdkCommands().map(c=>({...c,kind:'cmd'}));
-  state.tasks.forEach(t=>cmdkAll.push({label:(t.done?'✓ ':'')+t.name,hint:'task',kind:'task',run:()=>openTaskEditor(t.id)}));
+  // every project / channel is searchable → jumps to all its tasks across days
+  state.channels.forEach(c=>cmdkAll.push({label:'# '+c.name,hint:'project',kind:'project',run:()=>jumpToProject(c)}));
+  // today's tasks first (instant), other days streamed in below
+  state.tasks.forEach(t=>cmdkAll.push({label:(t.done?'✓ ':'')+t.name,hint:'today',kind:'task',run:()=>openTaskEditor(t.id)}));
   const inp=document.getElementById('cmdkInput'); inp.value=''; cmdkFilter('');
   document.getElementById('cmdkDialog').showModal(); setTimeout(()=>inp.focus(),20);
+  cmdkLoadAllTasks(dayKey());
 }
+async function cmdkLoadAllTasks(today){
+  try{ const keys=(await slist('day:')).filter(k=>k!==today).sort().reverse();
+    for(const k of keys){ const rec=await sget(k); if(!rec||!rec.tasks||!rec.tasks.length) continue;
+      const label=fmtDateRel(new Date(k.slice(4)+'T12:00:00'));
+      rec.tasks.forEach(t=>cmdkAll.push({label:(t.done?'✓ ':'')+t.name,hint:label,kind:'task',run:()=>jumpToTaskDay(k,t.id)})); }
+    if(document.getElementById('cmdkDialog').open) cmdkFilter(document.getElementById('cmdkInput').value);
+  }catch(e){}
+}
+function forceFlatList(){ if(viewMode!=='list') setView('list');
+  if(listLayout!=='list'){ listLayout='list'; try{localStorage.setItem(LS_PREFIX+'_layout','list');}catch(_){}
+    document.querySelectorAll('#layoutSeg button').forEach(x=>x.classList.toggle('on',x.getAttribute('data-l')==='list')); } }
+function jumpToProject(c){ forceFlatList();
+  searchQuery=c.name; const inp=document.getElementById('searchInp'); if(inp) inp.value=c.name;
+  searchAll=true; const ab=document.getElementById('searchAllBtn'); if(ab){ ab.style.display=''; ab.classList.add('on'); }
+  render(); }
+async function jumpToTaskDay(k,id){ viewDate=new Date(k.slice(4)+'T12:00:00'); updateDateLabel(); await loadDay();
+  if(viewMode!=='list') setView('list'); render(); setTimeout(()=>{ try{ openTaskEditor(id); }catch(e){} },40); }
 function cmdkFilter(q){ q=(q||'').toLowerCase().trim();
   cmdkItems = !q ? cmdkAll.slice(0,50) : cmdkAll.filter(c=>c.label.toLowerCase().includes(q)).slice(0,50);
   cmdkIndex=0; cmdkRender(); }
@@ -6515,6 +6537,7 @@ document.getElementById('cmdkInput').addEventListener('keydown',e=>{
 });
 document.getElementById('cmdkList').addEventListener('click',e=>{ const it=e.target.closest('.cmdk-item[data-i]'); if(it) cmdkRun(+it.dataset.i); });
 document.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); openCmdk(); } });
+{ const sb=document.getElementById('searchBtn'); if(sb) sb.addEventListener('click',openCmdk); }
 // ⌘Z / ⌘⇧Z (Ctrl on Windows) — undo / redo, except while typing in a field
 document.addEventListener('keydown',e=>{
   if(!(e.metaKey||e.ctrlKey) || e.key.toLowerCase()!=='z') return;
