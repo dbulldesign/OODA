@@ -858,9 +858,15 @@
     @keyframes blkpop{0%{transform:scale(1.06)}60%{transform:scale(.99)}100%{transform:scale(1)}}
   }
   .cal-canvas.drop{background:var(--now-soft)}
+  .cal-offhour{position:absolute;left:46px;right:0;z-index:0;pointer-events:none;
+    background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--ink) 6%,transparent) 0 8px,transparent 8px 16px)}
+  .cal-offhour.lunch{background:color-mix(in srgb,var(--cap-over) 12%,transparent)}
+  .cal-offhour span{position:absolute;left:8px;top:3px;font-size:10.5px;color:var(--ink-faint)}
   .cal-backlog{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
   .cal-backlog h4{margin:0;font-size:12px;font-weight:600;color:var(--ink-soft);letter-spacing:.03em;text-transform:uppercase}
   .cal-bl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .bl-head-r{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .bl-sort{font-size:11px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-soft);border-radius:6px;padding:3px 5px;font-family:var(--display);cursor:pointer}
   .cal-backlog.drop{outline:2px dashed var(--now);outline-offset:2px;background:var(--now-soft)}
   .cal-chips{display:flex;flex-wrap:wrap;gap:6px}
   .cal-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface-2);
@@ -1692,6 +1698,16 @@
         <span id="goalUnit" class="goal-unit"></span>
       </div>
       <p class="td-hint">A progress bar appears under the capacity arc; hit it to build a 🔥 streak.</p>
+    </div>
+    <div class="set-group">
+      <div class="set-h">Working hours</div>
+      <label class="td-check" style="margin:0"><input type="checkbox" id="whOn"> Shade off-hours on the Day timeline</label>
+      <div class="goal-set" id="whRow" style="display:none;margin-top:8px;flex-wrap:wrap">
+        <span class="goal-unit">Work</span><input id="whStart" type="time" step="900"> – <input id="whEnd" type="time" step="900">
+        <label class="td-check" style="margin:0;width:100%"><input type="checkbox" id="whLunchOn"> Lunch break</label>
+        <span class="goal-unit" id="whLunchRow" style="display:none">Lunch <input id="whLunchStart" type="time" step="900"> – <input id="whLunchEnd" type="time" step="900"></span>
+      </div>
+      <p class="td-hint">Auto-fill and Tidy keep tasks inside work hours and skip lunch.</p>
     </div>
     <div class="set-group">
       <div class="set-h">Appearance</div>
@@ -2899,7 +2915,7 @@ function reflowCascade(anchorId){
   cascadePreserve(movable,obst);   // preserve times, resolve overlaps (NOT a compaction to 6am)
 }
 // pack everything back-to-back from the start of the day (manual "Tidy"), stepping over pinned blocks
-function compactDay(){ packAround(scheduledActive().filter(t=>!t.pinned),pinnedObstacles()); }
+function compactDay(){ packAround(scheduledActive().filter(t=>!t.pinned),pinnedObstacles().concat(typeof workObstacles==='function'?workObstacles():[])); }
 function maybeAutoArrange(){ if(state.autoArrange) reflowCascade(); }
 function nowMinutes(){ const n=new Date(); return n.getHours()*60+n.getMinutes(); }
 let lastBacklog=null;
@@ -2975,11 +2991,12 @@ function renderDay(){
   head.querySelector('#autoFillBtn').addEventListener('click',autoFillCapacity);
   // unscheduled backlog (also a drop target to remove a task from the calendar)
   const bl=document.createElement('div'); bl.className='cal-backlog'; lastBacklog=bl;
-  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled</h4>'+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div>';
+  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled</h4><div class="bl-head-r">'+(back.length?backlogSortSelect():'')+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div></div>';
   const fb=bl.querySelector('#fillBtn'); if(fb) fb.addEventListener('click',openFillDialog);
+  const bs=bl.querySelector('#blSort'); if(bs) bs.addEventListener('change',e=>setBacklogSort(e.target.value));
   const chips=document.createElement('div'); chips.className='cal-chips';
   if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
-  back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button');
+  sortBacklog(back).forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button');
     c.className='cal-chip'+(calSel===t.id?' sel':'');
     c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+
       (t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
@@ -3004,6 +3021,13 @@ function renderDay(){
     hr.innerHTML='<span class="hl">'+hmFromMin(mm)+'</span>'; canvas.appendChild(hr);
     if(mm<END){ const half=document.createElement('div'); half.className='cal-half'; half.style.top=(y+30*PXM)+'px'; canvas.appendChild(half); }
   }
+  // shade off-hours and lunch when working hours are enabled
+  if(workHrs.on){ const bands=[];
+    if(workHrs.start>START) bands.push([START,workHrs.start,'']);
+    if(workHrs.end<END) bands.push([workHrs.end,END,'']);
+    if(workHrs.lunchOn && workHrs.lunchEnd>workHrs.lunchStart) bands.push([Math.max(START,workHrs.lunchStart),Math.min(END,workHrs.lunchEnd),'lunch']);
+    bands.forEach(([a,b,cls])=>{ if(b<=a)return; const d=document.createElement('div'); d.className='cal-offhour'+(cls?' '+cls:'');
+      d.style.top=((a-START)*PXM)+'px'; d.style.height=((b-a)*PXM)+'px'; if(cls==='lunch') d.innerHTML='<span>🍴 lunch</span>'; canvas.appendChild(d); }); }
   canvas.addEventListener('click',e=>{
     if(dcSuppressClick){ dcSuppressClick=false; return; }   // a drag-create just happened
     const rect=canvas.getBoundingClientRect();
@@ -3128,11 +3152,12 @@ async function renderMulti(){
   head.querySelector('#tidyBtn').addEventListener('click',()=>{ compactDay(); saveDay(); renderMulti(); });
   // backlog (first day) — also a drop target to unschedule
   const bl=document.createElement('div'); bl.className='cal-backlog'; lastBacklog=bl;
-  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled · '+viewDate.toLocaleDateString(undefined,{weekday:'short'})+'</h4>'+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div>';
+  bl.innerHTML='<div class="cal-bl-head"><h4>Unscheduled · '+viewDate.toLocaleDateString(undefined,{weekday:'short'})+'</h4><div class="bl-head-r">'+(back.length?backlogSortSelect():'')+(back.length?'<button class="aa-btn" id="fillBtn">Fill day…</button>':'')+'</div></div>';
   const fb=bl.querySelector('#fillBtn'); if(fb) fb.addEventListener('click',openFillDialog);
+  const bs=bl.querySelector('#blSort'); if(bs) bs.addEventListener('change',e=>setBacklogSort(e.target.value));
   const chips=document.createElement('div'); chips.className='cal-chips';
   if(!back.length) chips.innerHTML='<span class="hint">Everything is scheduled or done.</span>';
-  back.forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button'); c.className='cal-chip';
+  sortBacklog(back).forEach(t=>{ const ch=chById(t.channelId); const c=document.createElement('button'); c.className='cal-chip';
     c.innerHTML='<span class="cdot" style="background:'+ch.color+'"></span><span class="cnm">'+escapeHtml(t.name)+'</span>'+(t.estimateMin?' <span style="color:var(--ink-faint)">'+minFmt(t.estimateMin*60000)+'</span>':'');
     c.addEventListener('pointerdown',e=>startMultiChipDrag(e,t,c)); attachChipHover(c,t); chips.appendChild(c); });
   bl.appendChild(chips);
@@ -4376,13 +4401,57 @@ function firstGap(occ,dur){
   for(const iv of o){ if(iv.s-cursor>=dur) return cursor; cursor=Math.max(cursor,iv.e); }
   return (calEnd()-cursor>=dur)? cursor : null;
 }
+/* ---------- working hours + lunch ---------- */
+let workHrs={on:false,start:9*60,end:17*60,lunchOn:false,lunchStart:12*60,lunchEnd:13*60};
+function loadWorkHours(){ try{ const r=localStorage.getItem(LS_PREFIX+'_workhrs'); if(r) workHrs={...workHrs,...JSON.parse(r)}; }catch(e){} }
+function saveWorkHours(){ try{ localStorage.setItem(LS_PREFIX+'_workhrs',JSON.stringify(workHrs)); }catch(e){} }
+function markWorkHours(){
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+  document.getElementById('whOn').checked=workHrs.on;
+  document.getElementById('whLunchOn').checked=workHrs.lunchOn;
+  set('whStart',hmInput(workHrs.start)); set('whEnd',hmInput(workHrs.end));
+  set('whLunchStart',hmInput(workHrs.lunchStart)); set('whLunchEnd',hmInput(workHrs.lunchEnd));
+  document.getElementById('whRow').style.display=workHrs.on?'flex':'none';
+  document.getElementById('whLunchRow').style.display=workHrs.lunchOn?'inline':'none';
+}
+function commitWorkHours(){
+  workHrs.on=document.getElementById('whOn').checked;
+  workHrs.lunchOn=document.getElementById('whLunchOn').checked;
+  const gm=id=>{ const m=minFromHM(document.getElementById(id).value); return m; };
+  const s=gm('whStart'),e=gm('whEnd'),ls=gm('whLunchStart'),le=gm('whLunchEnd');
+  if(s!=null)workHrs.start=s; if(e!=null)workHrs.end=e; if(ls!=null)workHrs.lunchStart=ls; if(le!=null)workHrs.lunchEnd=le;
+  saveWorkHours(); markWorkHours(); if(viewMode==='day') renderCal();
+}
+/* ---------- sort the Day-view unscheduled backlog ---------- */
+let backlogSort='manual';
+function loadBacklogSort(){ try{ backlogSort=localStorage.getItem(LS_PREFIX+'_blsort')||'manual'; }catch(e){} }
+function setBacklogSort(v){ backlogSort=v; try{localStorage.setItem(LS_PREFIX+'_blsort',v);}catch(e){} if(viewMode==='day') renderCal(); }
+function sortBacklog(arr){
+  const a=arr.slice(); const prio=t=>(t.todoistMeta&&t.todoistMeta.priority)||1;
+  if(backlogSort==='priority') a.sort((x,y)=>prio(y)-prio(x));
+  else if(backlogSort==='estlong') a.sort((x,y)=>(y.estimateMin||0)-(x.estimateMin||0));
+  else if(backlogSort==='estshort') a.sort((x,y)=>(x.estimateMin||1e9)-(y.estimateMin||1e9));
+  else if(backlogSort==='name') a.sort((x,y)=>x.name.localeCompare(y.name));
+  else if(backlogSort==='project') a.sort((x,y)=>(taskProject(x)||chById(x.channelId).name).localeCompare(taskProject(y)||chById(y.channelId).name));
+  return a;
+}
+function backlogSortSelect(){
+  const opts=[['manual','Manual'],['priority','Priority'],['estlong','Longest'],['estshort','Shortest'],['name','Name'],['project','Project']];
+  return '<select id="blSort" class="bl-sort" title="Sort unscheduled">'+opts.map(o=>'<option value="'+o[0]+'"'+(backlogSort===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
+}
+// off-hours (before start / after end) + lunch as fixed obstacles for fill/tidy
+function workObstacles(){ const o=[]; if(!workHrs.on) return o;
+  if(workHrs.start>calStart()) o.push({s:calStart(),e:workHrs.start});
+  if(workHrs.end<calEnd()) o.push({s:workHrs.end,e:calEnd()});
+  if(workHrs.lunchOn && workHrs.lunchEnd>workHrs.lunchStart) o.push({s:workHrs.lunchStart,e:workHrs.lunchEnd});
+  return o; }
 // pack the highest-priority unscheduled tasks into open gaps until the day hits capacity
 function autoFillCapacity(){
   const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
   if(!back.length){ toast('Nothing unscheduled to fill.'); return; }
   const prio=t=>(t.todoistMeta&&t.todoistMeta.priority)||1;
   back.sort((a,b)=> prio(b)-prio(a) || (b.estimateMin||0)-(a.estimateMin||0));
-  const occ=scheduledActive().map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)}));
+  const occ=scheduledActive().map(t=>({s:t.scheduledMin,e:t.scheduledMin+blockDur(t)})).concat(workObstacles());
   let load=scheduledActive().reduce((s,t)=>s+blockDur(t),0);
   const capMin=state.capacityHours*60; let placed=0;
   for(const t of back){
@@ -5298,7 +5367,7 @@ showVersion();
 function openSettings(){ const v=document.getElementById('setVer'); if(v) v.textContent='OODA v'+APP_VERSION;
   const gt=document.getElementById('goalType'); if(gt) gt.value=goalType;
   const gv=document.getElementById('goalValue'); if(gv) gv.value=goalValue;
-  updateGoalUnit();
+  updateGoalUnit(); markWorkHours();
   document.getElementById('settingsDialog').showModal(); }
 document.getElementById('settingsBtn').addEventListener('click',openSettings);
 document.getElementById('settingsDone').addEventListener('click',()=>document.getElementById('settingsDialog').close());
@@ -5359,6 +5428,7 @@ document.getElementById('dispSound').addEventListener('change',e=>setSound(e.tar
 document.getElementById('soundVol').addEventListener('input',e=>setSoundVol(parseFloat(e.target.value)));
 document.getElementById('goalType').addEventListener('change',e=>setGoalType(e.target.value));
 document.getElementById('goalValue').addEventListener('input',e=>setGoalValue(parseFloat(e.target.value)));
+['whOn','whLunchOn','whStart','whEnd','whLunchStart','whLunchEnd'].forEach(id=>document.getElementById(id).addEventListener('change',commitWorkHours));
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -5767,7 +5837,7 @@ window.addEventListener('offline',updateConnUI);
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
   try{ loadAutoTheme(); applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,
+  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,loadWorkHours,loadBacklogSort,
    applyDisplay,applyDensityAccent,applyPalette,applyFont,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink,armAutoTheme]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
