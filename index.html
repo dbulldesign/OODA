@@ -910,6 +910,29 @@
   .dash-drag-ghost{position:fixed;z-index:9999;pointer-events:none;background:var(--surface);border:1px solid var(--accent);border-radius:9px;
     padding:8px 12px;font-size:12.5px;font-weight:650;color:var(--ink);box-shadow:0 10px 28px rgba(0,0,0,.3);opacity:.95}
   @media (max-width:560px){ .dash-grid{grid-auto-rows:140px} }
+  /* ---------- project aggregate stats dialog ---------- */
+  .ps-title{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+  .ps-dot{width:14px;height:14px;border-radius:4px;flex:0 0 auto}
+  .ps-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
+  .ps-cell{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+  .ps-cell .v{font-size:22px;font-weight:700;color:var(--ink);font-family:var(--display);line-height:1.1}
+  .ps-cell .v small{font-size:13px;font-weight:600;color:var(--ink-soft)}
+  .ps-cell .l{font-size:11px;color:var(--ink-soft);margin-top:3px;letter-spacing:.02em}
+  .ps-cell .v.accent{color:var(--accent)} .ps-cell .v.over{color:var(--over)}
+  .ps-bar{height:8px;border-radius:5px;background:var(--surface-2);overflow:hidden;margin-top:9px}
+  .ps-bar .f{height:100%;border-radius:5px}
+  .ps-sec{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin:14px 0 7px}
+  .ps-spark{display:flex;align-items:flex-end;gap:3px;height:46px}
+  .ps-spark .b{flex:1;min-width:3px;background:var(--accent);border-radius:2px 2px 0 0;opacity:.85}
+  .ps-spark .b.empty{background:var(--line);opacity:.5}
+  .ps-rec{display:flex;flex-direction:column;gap:2px;max-height:170px;overflow:auto}
+  .ps-rec .r{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:7px;cursor:pointer}
+  .ps-rec .r:hover{background:var(--surface-2)}
+  .ps-rec .r .d{font-family:var(--mono);font-size:11px;color:var(--ink-faint);width:64px;flex:0 0 auto}
+  .ps-rec .r .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+  .ps-rec .r .nm.done{text-decoration:line-through;color:var(--ink-faint)}
+  .ps-rec .r .tt{font-family:var(--mono);font-size:11px;color:var(--ink-soft)}
+  .ps-empty{color:var(--ink-faint);font-size:13px;padding:10px 0}
   .bd-card{background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:9px 10px;cursor:grab;touch-action:none;
     box-shadow:0 1px 2px rgba(0,0,0,.05)}
   .bd-card.dragging{opacity:.4}
@@ -1884,6 +1907,14 @@
     <h3>Keyboard shortcuts</h3>
     <div class="kbd-keys" id="kbdKeys"></div>
     <div class="dlg-actions"><span></span><button class="primary" id="kbdDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="projStatsDialog">
+  <div class="dlg-in">
+    <div class="ps-title"><span class="ps-dot" id="psDot"></span><h3 id="psName" style="margin:0">Project</h3></div>
+    <div id="projStatsBody"></div>
+    <div class="dlg-actions"><button id="psViewAll">View all tasks ›</button><button class="primary" id="psDone">Done</button></div>
   </div>
 </dialog>
 
@@ -6498,7 +6529,7 @@ function openCmdk(){
   if(document.getElementById('cmdkDialog').open) return;
   cmdkAll=cmdkCommands().map(c=>({...c,kind:'cmd'}));
   // every project / channel is searchable → jumps to all its tasks across days
-  state.channels.forEach(c=>cmdkAll.push({label:'# '+c.name,hint:'project',kind:'project',run:()=>jumpToProject(c)}));
+  state.channels.forEach(c=>cmdkAll.push({label:'# '+c.name,hint:'project',kind:'project',run:()=>openProjectStats(c)}));
   // today's tasks first (instant), other days streamed in below
   state.tasks.forEach(t=>cmdkAll.push({label:(t.done?'✓ ':'')+t.name,hint:'today',kind:'task',run:()=>openTaskEditor(t.id)}));
   const inp=document.getElementById('cmdkInput'); inp.value=''; cmdkFilter('');
@@ -6522,6 +6553,46 @@ function jumpToProject(c){ forceFlatList();
   render(); }
 async function jumpToTaskDay(k,id){ viewDate=new Date(k.slice(4)+'T12:00:00'); updateDateLabel(); await loadDay();
   if(viewMode!=='list') setView('list'); render(); setTimeout(()=>{ try{ openTaskEditor(id); }catch(e){} },40); }
+/* aggregate stats for a project/channel across every stored day */
+async function openProjectStats(c){
+  const dlg=document.getElementById('projStatsDialog');
+  document.getElementById('psName').textContent=c.name;
+  document.getElementById('psDot').style.background=c.color;
+  const body=document.getElementById('projStatsBody'); body.innerHTML='<div class="ps-empty">Crunching the numbers…</div>';
+  document.getElementById('psViewAll').onclick=()=>{ dlg.close(); jumpToProject(c); };
+  document.getElementById('psDone').onclick=()=>dlg.close();
+  if(!dlg.open) dlg.showModal();
+  const hh=m=>{ m=Math.round(m); if(m<60)return m+'m'; const h=Math.floor(m/60),r=m%60; return h+'h'+(r?(' '+r+'m'):''); };
+  const shortD=k=>new Date(k.slice(4)+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  let days=[]; try{ days=await gatherDays(); }catch(e){}
+  const today=dayKey(); if(!days.some(d=>d.key===today)) days.unshift({key:today,tasks:state.tasks});
+  const tasks=[]; days.forEach(d=>{ const arr=(d.key===today?state.tasks:d.tasks)||[]; arr.forEach(t=>{ if(t.channelId===c.id) tasks.push({t,key:d.key}); }); });
+  if(!tasks.length){ body.innerHTML='<div class="ps-empty">No tasks in this project yet — it’ll fill in as you use it.</div>'; return; }
+  const total=tasks.length, done=tasks.filter(x=>x.t.done).length;
+  const trackedMin=Math.round(tasks.reduce((s,x)=>s+(x.t.actualMs||0),0)/60000);
+  const estMin=tasks.reduce((s,x)=>s+(x.t.estimateMin||0),0);
+  const acc=tasks.filter(x=>x.t.done&&x.t.estimateMin>0&&x.t.actualMs>0).map(x=>(x.t.actualMs/60000)/x.t.estimateMin).sort((a,b)=>a-b);
+  const accMed=acc.length?acc[Math.floor(acc.length/2)]:0;
+  const accLabel=accMed?(accMed>=1?('+'+Math.round((accMed-1)*100)+'% over'):(Math.round((1-accMed)*100)+'% under')):'—';
+  const accClass=accMed>1.05?'over':(accMed?'accent':'');
+  const perDay={}; tasks.forEach(x=>{ perDay[x.key]=(perDay[x.key]||0)+(x.t.actualMs||0); });
+  const dayKeys=[...new Set(tasks.map(x=>x.key))].sort();
+  const spark=dayKeys.slice(-14); const maxv=Math.max(1,...spark.map(k=>perDay[k]||0));
+  const recent=tasks.slice().sort((a,b)=>a.key<b.key?1:-1).slice(0,8);
+  let html='<div class="ps-grid">'+
+    '<div class="ps-cell"><div class="v">'+done+'<small>/'+total+'</small></div><div class="l">tasks done</div></div>'+
+    '<div class="ps-cell"><div class="v">'+hh(trackedMin)+'</div><div class="l">total tracked</div></div>'+
+    '<div class="ps-cell"><div class="v">'+hh(estMin)+'</div><div class="l">total estimated</div></div>'+
+    '<div class="ps-cell"><div class="v '+accClass+'">'+accLabel+'</div><div class="l">actual vs estimate</div></div></div>'+
+    '<div class="ps-sec">Completion</div><div class="ps-bar"><div class="f" style="width:'+Math.round(done/total*100)+'%;background:'+c.color+'"></div></div>';
+  if(spark.length>1) html+='<div class="ps-sec">Tracked time by day</div><div class="ps-spark">'+
+    spark.map(k=>{ const v=perDay[k]||0; const h=Math.max(2,Math.round(v/maxv*46)); return '<div class="b'+(v?'':' empty')+'" style="height:'+h+'px" title="'+shortD(k)+': '+hh(v/60000)+'"></div>'; }).join('')+'</div>';
+  html+='<div class="ps-sec">Span</div><div style="font-size:12.5px;color:var(--ink-soft)">'+dayKeys.length+' active day'+(dayKeys.length===1?'':'s')+' · '+shortD(dayKeys[0])+' → '+shortD(dayKeys[dayKeys.length-1])+'</div>';
+  html+='<div class="ps-sec">Recent tasks</div><div class="ps-rec">'+
+    recent.map(x=>'<div class="r" data-k="'+x.key+'" data-id="'+x.t.id+'"><span class="d">'+shortD(x.key)+'</span><span class="nm'+(x.t.done?' done':'')+'">'+escapeHtml(x.t.name)+'</span><span class="tt">'+(x.t.actualMs?hh(x.t.actualMs/60000):'')+'</span></div>').join('')+'</div>';
+  body.innerHTML=html;
+  body.querySelectorAll('.ps-rec .r').forEach(el=>el.addEventListener('click',()=>{ dlg.close(); jumpToTaskDay(el.dataset.k,el.dataset.id); }));
+}
 function cmdkFilter(q){ q=(q||'').toLowerCase().trim();
   cmdkItems = !q ? cmdkAll.slice(0,50) : cmdkAll.filter(c=>c.label.toLowerCase().includes(q)).slice(0,50);
   cmdkIndex=0; cmdkRender(); }
