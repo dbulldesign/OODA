@@ -52,6 +52,26 @@
     --ink:#000000; --ink-soft:#1A1A1A; --ink-faint:#454545; --line:#9A9A9A; --line-strong:#000000; --accent:#0A5C2E; }
   :root[data-theme="dark"][data-palette="contrast"]{ --paper:#000000; --surface:#000000; --surface-2:#0E0E0E;
     --ink:#FFFFFF; --ink-soft:#E2E2E2; --ink-faint:#B0B0B0; --line:#777777; --line-strong:#FFFFFF; --accent:#5FE39A; }
+  :root[data-palette="nord"]{ --paper:#ECEFF4; --surface:#F4F6F9; --surface-2:#E5E9F0;
+    --ink:#2E3440; --ink-soft:#4C566A; --ink-faint:#7B8494; --line:#D8DEE9; --line-strong:#C2CAD6; --accent:#5E81AC; }
+  :root[data-theme="dark"][data-palette="nord"]{ --paper:#2E3440; --surface:#3B4252; --surface-2:#434C5E;
+    --ink:#ECEFF4; --ink-soft:#D8DEE9; --ink-faint:#9AA4B8; --line:#434C5E; --line-strong:#4C566A; --accent:#88C0D0; }
+  :root[data-palette="dracula"]{ --paper:#F5F5FA; --surface:#FFFFFF; --surface-2:#ECECF5;
+    --ink:#1F1F2A; --ink-soft:#50506A; --ink-faint:#8585A0; --line:#E0E0EE; --line-strong:#CECEDF; --accent:#7C3AED; }
+  :root[data-theme="dark"][data-palette="dracula"]{ --paper:#282A36; --surface:#2F3140; --surface-2:#383A4A;
+    --ink:#F8F8F2; --ink-soft:#C3C3D0; --ink-faint:#8A8CA0; --line:#3A3D4F; --line-strong:#4A4D63; --accent:#BD93F9; }
+  :root[data-palette="rosepine"]{ --paper:#FAF4ED; --surface:#FFFAF3; --surface-2:#F2E9E1;
+    --ink:#575279; --ink-soft:#6E6A86; --ink-faint:#9893A5; --line:#EFE6DD; --line-strong:#DFD6CD; --accent:#286983; }
+  :root[data-theme="dark"][data-palette="rosepine"]{ --paper:#191724; --surface:#1F1D2E; --surface-2:#26233A;
+    --ink:#E0DEF4; --ink-soft:#C9C7E0; --ink-faint:#908CAA; --line:#2A2740; --line-strong:#393552; --accent:#9CCFD8; }
+  :root[data-palette="gruvbox"]{ --paper:#FBF1C7; --surface:#F9F5D7; --surface-2:#F2E5BC;
+    --ink:#3C3836; --ink-soft:#504945; --ink-faint:#7C6F64; --line:#EBDBB2; --line-strong:#D5C4A1; --accent:#427B58; }
+  :root[data-theme="dark"][data-palette="gruvbox"]{ --paper:#282828; --surface:#32302F; --surface-2:#3C3836;
+    --ink:#EBDBB2; --ink-soft:#D5C4A1; --ink-faint:#A89984; --line:#3C3836; --line-strong:#504945; --accent:#689D6A; }
+  /* app typeface (Display → Font) */
+  :root[data-font="rounded"]{ --display:ui-rounded,"SF Pro Rounded","Nunito",system-ui,-apple-system,sans-serif; }
+  :root[data-font="serif"]{ --display:"Iowan Old Style","Palatino Linotype",Georgia,"Times New Roman",serif; }
+  :root[data-font="mono"]{ --display:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
   :root{ --glass-surface:rgba(255,255,255,.52); --glass-2:rgba(255,255,255,.34); --glass-brd:rgba(255,255,255,.55); --glass-hi:rgba(255,255,255,.65); --glass-sh:rgba(31,42,44,.14); }
   :root[data-theme="dark"]{ --glass-surface:rgba(38,46,50,.46); --glass-2:rgba(48,56,60,.32); --glass-brd:rgba(255,255,255,.14); --glass-hi:rgba(255,255,255,.16); --glass-sh:rgba(0,0,0,.4); }
   #glassbg{display:none}
@@ -802,6 +822,10 @@
   .cal-range{font-size:12px;color:var(--ink-soft);display:flex;align-items:center;gap:6px;white-space:nowrap}
   .cal-range input{border:1px solid var(--line-strong);border-radius:6px;padding:5px 6px;font-size:12.5px;background:var(--surface-2);color:var(--ink);font-family:var(--mono)}
   /* native time/date pickers render dark-on-dark in dark mode — make their icons legible */
+  /* dark scheme for native UI (select dropdowns, scrollbars, date/time pickers) so
+     they don't pop up as a white menu over the dark theme */
+  :root[data-theme="dark"]{color-scheme:dark}
+  :root{color-scheme:light}
   :root[data-theme="dark"] input[type="time"],:root[data-theme="dark"] input[type="date"]{color-scheme:dark}
   :root[data-theme="dark"] input[type="time"]::-webkit-calendar-picker-indicator,
   :root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(1) brightness(1.6)}
@@ -1016,6 +1040,7 @@
     var sc=parseFloat(localStorage.getItem('ooda:_scale')); if(sc&&sc!==1) document.documentElement.style.zoom=sc;
     if(localStorage.getItem('ooda:_density')==='compact') document.documentElement.classList.add('density-compact');
     var pal=localStorage.getItem('ooda:_palette'); if(pal&&pal!=='default') document.documentElement.setAttribute('data-palette',pal);
+    var fnt=localStorage.getItem('ooda:_font'); if(fnt&&fnt!=='system') document.documentElement.setAttribute('data-font',fnt);
     var ac=localStorage.getItem('ooda:_accent'); if(ac) document.documentElement.style.setProperty('--accent',ac);
     var dm=localStorage.getItem('ooda:_detmode'); if(dm==='hover') document.documentElement.classList.add('det-hover'); else if(dm==='always') document.documentElement.classList.add('det-always');
   }catch(e){} })();
@@ -1495,6 +1520,41 @@
         <button type="button" data-pal="solar">Solarized</button>
         <button type="button" data-pal="amoled">AMOLED</button>
         <button type="button" data-pal="contrast">Contrast</button>
+        <button type="button" data-pal="nord">Nord</button>
+        <button type="button" data-pal="dracula">Dracula</button>
+        <button type="button" data-pal="rosepine">Rosé Pine</button>
+        <button type="button" data-pal="gruvbox">Gruvbox</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Auto day / night</label>
+      <div class="disp-sizes" id="autoThemeSeg">
+        <button type="button" data-at="off">Off</button>
+        <button type="button" data-at="clock">By time</button>
+        <button type="button" data-at="system">Follow system</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Font</label>
+      <div class="disp-sizes wrap-seg" id="fontSeg">
+        <button type="button" data-font="system">System</button>
+        <button type="button" data-font="rounded">Rounded</button>
+        <button type="button" data-font="serif">Serif</button>
+        <button type="button" data-font="mono">Mono</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Time format</label>
+      <div class="disp-sizes" id="timeFmtSeg">
+        <button type="button" data-tf="12">12-hour</button>
+        <button type="button" data-tf="24">24-hour</button>
+      </div>
+    </div>
+    <div class="td-field">
+      <label>Week starts</label>
+      <div class="disp-sizes" id="weekStartSeg">
+        <button type="button" data-ws="mon">Monday</button>
+        <button type="button" data-ws="sun">Sunday</button>
       </div>
     </div>
     <div class="td-field">
@@ -1799,7 +1859,10 @@ function todayKey(){ return dayKeyFor(new Date()); }
 let viewDate=(()=>{ const d=new Date(); d.setHours(12,0,0,0); return d; })();  // which day is shown
 function dayKey(){ return dayKeyFor(viewDate); }
 function isSameDay(a,b){ return dayKeyFor(a)===dayKeyFor(b); }
-function startOfWeek(d){ const x=new Date(d); x.setHours(12,0,0,0); const dow=(x.getDay()+6)%7; x.setDate(x.getDate()-dow); return x; }
+let weekStart='mon';   // 'mon' or 'sun' — Display setting
+function startOfWeek(d){ const x=new Date(d); x.setHours(12,0,0,0);
+  const dow = weekStart==='sun' ? x.getDay() : (x.getDay()+6)%7;
+  x.setDate(x.getDate()-dow); return x; }
 function fmtDateRel(d){
   const a=new Date(d); a.setHours(12,0,0,0); const t=new Date(); t.setHours(12,0,0,0);
   const diff=Math.round((a-t)/86400000);
@@ -1905,7 +1968,10 @@ function minToDurationStr(min){
   return m+'m';
 }
 function minToHoursStr(min){ return minToDurationStr(min); }
-function hmFromMin(min){ const h=Math.floor(min/60), m=min%60; let hh=h%12; if(hh===0)hh=12; return hh+':'+String(m).padStart(2,'0')+(h<12?'am':'pm'); }
+let timeFormat='12';   // '12' or '24' — Display setting
+function hmFromMin(min){ const h=Math.floor(min/60), m=min%60;
+  if(timeFormat==='24') return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  let hh=h%12; if(hh===0)hh=12; return hh+':'+String(m).padStart(2,'0')+(h<12?'am':'pm'); }
 function hmInput(min){ if(min==null)return ''; return String(Math.floor(min/60)).padStart(2,'0')+':'+String(min%60).padStart(2,'0'); }
 function minFromHM(s){ if(!s)return null; const p=s.split(':'); const n=(+p[0])*60+(+p[1]); return isNaN(n)?null:n; }
 function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-t.startedAt : 0); }
@@ -3463,7 +3529,7 @@ async function renderMonth(){
   title.querySelector('#moPrev').addEventListener('click',()=>{ const d=new Date(base); d.setMonth(d.getMonth()-1); gotoDate(d); });
   title.querySelector('#moNext').addEventListener('click',()=>{ const d=new Date(base); d.setMonth(d.getMonth()+1); gotoDate(d); });
   const dow=document.createElement('div'); dow.className='mo-head';
-  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(n=>{ const e=document.createElement('div'); e.className='mo-dow'; e.textContent=n; dow.appendChild(e); });
+  (weekStart==='sun'?['Sun','Mon','Tue','Wed','Thu','Fri','Sat']:['Mon','Tue','Wed','Thu','Fri','Sat','Sun']).forEach(n=>{ const e=document.createElement('div'); e.className='mo-dow'; e.textContent=n; dow.appendChild(e); });
   mv.appendChild(dow);
   const grid=document.createElement('div'); grid.className='mo-grid';
   days.forEach((d,i)=>{
@@ -4737,9 +4803,40 @@ function toastAction(msg,label,fn){
 
 /* ---------- theme (light / dark) ---------- */
 function preferredTheme(){
+  const at=autoThemeNow(); if(at) return at;     // auto day/night overrides the saved choice
   try{ const saved=localStorage.getItem(LS_PREFIX+'_theme'); if(saved) return saved; }catch(e){}
   return (window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
 }
+/* ---------- auto day/night theme ---------- */
+let autoTheme='off';   // 'off' | 'system' | 'clock'
+function loadAutoTheme(){ try{ autoTheme=localStorage.getItem(LS_PREFIX+'_autotheme')||'off'; }catch(e){} }
+function autoThemeNow(){
+  if(autoTheme==='system') return (window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
+  if(autoTheme==='clock'){ const h=new Date().getHours(); return (h>=7&&h<19)?'light':'dark'; }
+  return null;
+}
+function setAutoTheme(v){ autoTheme=v; try{localStorage.setItem(LS_PREFIX+'_autotheme',v);}catch(e){}
+  markAutoTheme(); if(v!=='off'){ const t=autoThemeNow(); if(t){ applyTheme(t); try{localStorage.setItem(LS_PREFIX+'_theme',t);}catch(e){} } } armAutoTheme(); }
+function markAutoTheme(){ document.querySelectorAll('#autoThemeSeg button').forEach(b=>b.classList.toggle('on',b.dataset.at===autoTheme)); }
+let autoThemeTimer=null, autoThemeMq=null;
+function armAutoTheme(){
+  clearInterval(autoThemeTimer); autoThemeTimer=null;
+  if(autoThemeMq){ try{ autoThemeMq.onchange=null; }catch(e){} autoThemeMq=null; }
+  if(autoTheme==='clock'){ autoThemeTimer=setInterval(()=>{ const t=autoThemeNow(); if(t&&t!==document.documentElement.getAttribute('data-theme')){ applyTheme(t); try{localStorage.setItem(LS_PREFIX+'_theme',t);}catch(e){} } }, 60000); }
+  else if(autoTheme==='system' && window.matchMedia){ autoThemeMq=matchMedia('(prefers-color-scheme: dark)');
+    autoThemeMq.onchange=()=>{ const t=autoThemeNow(); if(t){ applyTheme(t); try{localStorage.setItem(LS_PREFIX+'_theme',t);}catch(e){} } }; }
+}
+/* ---------- font, time format, week start ---------- */
+let appFont='system';
+function loadFont(){ try{ appFont=localStorage.getItem(LS_PREFIX+'_font')||'system'; }catch(e){} }
+function applyFont(){ if(appFont&&appFont!=='system') document.documentElement.setAttribute('data-font',appFont); else document.documentElement.removeAttribute('data-font'); }
+function setFont(v){ appFont=v; try{localStorage.setItem(LS_PREFIX+'_font',v);}catch(e){} applyFont(); markFont(); }
+function markFont(){ document.querySelectorAll('#fontSeg button').forEach(b=>b.classList.toggle('on',b.dataset.font===appFont)); }
+function loadTimeWeek(){ try{ timeFormat=localStorage.getItem(LS_PREFIX+'_timefmt')||'12'; weekStart=localStorage.getItem(LS_PREFIX+'_weekstart')||'mon'; }catch(e){} }
+function setTimeFormat(v){ timeFormat=v; try{localStorage.setItem(LS_PREFIX+'_timefmt',v);}catch(e){} markTimeWeek(); render(); }
+function setWeekStart(v){ weekStart=v; try{localStorage.setItem(LS_PREFIX+'_weekstart',v);}catch(e){} markTimeWeek(); render(); }
+function markTimeWeek(){ document.querySelectorAll('#timeFmtSeg button').forEach(b=>b.classList.toggle('on',b.dataset.tf===timeFormat));
+  document.querySelectorAll('#weekStartSeg button').forEach(b=>b.classList.toggle('on',b.dataset.ws===weekStart)); }
 function applyTheme(theme){
   document.documentElement.setAttribute('data-theme',theme);
   // keep the OS theme-color in sync with the current paper background
@@ -4889,7 +4986,7 @@ function buildFxChoices(){
 function openDispDialog(){ document.getElementById('dispWide').checked=dispWide; document.getElementById('dispGlass').checked=glassOn; document.getElementById('dispNotify').checked=notifyOn; markSizes(); buildFxChoices(); markFx(); buildAccents(); markDensity(); markAccent(); markBlockColor(); markCapDisplay(); buildDetailFields(); markDetailFields(); markDetailsMode();
   const fi=document.getElementById('fxIntInput'); if(fi){ fi.value=fxIntensity; document.getElementById('fxIntVal').textContent=fxIntensity.toFixed(1)+'×'; } markFxWhen();
   const go=document.getElementById('glassOpts'); if(go) go.style.display=glassOn?'block':'none'; markGlassOpts();
-  markPalette(); markSnap();
+  markPalette(); markSnap(); markFont(); markTimeWeek(); markAutoTheme();
   const ap=document.getElementById('accentPicker'); if(ap) ap.value=/^#[0-9a-f]{6}$/i.test(accent)?accent:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()||'#3F7A56';
   const sv=document.getElementById('soundVol'); if(sv){ sv.value=soundVol; document.getElementById('soundVolVal').textContent=Math.round(soundVol*100)+'%'; } markSound();
   document.getElementById('dispDialog').showModal(); }
@@ -5211,6 +5308,10 @@ document.getElementById('blockColorSeg').addEventListener('click',e=>{ const b=e
 document.getElementById('capDispSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-cd]'); if(b) setCapDisplay(b.dataset.cd); });
 document.getElementById('snapSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-snap]'); if(b) setSnap(+b.dataset.snap); });
 document.getElementById('paletteSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-pal]'); if(b) setPalette(b.dataset.pal); });
+document.getElementById('autoThemeSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-at]'); if(b) setAutoTheme(b.dataset.at); });
+document.getElementById('fontSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-font]'); if(b) setFont(b.dataset.font); });
+document.getElementById('timeFmtSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-tf]'); if(b) setTimeFormat(b.dataset.tf); });
+document.getElementById('weekStartSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-ws]'); if(b) setWeekStart(b.dataset.ws); });
 document.getElementById('accentPicker').addEventListener('input',e=>setAccent(e.target.value));
 document.getElementById('dispSound').addEventListener('change',e=>setSound(e.target.checked));
 document.getElementById('soundVol').addEventListener('input',e=>setSoundVol(parseFloat(e.target.value)));
@@ -5621,9 +5722,9 @@ window.addEventListener('offline',updateConnUI);
 
 (async()=>{
   // each preference loader is non-critical — one bad value must not stop startup
-  try{ applyTheme(preferredTheme()); }catch(e){}
-  [loadDisplay,loadDensityAccent,loadPalette,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,
-   applyDisplay,applyDensityAccent,applyPalette,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink]
+  try{ loadAutoTheme(); applyTheme(preferredTheme()); }catch(e){}
+  [loadDisplay,loadDensityAccent,loadPalette,loadFont,loadTimeWeek,loadAutoTheme,loadDetails,loadBlockColor,loadCapDisplay,loadFx,loadNotify,loadSound,loadSnap,loadGoal,
+   applyDisplay,applyDensityAccent,applyPalette,applyFont,applyDetailsMode,loadSync,loadOutbox,updateCloudLink,updateSecLink,armAutoTheme]
     .forEach(fn=>{ try{ fn(); }catch(e){ console.warn('boot pref skipped',e); } });
   try{ sortMode=localStorage.getItem(LS_PREFIX+'_sort')||'manual'; const sv=document.getElementById('sortSel'); if(sv)sv.value=sortMode; }catch(e){}
   // CRITICAL PATH: load data and paint. If this fails, show recovery but still
