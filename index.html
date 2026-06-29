@@ -2582,6 +2582,7 @@ function openTaskMenu(id,anchor){
     (hasMeta?'<button data-a="details">'+CHEV+(expanded?' Hide details':' Details')+'</button>':'')+
     (t.scheduledMin!=null?'<button data-a="pin">📌 '+(t.pinned?'Unpin time':'Pin time')+'</button>':'')+
     (t.scheduledMin!=null&&t.todoistId&&tdConnected()?'<button data-a="pushtime">⏱ Push time → Todoist</button>':'')+
+    '<button data-a="dup">⎘ Duplicate</button>'+
     '<button data-a="resched">↔ Reschedule…</button>'+
     '<button data-a="snooze-tom">→ Snooze: tomorrow</button>'+
     '<button data-a="snooze-wknd">→ Snooze: this weekend</button>'+
@@ -2596,6 +2597,7 @@ function openTaskMenu(id,anchor){
   m.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const a=b.getAttribute('data-a'); closeMenu();
     if(a==='edit') openTaskEditor(id);
     else if(a==='resume') resumeTask(id);
+    else if(a==='dup') duplicateTask(id);
     else if(a==='details'){ if(expandedTasks.has(id))expandedTasks.delete(id); else expandedTasks.add(id); render(); }
     else if(a==='pin') togglePin(id);
     else if(a==='resched') openResched(id);
@@ -3028,16 +3030,17 @@ function renderDay(){
     b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
     b.style.right='auto';
     const proj=escapeHtml(taskProjectLabel(t)); const tall=h>=58;   // tall enough for the tag on its own line
+    const showPin=h>=48;   // on short blocks the pin would sit over the time — pin via right-click instead
     b.innerHTML='<div class="cb-row"><span class="cb-t">'+escapeHtml(t.name)+'</span>'+
       (proj&&!tall?'<span class="cb-proj inline">'+proj+'</span>':'')+
       '<span class="cb-s">'+(t.running?'⏱ ':'')+hmFromMin(t.scheduledMin)+' · '+minFmt(dur*60000)+'</span></div>'+
       (proj&&tall?'<span class="cb-proj">'+proj+'</span>':'')+
-      '<button class="cb-pin'+(t.pinned?' on':'')+'" title="'+(t.pinned?'Pinned — auto-arrange keeps this time':'Pin this time')+'">📌</button>'+
+      (showPin?'<button class="cb-pin'+(t.pinned?' on':'')+'" title="'+(t.pinned?'Pinned — auto-arrange keeps this time':'Pin this time')+'">📌</button>':'')+
       '<div class="cal-rz"></div>';
     attachBlockDrag(b,t,START,END);
     const pin=b.querySelector('.cb-pin');
-    pin.addEventListener('pointerdown',e=>e.stopPropagation());
-    pin.addEventListener('click',e=>{ e.stopPropagation(); togglePin(t.id); });
+    if(pin){ pin.addEventListener('pointerdown',e=>e.stopPropagation());
+      pin.addEventListener('click',e=>{ e.stopPropagation(); togglePin(t.id); }); }
     b.addEventListener('contextmenu',e=>{ e.preventDefault(); openTaskMenu(t.id,{x:e.clientX,y:e.clientY}); });
     canvas.appendChild(b);
     // FLIP: if this block moved/resized since last render, start it at the old
@@ -4322,6 +4325,45 @@ function snoozeTarget(when){
   else if(when==='week'){ const add=(1-d.getDay()+7)%7; d.setDate(d.getDate()+(add||7)); }        // next Monday
   return d;
 }
+async function duplicateTask(id){
+  const t=state.tasks.find(x=>x.id===id); if(!t) return;
+  const copy={ id:uid(), name:t.name, channelId:t.channelId, estimateMin:t.estimateMin||0,
+    actualMs:0, done:false, running:false, startedAt:null, scheduledMin:null, pinned:false, todoistId:null };
+  if(t.todoistMeta){ const m=t.todoistMeta;
+    copy.todoistMeta={ projectId:m.projectId||'', projectName:m.projectName||'', section:m.section||'',
+      labels:(m.labels||[]).slice(), priority:m.priority||1, due:null, description:m.description||'', rawContent:t.name, url:'', commentCount:0 }; }
+  const i=state.tasks.findIndex(x=>x.id===id);
+  state.tasks.splice(i>=0?i+1:state.tasks.length,0,copy);
+  await saveDay(); render(); toast('Duplicated “'+t.name+'”.');
+}
+// create several tasks at once from pasted lines (each line natural-language parsed)
+async function addTasksFromLines(lines){
+  let n=0, lastDay=null;
+  for(const raw of lines){ const s=(raw||'').trim(); if(!s) continue;
+    const p=parseQuickAdd(s); const name=p.name||s;
+    const channelId=p.projectName?matchChannel(p.projectName):document.getElementById('addChannel').value;
+    const t={id:uid(),name,channelId,estimateMin:p.estimateMin||0,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
+      scheduledMin:(p.scheduledMin!=null?snap(p.scheduledMin):null)};
+    if(p.labels.length||p.priority>1||p.dueDate||p.projectName){
+      t.todoistMeta={projectId:'',projectName:p.projectName||'',section:'',labels:p.labels.slice(),priority:p.priority,
+        due:p.dueDate?{date:dayKeyFor(p.dueDate).slice(4),datetime:'',string:p.dueString,recurring:false}:null,
+        description:'',rawContent:name,url:'',commentCount:0}; }
+    autoCreateInTodoist(t,p);
+    const targetKey=p.dueDate?dayKeyFor(p.dueDate):dayKey();
+    if(targetKey===dayKey()) state.tasks.unshift(t); else { await addTaskToDay(targetKey,t); lastDay=p.dueDate; }
+    n++;
+  }
+  if(n){ await saveDay(); render(); toast('Added '+n+' task'+(n>1?'s':'')+'.'); }
+  return n;
+}
+function multiPasteHandler(e){
+  const txt=(e.clipboardData||window.clipboardData)?.getData('text')||'';
+  if(/\r?\n/.test(txt.trim())){ e.preventDefault();
+    addTasksFromLines(txt.split(/\r?\n/));
+    const el=e.target; if(el&&'value'in el) el.value='';
+    if(el&&el.id==='qaName' && typeof closeAddSheet==='function') closeAddSheet();
+  }
+}
 async function snoozeTask(id,when){
   const d=snoozeTarget(when), src=dayKey(), dst=dayKeyFor(d);
   if(dst===src){ toast('Already on that day.'); return; }
@@ -5322,6 +5364,8 @@ document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
 document.getElementById('addBtn').addEventListener('click',addTask);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter' && !acOpen())addTask(); });
+document.getElementById('addName').addEventListener('paste',multiPasteHandler);
+document.getElementById('qaName').addEventListener('paste',multiPasteHandler);
 /* ---------- '#project' autocomplete in the quick-add box ---------- */
 let acItems=[], acIndex=0, acTokenStart=-1, acTarget=null;
 function acMenuEl(){ return document.getElementById('acMenu'); }
