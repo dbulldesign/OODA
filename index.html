@@ -283,9 +283,11 @@
   .goal-unit{font-size:12.5px;color:var(--ink-soft)}
   .arc-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;color:var(--ink-soft);margin-bottom:9px}
   .arc-head b{color:var(--ink);font-weight:600}
-  .arc-head .cap-set{display:flex;align-items:center;gap:6px}
-  .arc-head input{width:42px;font-family:var(--mono);font-size:13px;border:1px solid var(--line-strong);
-    border-radius:6px;padding:3px 5px;text-align:center;background:var(--surface-2);color:var(--ink)}
+  .arc-head .cap-set{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);
+    background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:4px 10px}
+  .arc-head input{width:40px;font-family:var(--mono);font-size:13px;font-weight:600;border:1px solid var(--line-strong);
+    border-radius:6px;padding:3px 4px;text-align:center;background:var(--surface);color:var(--ink)}
+  .arc-head input::-webkit-inner-spin-button{opacity:.5}
   .arc{position:relative;height:18px;border-radius:6px;background:var(--surface-2);overflow:hidden;border:1px solid var(--line)}
   .arc .seg{position:absolute;top:0;height:100%;transition:width .5s cubic-bezier(.4,0,.2,1),left .5s cubic-bezier(.4,0,.2,1)}
   .arc .tracked{position:absolute;top:0;height:100%;background:repeating-linear-gradient(45deg,rgba(31,42,44,.22)0,rgba(31,42,44,.22)4px,transparent 4px,transparent 8px);transition:width .5s cubic-bezier(.4,0,.2,1)}
@@ -314,7 +316,7 @@
   .task .row1{display:flex;align-items:flex-start;gap:11px}
   .task .name{flex:1;min-width:0;font-size:15px;line-height:1.35;overflow-wrap:anywhere;cursor:text}
   .task.done .name{text-decoration:line-through}
-  .task .times{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center}
+  .task .times{font-family:var(--mono);font-size:14px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center;gap:2px}
   .task .times .act{color:var(--ink);font-weight:600}
   .task .times .act.over{color:var(--over)}
   .task .times .est{cursor:pointer;border-radius:4px;padding:0 2px}
@@ -424,6 +426,23 @@
   .add{display:flex;gap:8px;margin:12px 0 22px;flex-wrap:wrap}
   .add input.name{flex:1;min-width:160px;border:1px solid var(--line-strong);border-radius:8px;padding:10px 12px;font-size:15px;background:var(--surface);color:var(--ink);font-family:var(--display)}
   .add select,.add input.est{border:1px solid var(--line-strong);border-radius:8px;padding:10px;font-size:14px;background:var(--surface);color:var(--ink)}
+  /* channel combobox */
+  .chan-combo{display:inline-flex}
+  .chan-btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;
+    font-size:14px;background:var(--surface);color:var(--ink);cursor:pointer;font-family:var(--display);min-width:118px}
+  .chan-btn .cc-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto;background:var(--ink-soft)}
+  .chan-btn .cc-lab{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chan-btn .cc-arr{color:var(--ink-faint);font-size:11px}
+  .chan-pop{position:fixed;z-index:1300;width:236px;background:var(--surface);border:1px solid var(--line-strong);border-radius:11px;
+    box-shadow:0 12px 34px rgba(0,0,0,.28);padding:8px;display:flex;flex-direction:column;gap:6px}
+  .chan-search{border:1px solid var(--line-strong);border-radius:7px;padding:8px;font-size:13px;background:var(--surface-2);color:var(--ink);outline:none;font-family:var(--display)}
+  .chan-list{display:flex;flex-direction:column;gap:1px;max-height:240px;overflow:auto}
+  .chan-opt{display:flex;align-items:center;gap:8px;border:0;background:none;color:var(--ink);text-align:left;
+    padding:8px 8px;border-radius:7px;cursor:pointer;font-size:13.5px;font-family:var(--display)}
+  .chan-opt:hover{background:var(--surface-2)}
+  .chan-opt .cc-dot{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+  .chan-opt.create{color:var(--accent);font-weight:600}
+  .chan-empty{color:var(--ink-faint);font-size:12.5px;padding:8px}
   .add input.est{width:64px;font-family:var(--mono);text-align:center}
   .ac-menu{position:fixed;z-index:1200;background:var(--surface);border:1px solid var(--line-strong);
     border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.18);max-height:240px;overflow:auto;min-width:180px;padding:4px}
@@ -1030,13 +1049,14 @@
     .task{padding:12px 11px;gap:8px}
     .task .row1{flex-wrap:wrap;align-items:baseline}
     .task .row1 .name{flex:1 1 100%}
-    .task .times{margin-top:1px;font-size:13px}
+    .task .times{margin-top:1px;font-size:14px}
     .task .dot{margin-top:7px}
     .task button{width:34px;height:34px;border-radius:9px}
     .task .icon{width:16px;height:16px}
     .add{gap:7px}
     .add input.name{min-width:100%;font-size:16px}
-    .add select,.add input.est{flex:1}
+    .add select,.add input.est,.add .chan-combo{flex:1}
+    .add .chan-combo .chan-btn{width:100%}
     .add button{flex:1;padding:11px 18px}
     .reflect{padding:14px}
     .tools{font-size:13px;gap:8px}
@@ -1174,7 +1194,10 @@
   <div class="add">
     <input class="name" id="addName" placeholder="What needs doing?  (try: report tomorrow 2pm ~45m #Work @errand p1)" autocomplete="off"
       title="Quick-add: #project, @label, p1–p4, a time (2pm, noon), a day (today, tomorrow, mon, next week), and ~45m / 1h for the estimate.">
-    <select id="addChannel"></select>
+    <span class="chan-combo">
+      <select id="addChannel" style="display:none"></select>
+      <button type="button" class="chan-btn" id="addChanBtn"><span class="cc-dot" id="addChanDot"></span><span class="cc-lab" id="addChanLab">—</span><span class="cc-arr">▾</span></button>
+    </span>
     <input class="est" id="addEst" type="text" inputmode="decimal" placeholder="30m / 1h" title="Task length: 30m, 1h 15m, 1:15, or 1.5 hours">
     <button id="addBtn">Add</button>
   </div>
@@ -1905,7 +1928,7 @@ const DEFAULT_CHANNELS=[
 const DEFAULT_TODOIST={token:'',filter:'(today | overdue)',autocomplete:true,autocreate:true,horizon:true,pushtimes:false,lastSync:null,projects:[]};
 const TD_BASE='https://api.todoist.com/api/v1';
 
-let state={ channels:[], capacityHours:7, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[], recurring:[] };
+let state={ channels:[], capacityHours:9, dayStartH:6, dayEndH:22, autoArrange:false, tasks:[], reflection:'', activeId:null, todoist:{...DEFAULT_TODOIST}, templates:[], recurring:[] };
 let memFallback={}; let storeOk=true; let tick=null;
 
 /* ---------- storage layer ----------
@@ -2098,8 +2121,8 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
-  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=7; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; await saveConfig(); }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
+  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; }
   // resume a running task across reloads
@@ -2113,7 +2136,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||7; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -5061,6 +5084,38 @@ async function afterUnlockSync(){
 function buildChannelSelect(){
   const sel=document.getElementById('addChannel'); sel.innerHTML='';
   state.channels.forEach(c=>{ const o=document.createElement('option'); o.value=c.id; o.textContent=c.name; sel.appendChild(o); });
+  syncChanBtn();
+}
+/* custom channel combobox (themed dropdown + type-to-create with auto-colour) */
+function syncChanBtn(){
+  const sel=document.getElementById('addChannel'); if(!sel) return;
+  const ch=state.channels.find(c=>c.id===sel.value)||state.channels[0];
+  const dot=document.getElementById('addChanDot'), lab=document.getElementById('addChanLab');
+  if(ch){ if(dot)dot.style.background=ch.color; if(lab)lab.textContent=ch.name; }
+}
+function closeChanCombo(){ const m=document.getElementById('chanPop'); if(m)m.remove(); document.removeEventListener('click',chanComboOutside,true); }
+function chanComboOutside(e){ const m=document.getElementById('chanPop'); if(m&&!m.contains(e.target)&&!e.target.closest('#addChanBtn')) closeChanCombo(); }
+function openChanCombo(){
+  if(document.getElementById('chanPop')){ closeChanCombo(); return; }
+  const pop=document.createElement('div'); pop.id='chanPop'; pop.className='chan-pop';
+  pop.innerHTML='<input class="chan-search" id="chanSearch" placeholder="Filter or type to add…" autocomplete="off" spellcheck="false"><div class="chan-list" id="chanList"></div>';
+  document.body.appendChild(pop);
+  const r=document.getElementById('addChanBtn').getBoundingClientRect();
+  pop.style.top=(r.bottom+5)+'px'; pop.style.left=Math.max(8,Math.min(r.left,innerWidth-244))+'px';
+  const inp=pop.querySelector('#chanSearch'), listEl=pop.querySelector('#chanList');
+  function renderList(){
+    const raw=inp.value.trim(), q=raw.toLowerCase();
+    const matches=state.channels.filter(c=>c.name.toLowerCase().includes(q));
+    let html=matches.map(c=>'<button type="button" class="chan-opt" data-id="'+c.id+'"><span class="cc-dot" style="background:'+c.color+'"></span>'+escapeHtml(c.name)+'</button>').join('');
+    if(raw && !state.channels.some(c=>c.name.toLowerCase()===q)) html+='<button type="button" class="chan-opt create" data-create="'+escapeHtml(raw)+'">＋ Create “'+escapeHtml(raw)+'”</button>';
+    listEl.innerHTML=html||'<div class="chan-empty">No matches</div>';
+  }
+  inp.addEventListener('input',renderList);
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); const f=listEl.querySelector('.chan-opt'); if(f) f.click(); } else if(e.key==='Escape'){ closeChanCombo(); } });
+  pop.addEventListener('click',async e=>{ const o=e.target.closest('.chan-opt'); if(!o) return;
+    if(o.dataset.create){ const id=await ensureChannelForProject(o.dataset.create); closeChanCombo(); if(id){ document.getElementById('addChannel').value=id; syncChanBtn(); } }
+    else { document.getElementById('addChannel').value=o.dataset.id; syncChanBtn(); closeChanCombo(); } });
+  renderList(); setTimeout(()=>{ inp.focus(); document.addEventListener('click',chanComboOutside,true); },0);
 }
 let chDraft=[];
 function openChDialog(){ chDraft=state.channels.map(c=>({...c})); renderChEdit(); document.getElementById('chDialog').showModal(); }
@@ -5691,6 +5746,7 @@ document.getElementById('fillCancel').addEventListener('click',()=>document.getE
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
 document.getElementById('addBtn').addEventListener('click',addTask);
+document.getElementById('addChanBtn').addEventListener('click',openChanCombo);
 document.getElementById('addName').addEventListener('keydown',e=>{ if(e.key==='Enter' && !acOpen())addTask(); });
 document.getElementById('addName').addEventListener('paste',multiPasteHandler);
 document.getElementById('qaName').addEventListener('paste',multiPasteHandler);
