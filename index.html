@@ -2376,8 +2376,8 @@ async function addTask(){
   const rawName=nameEl.value.trim(); if(!rawName)return;
   const p=parseQuickAdd(rawName);
   const name=p.name||rawName;
-  const estMin = p.estimateMin || hoursToMin(estEl.value);
   const channelId = p.projectName ? matchChannel(p.projectName) : document.getElementById('addChannel').value;
+  const estMin = p.estimateMin || hoursToMin(estEl.value) || suggestEstimate(name,channelId);
   const t={id:uid(),name,channelId,estimateMin:estMin,actualMs:0,done:false,running:false,startedAt:null,todoistId:null,
     scheduledMin:(p.scheduledMin!=null?snap(p.scheduledMin):null)};
   if(p.labels.length||p.priority>1||p.dueDate||p.projectName){
@@ -2426,7 +2426,8 @@ async function quickAddSubmit(){
   if(!raw){ closeAddSheet(); return; }
   const p=parseQuickAdd(raw);
   const name=p.name||raw;
-  const estMin = p.estimateMin || hoursToMin(document.getElementById('qaEst').value);
+  const qaCh = p.projectName ? matchChannel(p.projectName) : document.getElementById('qaChannel').value;
+  const estMin = p.estimateMin || hoursToMin(document.getElementById('qaEst').value) || suggestEstimate(name,qaCh);
   const prio = Math.max(p.priority||1, parseInt(document.getElementById('qaPrio').value)||1);
   const schedVal=minFromHM(document.getElementById('qaSched').value);
   const desc=document.getElementById('qaDesc').value.trim();
@@ -4363,18 +4364,34 @@ async function rescheduleTask(id,phrase){
   if(r.scheduledMin!=null){ t.scheduledMin=snap(r.scheduledMin); pushTimeToTodoist(t); maybeAutoArrange(); await saveDay(); render(); toast('Set to '+hmFromMin(t.scheduledMin)); return; }
   toast('Didn’t get that. Try “push 30m”, “2pm”, “move to fri”, “unschedule”.');
 }
-/* ---------- estimate suggestions from history ---------- */
-let estIndex={byName:{},byCh:{}};
+/* ---------- estimate suggestions from history (no AI — pure statistics) ----------
+   Learns from how long finished tasks actually took. Predicts a length for a new
+   task from, in order: an exact name match → shared keywords → the same channel.
+   Uses medians so one marathon task doesn't skew everything. */
+let estIndex={byName:{},byCh:{},byTok:{},global:0};
+const EST_STOP=new Set(['the','and','for','with','this','that','from','about','into','your','our','task','some','min','mins']);
+function estToks(name){ return (name||'').toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>2&&!EST_STOP.has(w)); }
+function estMedian(a){ if(!a.length) return 0; const s=a.slice().sort((x,y)=>x-y); const m=s.length>>1; return s.length%2?s[m]:Math.round((s[m-1]+s[m])/2); }
 async function buildEstIndex(){
-  try{ const days=await gatherDays(); const n={},c={};
+  try{ const days=await gatherDays(); const n={},c={},tk={},g=[];
     days.forEach(d=>(d.tasks||[]).forEach(t=>{ const min=Math.round((t.actualMs||0)/60000); if(min<1)return;
-      const k=(t.name||'').trim().toLowerCase(); if(k){ (n[k]=n[k]||[]).push(min); } (c[t.channelId]=c[t.channelId]||[]).push(min); }));
-    const avg=a=>Math.round(a.reduce((x,y)=>x+y,0)/a.length);
-    estIndex={ byName:Object.fromEntries(Object.entries(n).map(([k,v])=>[k,avg(v)])),
-               byCh:Object.fromEntries(Object.entries(c).map(([k,v])=>[k,avg(v)])) };
+      const k=(t.name||'').trim().toLowerCase(); if(k)(n[k]=n[k]||[]).push(min);
+      if(t.channelId)(c[t.channelId]=c[t.channelId]||[]).push(min); g.push(min);
+      estToks(t.name).forEach(w=>(tk[w]=tk[w]||[]).push(min)); }));
+    estIndex={ byName:Object.fromEntries(Object.entries(n).map(([k,v])=>[k,estMedian(v)])),
+               byCh:Object.fromEntries(Object.entries(c).map(([k,v])=>[k,estMedian(v)])),
+               byTok:Object.fromEntries(Object.entries(tk).filter(([,v])=>v.length>=2).map(([k,v])=>[k,estMedian(v)])),
+               global:estMedian(g) };
   }catch(e){}
 }
-function suggestEstimate(name,ch){ const k=(name||'').trim().toLowerCase(); return estIndex.byName[k]||estIndex.byCh[ch]||0; }
+function round5(m){ return Math.max(5,Math.min(480,Math.round(m/5)*5)); }
+function suggestEstimate(name,ch){ const k=(name||'').trim().toLowerCase();
+  if(estIndex.byName[k]) return estIndex.byName[k];                    // done this exact task before
+  const toks=estToks(name).map(w=>estIndex.byTok[w]).filter(Boolean);  // tasks sharing keywords
+  if(toks.length) return round5(estMedian(toks));
+  if(estIndex.byCh[ch]) return round5(estIndex.byCh[ch]);              // typical task in this channel
+  return 0;                                                           // not enough history yet
+}
 // the next working day after `from` (skips Saturday & Sunday → Friday rolls to Monday)
 function nextWorkdayKey(from){
   const d=new Date(from); d.setHours(12,0,0,0); d.setDate(d.getDate()+1);
@@ -6184,6 +6201,17 @@ attachAutocomplete(document.getElementById('nowNameInp'));
 attachAutocomplete(document.getElementById('nameInput'));
 acMenuEl().addEventListener('pointerdown',e=>{ const it=e.target.closest('.ac-item[data-i]'); if(it){ e.preventDefault(); acChoose(+it.dataset.i); } });
 document.getElementById('addEst').addEventListener('keydown',e=>{ if(e.key==='Enter')addTask(); });
+/* live, learned length suggestion: as you name a task, the length field hints
+   the predicted estimate (from your history) — accepted automatically on Add */
+(function(){ const nameEl=document.getElementById('addName'), estEl=document.getElementById('addEst');
+  if(!nameEl||!estEl) return; const DEF=estEl.getAttribute('placeholder')||'30m / 1h'; let tmr;
+  nameEl.addEventListener('input',()=>{ clearTimeout(tmr); tmr=setTimeout(()=>{
+    const v=nameEl.value.trim(); if(!v){ estEl.placeholder=DEF; return; }
+    const p=parseQuickAdd(v); const nm=p.name||v;
+    const ch=p.projectName?matchChannel(p.projectName):document.getElementById('addChannel').value;
+    const s=p.estimateMin?0:suggestEstimate(nm,ch);
+    estEl.placeholder = s ? ('~'+minToDurationStr(s)+' (learned)') : DEF;
+  },180); }); })();
 document.getElementById('nowStop').addEventListener('click',()=>{ if(state.activeId)toggleRun(state.activeId); });
 document.getElementById('nowStart').addEventListener('click',startAdHocTimer);
 document.getElementById('focusExit').addEventListener('click',closeFocus);
