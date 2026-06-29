@@ -317,6 +317,12 @@
   .task .times{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;display:flex;align-items:center}
   .task .times .act{color:var(--ink);font-weight:600}
   .task .times .act.over{color:var(--over)}
+  .task .times .est{cursor:pointer;border-radius:4px;padding:0 2px}
+  .task .times .est:hover{background:var(--surface-2);color:var(--ink)}
+  .task .times .est.empty{opacity:.5}
+  .task .times .sched-tag{cursor:pointer}
+  .inline-edit{font-family:var(--mono);font-size:12px;width:74px;border:1px solid var(--accent);border-radius:6px;
+    padding:2px 5px;background:var(--surface);color:var(--ink);outline:none}
   .tdtag{font-family:var(--display);font-size:9px;font-weight:700;letter-spacing:.04em;color:var(--todoist);
     border:1px solid var(--todoist);border-radius:4px;padding:1px 3px;margin-right:6px;line-height:1}
   /* todoist metadata chips */
@@ -2434,6 +2440,18 @@ function render(){
   if(typeof refreshKbd==='function') refreshKbd();
   renderArc(); renderNow(); renderPhase();
 }
+// swap a small chip for an input to edit it in place (estimate / scheduled time)
+function inlineEditField(el,type,value,onCommit){
+  const inp=document.createElement('input'); inp.type=type==='time'?'time':'text';
+  if(type==='time') inp.step='300'; else inp.inputMode='decimal';
+  inp.value=value; inp.className='inline-edit'; if(type!=='time') inp.placeholder='30m';
+  el.replaceWith(inp); inp.focus(); if(inp.select) try{inp.select();}catch(e){}
+  let done=false;
+  const commit=()=>{ if(done)return; done=true; onCommit(inp.value.trim()); };
+  inp.addEventListener('blur',commit);
+  inp.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); inp.blur(); } else if(e.key==='Escape'){ done=true; render(); } });
+  inp.addEventListener('click',e=>e.stopPropagation());
+}
 function taskRow(t){
   const ch=chById(t.channelId); const act=liveActual(t);
   const over=t.estimateMin>0 && act>t.estimateMin*60000;
@@ -2449,8 +2467,8 @@ function taskRow(t){
       '<div class="row1">'+
         '<span class="name" contenteditable="true" spellcheck="false">'+escapeHtml(t.name)+'</span>'+
         '<span class="times">'+(t.todoistId?'<span class="tdtag" title="Synced with Todoist">TD</span>':'')+
-          (t.scheduledMin!=null?'<span class="tdtag" style="color:var(--now);border-color:var(--now)" title="Scheduled">'+hmFromMin(t.scheduledMin)+'</span>':'')+
-          (t.estimateMin?'<span class="est">'+t.estimateMin+'m est</span> · ':'')+
+          (t.scheduledMin!=null?'<span class="tdtag sched-tag" style="color:var(--now);border-color:var(--now)" title="Click to change time">'+hmFromMin(t.scheduledMin)+'</span>':'')+
+          '<span class="est'+(t.estimateMin?'':' empty')+'" title="Click to edit estimate">'+(t.estimateMin?t.estimateMin+'m est':'+ est')+'</span> · '+
           '<span class="act'+(over?' over':'')+'">'+durFmt(act)+'</span></span>'+
       '</div>'+
       taskMetaHtml(t)+rowProjectChip(t)+
@@ -2460,6 +2478,14 @@ function taskRow(t){
     '<button class="go'+(t.running?' running':'')+'" title="Start / pause">'+(t.running?PAUSE:PLAY)+'</button>'+
     '<button class="check'+(t.done?' done':'')+'" title="Done">'+CHECK+'</button>'+
     detHtml;
+  const estEl=li.querySelector('.est');
+  if(estEl) estEl.addEventListener('click',e=>{ e.stopPropagation();
+    inlineEditField(estEl,'text',t.estimateMin?minToDurationStr(t.estimateMin):'',v=>{ t.estimateMin=durationToMin(v)||0;
+      if(t.todoistId&&tdConnected()) enqueueTd({kind:'update',taskLocalId:t.id,todoistId:t.todoistId,payload:{duration:t.estimateMin||null,duration_unit:'minute'}});
+      saveDay(); render(); }); });
+  const schedEl=li.querySelector('.sched-tag');
+  if(schedEl) schedEl.addEventListener('click',e=>{ e.stopPropagation();
+    inlineEditField(schedEl,'time',hmInput(t.scheduledMin),v=>{ const m=minFromHM(v); if(m!=null){ t.scheduledMin=m; pushTimeToTodoist(t); maybeAutoArrange(); } saveDay(); render(); }); });
   const dotEl=li.querySelector('.dot');
   dotEl.title='Drag onto the Day timeline to schedule';
   dotEl.addEventListener('pointerdown',e=>startListSchedule(e,t,dotEl));
