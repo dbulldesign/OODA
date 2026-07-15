@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>OODA — plan, track, close out</title>
+<meta name="description" content="A single-file daily planner with time tracking and Todoist sync. Plan your day, track time against estimates, and close out with a reflection — all in the browser, no backend.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="32x32" id="faviconLink" href="icons/favicon-32.png?v=4">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=4">
@@ -1257,6 +1258,11 @@
   (function(){ try{ var s=localStorage.getItem('ooda:_theme');
     if(!s) s=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
     document.documentElement.setAttribute('data-theme',s);
+    // sync the OS chrome colour to the resolved paper background before first paint,
+    // so dark-mode users don't flash a light status/title bar until applyTheme() runs
+    try{ var mc=document.querySelector('meta[name="theme-color"]');
+      var paper=getComputedStyle(document.documentElement).getPropertyValue('--paper').trim();
+      if(mc&&paper) mc.setAttribute('content',paper); }catch(e){}
     if(localStorage.getItem('ooda:_wide')==='1') document.documentElement.classList.add('wide');
     if(localStorage.getItem('ooda:_glass')==='1') document.documentElement.classList.add('glass');
     // liquid-glass look (blur / frost / glow / palette) — applied pre-paint to avoid a flash
