@@ -3,7 +3,10 @@
    falling back to the cache (and to index.html for navigations) when offline.
    Cross-origin calls (Todoist / GitHub APIs) are left to the network and are
    handled by the app's offline queue. */
-const CACHE = 'ooda-v1.1.0';   // keep in sync with APP_VERSION in index.html
+// The deploy workflow (.github/workflows/pages.yml) rewrites this cache name and
+// index.html's APP_VERSION to the same '1.1.<run_number>' on every deploy, so they
+// stay in lock-step automatically — the committed base value below is fine as-is.
+const CACHE = 'ooda-v1.1.0';
 const SHELL = ['./', './index.html', './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png'];
