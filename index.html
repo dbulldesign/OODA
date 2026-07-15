@@ -1293,9 +1293,9 @@
   <header>
     <div>
       <div class="datenav">
-        <button id="dPrev" class="dnav" title="Previous day">‹</button>
+        <button id="dPrev" class="dnav" title="Previous day" aria-label="Previous day">‹</button>
         <span class="date" id="dateLabel" title="Pick a date">—</span>
-        <button id="dNext" class="dnav" title="Next day">›</button>
+        <button id="dNext" class="dnav" title="Next day" aria-label="Next day">›</button>
         <button id="dToday" class="dtoday" style="display:none">Today</button>
       </div>
       <div class="brand">
@@ -1329,8 +1329,8 @@
         <span id="ph-reflect">Reflect</span>
         <button class="theme-toggle" id="themeBtn" role="switch" title="Toggle light / dark" aria-label="Toggle light / dark"><span class="tt-knob" id="themeKnob">☀️</span></button>
         <button class="theme-btn" id="searchBtn" title="Search tasks &amp; projects (⌘K)" aria-label="Search">🔍</button>
-        <button class="theme-btn" id="helpBtn" title="Help & guide">?</button>
-        <button class="theme-btn settings-btn" id="settingsBtn" title="Settings">⚙</button>
+        <button class="theme-btn" id="helpBtn" title="Help & guide" aria-label="Help & guide">?</button>
+        <button class="theme-btn settings-btn" id="settingsBtn" title="Settings" aria-label="Settings">⚙</button>
       </div>
       <div class="sync-row">
         <button class="sync-btn" id="syncBtn" style="display:none"><span class="net-dot" id="netDot"></span><span id="syncBtnText">⟳ Sync</span></button>
@@ -1484,7 +1484,7 @@
 <div class="update-bar" id="updateBar" style="display:none">
   <span>A new version of OODA is available.</span>
   <button id="updateBtn">Update &amp; reload</button>
-  <button id="updateDismiss" title="Dismiss">✕</button>
+  <button id="updateDismiss" title="Dismiss" aria-label="Dismiss">✕</button>
 </div>
 <div id="glassbg" aria-hidden="true"></div>
 <div id="focusView" style="display:none">
@@ -1502,10 +1502,10 @@
     <div class="focus-next" id="focusNext"></div>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 <div id="confetti" aria-hidden="true"></div>
 
-<dialog id="chDialog">
+<dialog id="chDialog" aria-label="Channels">
   <div class="dlg-in">
     <h3>Channels</h3>
     <div id="chEditList"></div>
@@ -1517,7 +1517,7 @@
   </div>
 </dialog>
 
-<dialog id="tdDialog">
+<dialog id="tdDialog" aria-label="Todoist sync">
   <div class="dlg-in">
     <h3>Todoist sync</h3>
     <p class="td-hint">Paste your personal API token from <b>Todoist → Settings → Integrations → Developer</b>. It is stored only on this device and is sent straight to Todoist — never to anyone else.</p>
@@ -1556,7 +1556,7 @@
   </div>
 </dialog>
 
-<dialog id="browseDialog">
+<dialog id="browseDialog" aria-label="Import tasks from Todoist">
   <div class="dlg-in">
     <h3>Import tasks from Todoist</h3>
     <p class="td-hint">Pull in <b>any</b> task — leave the box blank for all active tasks, or type a filter to narrow it. Tick the ones to bring into today.</p>
@@ -1576,7 +1576,7 @@
   </div>
 </dialog>
 
-<dialog id="syncDialog">
+<dialog id="syncDialog" aria-label="Device sync">
   <div class="dlg-in">
     <h3>Sync across devices</h3>
     <p class="td-hint">Keeps your tasks, times and reflections in sync between phone and laptop using a <b>private GitHub Gist</b> — free and reliable. Create a <b>GitHub personal access token</b> with the <b>gist</b> scope (github.com/settings/tokens), paste it below, and Save. The token stays on this device; only your OODA data goes to the gist.</p>
@@ -1601,7 +1601,7 @@
   </div>
 </dialog>
 
-<dialog id="taskDialog">
+<dialog id="taskDialog" aria-label="Edit task">
   <div class="dlg-in">
     <h3 id="taskDlgTitle">Edit task</h3>
     <div class="td-field">
@@ -1664,7 +1664,7 @@
   </div>
 </dialog>
 
-<dialog id="addDialog" class="sheet">
+<dialog id="addDialog" class="sheet" aria-label="Add a task">
   <div class="sheet-card" id="addSheet">
     <div class="sheet-grab"></div>
     <input id="qaName" class="sheet-title" type="text" spellcheck="false" autocomplete="off" enterkeyhint="done"
@@ -1685,7 +1685,7 @@
   </div>
 </dialog>
 
-<dialog id="secDialog">
+<dialog id="secDialog" aria-label="Protect your keys">
   <div class="dlg-in">
     <h3 id="secTitle">Protect your keys</h3>
     <p class="td-hint" id="secHint"></p>
@@ -1705,7 +1705,7 @@
   </div>
 </dialog>
 
-<dialog id="unlockDialog">
+<dialog id="unlockDialog" aria-label="Unlock your keys">
   <div class="dlg-in">
     <h3>Unlock your keys</h3>
     <p class="td-hint">Your Todoist and GitHub keys are encrypted on this device. Enter your password to unlock syncing — your tasks are available either way.</p>
@@ -1721,7 +1721,7 @@
   </div>
 </dialog>
 
-<dialog id="dispDialog">
+<dialog id="dispDialog" aria-label="Display settings">
   <div class="dlg-in">
     <h3>Display</h3>
     <label class="td-check"><input type="checkbox" id="dispWide"> Fill the screen (wide layout)</label>
@@ -1859,7 +1859,7 @@
   </div>
 </dialog>
 
-<dialog id="reschedDialog">
+<dialog id="reschedDialog" aria-label="Reschedule task">
   <div class="dlg-in">
     <h3>Reschedule</h3>
     <p class="td-hint" id="reschedHint">Type how to move it.</p>
@@ -1869,7 +1869,7 @@
   </div>
 </dialog>
 
-<dialog id="nameDialog">
+<dialog id="nameDialog" aria-label="Name this task">
   <div class="dlg-in">
     <h3>Name this task</h3>
     <p class="td-hint" id="nameHint">What were you working on?</p>
@@ -1881,7 +1881,7 @@
   </div>
 </dialog>
 
-<dialog id="helpDialog" class="help">
+<dialog id="helpDialog" class="help" aria-label="Help & guide">
   <div class="dlg-in">
     <h3>OODA — guide</h3>
     <p class="help-intro">A quick tour of what OODA can do. Everything lives on this device (and syncs if you connect Todoist or device sync).</p>
@@ -1892,7 +1892,7 @@
   </div>
 </dialog>
 
-<dialog id="cmdkDialog" class="cmdk">
+<dialog id="cmdkDialog" class="cmdk" aria-label="Command palette">
   <div class="cmdk-in">
     <input id="cmdkInput" type="text" placeholder="Search any task, project, or command…" autocomplete="off" spellcheck="false">
     <div class="cmdk-list" id="cmdkList"></div>
@@ -1900,7 +1900,7 @@
   </div>
 </dialog>
 
-<dialog id="syncLogDialog">
+<dialog id="syncLogDialog" aria-label="Sync activity log">
   <div class="dlg-in">
     <h3>Sync activity</h3>
     <div class="synclog" id="syncLogList"></div>
@@ -1908,7 +1908,7 @@
   </div>
 </dialog>
 
-<dialog id="kbdDialog">
+<dialog id="kbdDialog" aria-label="Keyboard shortcuts">
   <div class="dlg-in">
     <h3>Keyboard shortcuts</h3>
     <div class="kbd-keys" id="kbdKeys"></div>
@@ -1916,7 +1916,7 @@
   </div>
 </dialog>
 
-<dialog id="projStatsDialog">
+<dialog id="projStatsDialog" aria-label="Project statistics">
   <div class="dlg-in">
     <div class="ps-title"><span class="ps-dot" id="psDot"></span><h3 id="psName" style="margin:0">Project</h3></div>
     <div id="projStatsBody"></div>
@@ -1924,7 +1924,7 @@
   </div>
 </dialog>
 
-<dialog id="revDialog">
+<dialog id="revDialog" aria-label="Review">
   <div class="dlg-in">
     <h3>Review</h3>
     <div class="rev-range" id="revRange">
@@ -1937,7 +1937,7 @@
   </div>
 </dialog>
 
-<dialog id="settingsDialog">
+<dialog id="settingsDialog" aria-label="Settings">
   <div class="dlg-in">
     <h3>Settings</h3>
     <div class="set-group">
@@ -2010,7 +2010,7 @@
   </div>
 </dialog>
 
-<dialog id="tplDialog">
+<dialog id="tplDialog" aria-label="Day templates">
   <div class="dlg-in">
     <h3>Day templates</h3>
     <p class="td-hint">Save a day's set of tasks (with their schedule) and drop it onto any day later.</p>
@@ -2022,7 +2022,7 @@
   </div>
 </dialog>
 
-<dialog id="fillDialog">
+<dialog id="fillDialog" aria-label="Fill my day">
   <div class="dlg-in">
     <h3>Fill my day</h3>
     <p class="td-hint">Auto-place unscheduled tasks into the open slots on the timeline (it won't move tasks you've already placed).</p>
