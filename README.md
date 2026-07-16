@@ -187,7 +187,9 @@ tracking is built to be genuinely useful within that limit:
   Activity dialog shows *"Desktop host connected"*). This mirrors how OODA
   already prefers a host-provided `window.storage` over `localStorage` — the
   same page works as a plain website *and* as a fully-automatic tracker inside a
-  host, with no code change.
+  host, with no code change. A ready-to-run reference host (Electron) lives in
+  [`host/`](host/) — `cd host && npm install && npm start` opens OODA in a
+  desktop window and feeds it your real foreground app + idle state.
 
 Everything is stored **on your device** inside the day record, so activity
 **syncs, backs up, and exports** right along with your tasks and reflections —

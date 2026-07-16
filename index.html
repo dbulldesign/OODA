@@ -622,6 +622,7 @@
     border-radius:8px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;flex:none;white-space:nowrap}
   .update-bar #updateDismiss{background:none;color:var(--surface);border-color:transparent;padding:7px 8px;font-weight:400}
   .app-ver{color:var(--ink-faint);font-size:11px;font-family:var(--mono)}
+  .hdr-ver{color:var(--ink-faint);font-size:10.5px;font-family:var(--mono);align-self:flex-start;margin-top:1px;letter-spacing:.02em}
   /* action toasts stack the message over a right-aligned button so neither gets squished */
   .toast.has-action{display:flex;flex-direction:column;align-items:stretch;gap:10px;text-align:left;
     width:min(92vw,380px);max-width:none;line-height:1.4}
@@ -1350,6 +1351,7 @@
             d="M 256 300 L 256 168 C 256 142 228 142 224 166 C 221 186 250 186 256 168 C 262 186 291 186 288 166 C 284 142 256 142 256 168"/>
         </svg>
         <h1>OODA</h1>
+        <span id="hdrVer" class="hdr-ver" title="App version"></span>
       </div>
     </div>
     <div class="head-right">
@@ -6353,7 +6355,8 @@ function celebrate(li){
 }
 
 /* ---------- service worker + in-app update prompt ---------- */
-function showVersion(){ const el=document.getElementById('appVer'); if(el) el.textContent='v'+APP_VERSION; }
+function showVersion(){ const el=document.getElementById('appVer'); if(el) el.textContent='v'+APP_VERSION;
+  const h=document.getElementById('hdrVer'); if(h) h.textContent='v'+APP_VERSION; }
 async function initServiceWorker(){
   if(!('serviceWorker' in navigator)) return;
   let reg;
