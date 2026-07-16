@@ -242,7 +242,26 @@
   .act-chip{font-size:12.5px;padding:5px 10px;border-radius:14px;border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:5px}
   .act-chip:hover{border-color:var(--accent)}
   .act-chip .ac-dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .act-tl-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0 6px}
+  .act-viewseg{display:flex;gap:4px;flex:none}
+  .act-viewseg button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-soft);border-radius:7px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:var(--display)}
+  .act-viewseg button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
   .act-tl{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto;margin-bottom:4px}
+  .act-grp{border-bottom:1px solid var(--line)}
+  .act-grp>summary{display:flex;align-items:center;gap:10px;padding:7px 4px;cursor:pointer;font-size:13px;list-style:none}
+  .act-grp>summary::-webkit-details-marker{display:none}
+  .act-grp .ag-caret{color:var(--ink-faint);font-size:9px;transition:transform .15s;flex:none}
+  .act-grp[open] .ag-caret{transform:rotate(90deg)}
+  .act-grp .ag-lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .act-grp .ag-cnt{flex:none;color:var(--ink-soft);font-size:11.5px;background:var(--surface-2);border-radius:9px;padding:1px 7px}
+  .act-grp .ag-dur{flex:none;font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600;font-family:var(--display)}
+  .act-grp .ag-kids{padding:0 4px 8px 36px;display:flex;flex-direction:column;gap:1px}
+  .ag-row{display:flex;align-items:center;gap:10px;padding:3px 0;font-size:12px;color:var(--ink-soft)}
+  .ag-row .ag-time{flex:1;font-variant-numeric:tabular-nums}
+  .ag-row .ag-kdur{flex:none;font-variant-numeric:tabular-nums}
+  .ag-row .as-del{flex:none;border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0 2px;opacity:0}
+  .ag-row:hover .as-del{opacity:.7}
+  .ag-row .as-del:hover{color:var(--over);opacity:1}
   .act-seg{display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:13px}
   .act-seg:last-child{border-bottom:0}
   .act-seg .as-ico{flex:none;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:7px;font-size:14px}
@@ -1986,7 +2005,13 @@
       <span id="actAutoTxt">Auto away-detection off</span>
       <button id="actAutoBtn">Enable auto-detect</button>
     </div>
-    <div class="rev-h">Today's timeline</div>
+    <div class="act-tl-head">
+      <div class="rev-h" style="margin:0">Today's activity</div>
+      <div class="act-viewseg" id="actViewSeg">
+        <button data-v="timeline" class="on">Timeline</button>
+        <button data-v="grouped">Grouped</button>
+      </div>
+    </div>
     <div class="act-tl" id="actTl"></div>
     <div id="actBreak"></div>
     <p class="td-hint" style="margin:14px 0 0">A web page can't read your other apps or email directly — you log <b>what</b> you're doing in a tap and OODA auto-categorizes it and tracks the time. Turn on <b>auto-detect</b> and OODA marks time away from the keyboard for you. A desktop host that exposes <code>window.activity</code> can feed your foreground app &amp; email automatically.</p>
@@ -2194,7 +2219,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.2.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.3.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4683,6 +4708,41 @@ function actCategorize(label){
   return 'other';
 }
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
+let actView='timeline';   // 'timeline' (chronological) or 'grouped' (by activity/project)
+// one chronological segment row
+function actSegRowHtml(s){ const c=actCatById(s.cat); const end=s.end||Date.now();
+  return '<div class="act-seg" data-id="'+s.id+'"><div class="as-ico" style="background:'+c.color+'22">'+c.icon+'</div>'+
+    '<div class="as-body"><div class="as-lbl">'+escapeHtml(s.label)+(s.source==='auto'||s.source==='host'?' <span style="opacity:.5">·auto</span>':'')+'</div>'+
+      '<div class="as-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+'</div></div>'+
+    '<div class="as-dur">'+durFmt(end-s.start)+'</div>'+
+    '<button class="as-del" data-id="'+s.id+'" title="Delete">✕</button></div>';
+}
+// group segments that share a label (case-insensitive) into one collapsible
+// entry — e.g. 15× "OODA project" become one row with the combined time you can
+// expand to see every individual session. Sorted by most time spent.
+function actGroupHtml(list){
+  const groups=new Map();
+  for(const s of list){ const key=(s.label||'').trim().toLowerCase()||'(unlabeled)';
+    let g=groups.get(key); if(!g){ g={label:s.label||'(unlabeled)',segs:[],ms:0,cats:{}}; groups.set(key,g); }
+    g.segs.push(s); g.ms+=Math.max(0,(s.end||Date.now())-s.start); g.cats[s.cat]=(g.cats[s.cat]||0)+1;
+  }
+  return [...groups.values()].sort((a,b)=>b.ms-a.ms).map(g=>{
+    const cat=Object.keys(g.cats).sort((x,y)=>g.cats[y]-g.cats[x])[0]; const c=actCatById(cat);
+    const running=g.segs.some(s=>s.end==null);
+    const kids=g.segs.slice().sort((a,b)=>a.start-b.start).map(s=>{ const end=s.end||Date.now();
+      return '<div class="ag-row"><span class="ag-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+'</span>'+
+        '<span class="ag-kdur">'+durFmt(end-s.start)+'</span>'+
+        '<button class="as-del" data-id="'+s.id+'" title="Delete">✕</button></div>';
+    }).join('');
+    return '<details class="act-grp"'+(running?' open':'')+'><summary>'+
+      '<span class="ag-caret">▶</span>'+
+      '<span class="as-ico" style="background:'+c.color+'22">'+c.icon+'</span>'+
+      '<span class="ag-lbl">'+escapeHtml(g.label)+'</span>'+
+      '<span class="ag-cnt">×'+g.segs.length+'</span>'+
+      '<span class="ag-dur">'+minFmt(g.ms)+'</span></summary>'+
+      '<div class="ag-kids">'+kids+'</div></details>';
+  }).join('');
+}
 function actToday(){ return dayKeyFor(new Date()); }
 function actViewingToday(){ return dayKey()===actToday(); }
 // live logging always targets *today* even while you browse another day's history
@@ -4822,17 +4882,12 @@ async function actRenderDialog(){
   else if(!('IdleDetector' in window)){ txt.textContent='Auto away-detection needs Chrome/Edge — tap ☕ Away to log breaks'; btn.style.display='none'; }
   else if(actAutoOn){ txt.textContent='Auto away-detection on'; btn.textContent='Turn off'; btn.style.display=''; btn.onclick=()=>actDisableAuto(); }
   else { txt.textContent='Auto away-detection off'; btn.textContent='Enable auto-detect'; btn.style.display=''; btn.onclick=()=>actEnableAuto(); }
-  // timeline
+  // timeline / grouped
+  document.querySelectorAll('#actViewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===actView));
   const tl=document.getElementById('actTl');
   if(!list.length){ tl.innerHTML='<div class="rev-empty">Nothing logged today yet.</div>'; }
-  else { tl.innerHTML=list.map(s=>{ const c=actCatById(s.cat); const end=s.end||Date.now();
-      const dur=durFmt(end-s.start);
-      return '<div class="act-seg" data-id="'+s.id+'"><div class="as-ico" style="background:'+c.color+'22">'+c.icon+'</div>'+
-        '<div class="as-body"><div class="as-lbl">'+escapeHtml(s.label)+(s.source==='auto'||s.source==='host'?' <span style="opacity:.5">·auto</span>':'')+'</div>'+
-          '<div class="as-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+'</div></div>'+
-        '<div class="as-dur">'+dur+'</div>'+
-        '<button class="as-del" data-id="'+s.id+'" title="Delete">✕</button></div>';
-    }).join(''); }
+  else if(actView==='grouped'){ tl.innerHTML=actGroupHtml(list); }
+  else { tl.innerHTML=list.map(actSegRowHtml).join(''); }
   tl.querySelectorAll('.as-del').forEach(b=>b.onclick=async e=>{ e.stopPropagation();
     const l=await actGetTodayList(); const i=l.findIndex(x=>x.id===b.dataset.id);
     if(i>=0){ l.splice(i,1); await actSaveTodayList(l); actRenderDialog(); } });
@@ -4861,6 +4916,7 @@ async function actClearToday(){
 }
 function actInit(){
   actLoadAuto(); actInitHost();
+  try{ const v=localStorage.getItem(LS_PREFIX+'_actview'); if(v==='grouped'||v==='timeline') actView=v; }catch(e){}
   if(actAutoOn && ('IdleDetector' in window)){ actStartIdle().catch(()=>{}); }
 }
 /* ---------- day templates (save / apply a day shape) ---------- */
@@ -6591,6 +6647,7 @@ document.getElementById('actAway').addEventListener('click',actAway);
 document.getElementById('actClear').addEventListener('click',actClearToday);
 document.getElementById('actInput').addEventListener('input',actInputHint);
 document.getElementById('actInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actLogFromInput(); } });
+document.getElementById('actViewSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b){ actView=b.dataset.v; try{ localStorage.setItem(LS_PREFIX+'_actview',actView); }catch(err){} actRenderDialog(); } });
 document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
 document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
 document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
