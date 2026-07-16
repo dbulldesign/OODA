@@ -276,6 +276,11 @@
   .act-perm button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
   .act-status-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-faint);flex:none}
   .act-status-dot.on{background:#3F7A56}
+  .act-sync{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);margin:0 0 12px}
+  .act-sync .as-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--ink-faint)}
+  .act-sync.ok .as-dot{background:#3F7A56}
+  .act-sync.off .as-dot{background:#C2752A}
+  .act-sync.warn .as-dot{background:var(--over)}
   .heatmap{display:flex;gap:3px;overflow-x:auto;padding:2px 0}
   .hm-col{display:flex;flex-direction:column;gap:3px}
   .hm-cell{width:12px;height:12px;border-radius:2px;background:var(--surface-2);flex:none}
@@ -2005,6 +2010,7 @@
       <span id="actAutoTxt">Auto away-detection off</span>
       <button id="actAutoBtn">Enable auto-detect</button>
     </div>
+    <div class="act-sync" id="actSync"></div>
     <div class="act-tl-head">
       <div class="rev-h" style="margin:0">Today's activity</div>
       <div class="act-viewseg" id="actViewSeg">
@@ -2219,7 +2225,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.3.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.4.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4829,6 +4835,7 @@ function actInitHost(){
   if(!h||typeof h.subscribe!=='function') return;
   try{ h.subscribe(ev=>{
     if(!ev) return;
+    if(ev.stop){ actStop(); return; }                 // host paused capture — close the current segment
     if(ev.idle){ actPush('Away / idle','break','host'); return; }
     const label = ev.title ? (ev.app? ev.app+' — '+ev.title : ev.title) : (ev.app||'');
     if(label) actPush(label, ev.category||actCategorize(label),'host');
@@ -4882,6 +4889,15 @@ async function actRenderDialog(){
   else if(!('IdleDetector' in window)){ txt.textContent='Auto away-detection needs Chrome/Edge — tap ☕ Away to log breaks'; btn.style.display='none'; }
   else if(actAutoOn){ txt.textContent='Auto away-detection on'; btn.textContent='Turn off'; btn.style.display=''; btn.onclick=()=>actDisableAuto(); }
   else { txt.textContent='Auto away-detection off'; btn.textContent='Enable auto-detect'; btn.style.display=''; btn.onclick=()=>actEnableAuto(); }
+  // storage / sync state — makes it clear captures are saved even with no connection
+  const sync=document.getElementById('actSync'); sync.className='act-sync';
+  let sMsg, sCls;
+  if(!storeOk){ sCls='warn'; sMsg='In-memory only — captures won\'t persist on this device.'; }
+  else if(!navigator.onLine){ sCls='off'; sMsg='Offline — captures are saved on this device and will sync when you reconnect.'; }
+  else if(typeof syncOn==='function' && syncOn() && dirtyOffline){ sCls='off'; sMsg='Saved on this device — syncing pending changes…'; }
+  else if(typeof syncOn==='function' && syncOn()){ sCls='ok'; sMsg='Saved on this device and synced across your devices.'; }
+  else { sCls='ok'; sMsg='Saved on this device.'; }
+  sync.classList.add(sCls); sync.innerHTML='<span class="as-dot"></span><span>'+sMsg+'</span>';
   // timeline / grouped
   document.querySelectorAll('#actViewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===actView));
   const tl=document.getElementById('actTl');
