@@ -29,16 +29,30 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  // OODA_URL points at a deployed build; otherwise load the local app — from the
-  // packaged resources when built, or the sibling index.html in development.
-  if (process.env.OODA_URL) {
-    win.loadURL(process.env.OODA_URL);
+  // By default load the live deployed app, so the desktop window auto-updates
+  // its UI whenever a new version ships (the app is a PWA — it caches itself
+  // and shows its own "new version available" prompt). If the site can't be
+  // reached (offline first launch), fall back to the copy bundled in the app.
+  // OODA_URL overrides the default with any URL or a local file path.
+  const override = process.env.OODA_URL;
+  if (override) {
+    if (/^https?:/i.test(override)) win.loadURL(override);
+    else win.loadFile(override);
   } else {
-    const local = app.isPackaged
-      ? path.join(process.resourcesPath, 'app-web', 'index.html')
-      : path.join(__dirname, '..', 'index.html');
-    win.loadFile(local);
+    win.loadURL(DEFAULT_URL);
+    win.webContents.on('did-fail-load', (_e, _code, _desc, _url, isMainFrame) => {
+      if (isMainFrame) win.loadFile(localAppPath());
+    });
   }
+}
+
+// The deployed OODA app; the desktop host defaults to this so UI updates flow
+// automatically. Override with the OODA_URL environment variable.
+const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
+function localAppPath() {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'app-web', 'index.html')
+    : path.join(__dirname, '..', 'index.html');
 }
 
 function send(data) {

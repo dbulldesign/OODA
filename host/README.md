@@ -33,10 +33,22 @@ npm install
 npm start          # opens OODA in a desktop window and starts tracking
 ```
 
-By default it loads the sibling `../index.html`. To point at a deployed build:
+By default it loads the **live deployed app**
+(`https://dbulldesign.github.io/OODA/`), so the UI **updates itself** whenever a
+new version ships — the app is a PWA that caches itself and shows its own
+*"new version available → Update & reload"* prompt. If the site can't be
+reached on first launch it falls back to the copy bundled in the app, and once
+cached it works offline.
+
+This means you only need to build and reinstall the `.exe` when the **tracking
+wrapper itself** changes (`main.js` / `preload.js`) — everyday UI updates arrive
+on their own.
+
+Override the target (any URL, or a local file for fully-offline use):
 
 ```bash
 OODA_URL="https://your-ooda-deploy.example" npm start
+OODA_URL="../index.html" npm start
 ```
 
 ## Package a Windows installer
