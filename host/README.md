@@ -75,6 +75,15 @@ bar, and in Alt-Tab — visible without hovering the tray.
 > → Taskbar → Taskbar behaviors → Combine taskbar buttons and hide labels* to
 > **Never**. The title bar and Alt-Tab always show it regardless.
 
+## Always-on-top mini HUD
+
+A small **always-on-top pill** floats in the top-right corner showing the
+current activity and a live timer (e.g. *●  Outlook — Inbox  4:12*) — visible at
+a glance over any window, regardless of taskbar settings. It has a **⏸/▶** button
+to pause/resume capture and a **▢** button to open the main OODA window, and you
+can **drag** it anywhere. Toggle it with **Show / Hide mini HUD** in the tray
+menu. It never appears in the taskbar and doesn't steal focus.
+
 ## Package a Windows installer
 
 [`electron-builder`](https://www.electron.build/) is wired up to produce a
