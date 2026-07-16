@@ -43,6 +43,7 @@
       lbl.textContent = paused ? 'Paused' : (d.label || 'Idle');
       dot.classList.toggle('paused', paused);
       pauseBtn.textContent = paused ? '▶' : '⏸';
+      tEl.style.display = (d.showTimer === false) ? 'none' : '';
       if (d.startedAt) start = d.startedAt;
       tick();
     });

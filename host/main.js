@@ -13,15 +13,35 @@
    native dependency, cross-platform. */
 const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
-const IDLE_SECONDS = 60;    // match the app's Idle Detection threshold
 const POLL_MS = 4000;       // how often to sample the foreground window
 const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
+
+// Persisted user settings (written to userData/settings.json).
+const DEFAULTS = {
+  hudEnabled: true,          // show the always-on-top mini HUD
+  hudCorner: 'top-right',    // top-right | top-left | bottom-right | bottom-left
+  hudOpacity: 1,             // 0.4 – 1
+  hudShowTimer: true,        // show the live timer on the HUD
+  idleMinutes: 1,            // mark "away" after this many minutes idle
+  launchAtStartup: false,    // start the host at login
+};
+let settings = { ...DEFAULTS };
+function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
+function loadSettings() {
+  try { settings = { ...DEFAULTS, ...JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) }; }
+  catch (e) { settings = { ...DEFAULTS }; }
+}
+function saveSettings() {
+  try { fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2)); } catch (e) {}
+}
+function idleSeconds() { return Math.max(30, (settings.idleMinutes || 1) * 60); }
 
 let win = null;
 let tray = null;
 let hud = null;             // always-on-top mini HUD window
-let hudVisible = true;      // whether the HUD is shown
+let settingsWin = null;     // settings window
 let lastKey = null;         // last app|title we forwarded (dedupe → one segment per switch)
 let lastIdle = false;
 let paused = false;         // tray "Pause capturing"
@@ -109,7 +129,8 @@ function updateTray() {
     { label: paused ? 'Capture paused' : 'Capturing: ' + status, enabled: false },
     { type: 'separator' },
     { label: paused ? 'Resume capturing' : 'Pause capturing', click: togglePause },
-    { label: hudVisible ? 'Hide mini HUD' : 'Show mini HUD', click: toggleHud },
+    { label: settings.hudEnabled ? 'Hide mini HUD' : 'Show mini HUD', click: toggleHud },
+    { label: 'Settings…', click: openSettingsWindow },
     { label: 'Show OODA', click: showWindow },
     { type: 'separator' },
     { label: 'Quit OODA', click: () => { isQuitting = true; app.quit(); } },
@@ -119,14 +140,23 @@ function updateTray() {
 // --- always-on-top mini HUD: a small pill that stays above other windows and
 // shows the current activity + a live timer, so what's being captured is
 // visible at a glance regardless of Windows taskbar settings. ---
+const HUD_W = 300, HUD_H = 46;
+function hudXY() {
+  const wa = screen.getPrimaryDisplay().workArea, m = 12;
+  const right = wa.x + wa.width - HUD_W - m, left = wa.x + m;
+  const top = wa.y + m, bottom = wa.y + wa.height - HUD_H - m;
+  switch (settings.hudCorner) {
+    case 'top-left': return { x: left, y: top };
+    case 'bottom-left': return { x: left, y: bottom };
+    case 'bottom-right': return { x: right, y: bottom };
+    default: return { x: right, y: top };   // top-right
+  }
+}
 function createHud() {
   try {
-    const wa = screen.getPrimaryDisplay().workArea;
-    const W = 300, H = 46;
+    const { x, y } = hudXY();
     hud = new BrowserWindow({
-      width: W, height: H,
-      x: wa.x + wa.width - W - 12,
-      y: wa.y + 12,
+      width: HUD_W, height: HUD_H, x, y,
       frame: false, resizable: false, movable: true, minimizable: false, maximizable: false,
       skipTaskbar: true, alwaysOnTop: true, transparent: true, focusable: false,
       backgroundColor: '#00000000',
@@ -137,9 +167,10 @@ function createHud() {
     });
     hud.setAlwaysOnTop(true, 'screen-saver');
     hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    hud.setOpacity(settings.hudOpacity);
     hud.loadFile(path.join(__dirname, 'hud.html'));
     hud.webContents.on('did-finish-load', updateHud);
-    if (hudVisible) hud.showInactive(); else hud.hide();
+    if (settings.hudEnabled) hud.showInactive(); else hud.hide();
   } catch (e) {
     // HUD is optional; never let it stop the app.
   }
@@ -147,14 +178,47 @@ function createHud() {
 
 function updateHud() {
   if (hud && !hud.isDestroyed()) {
-    hud.webContents.send('hud-update', { label: currentStatus, paused, startedAt: segmentStart });
+    hud.webContents.send('hud-update', { label: currentStatus, paused, startedAt: segmentStart, showTimer: settings.hudShowTimer });
   }
 }
 
+// Apply the current settings to the live HUD window (position, opacity, visibility).
+function applyHud() {
+  if (!hud || hud.isDestroyed()) return;
+  const { x, y } = hudXY();
+  hud.setPosition(x, y);
+  hud.setOpacity(settings.hudOpacity);
+  if (settings.hudEnabled) hud.showInactive(); else hud.hide();
+  updateHud();
+}
+
 function toggleHud() {
-  hudVisible = !hudVisible;
-  if (hud && !hud.isDestroyed()) { if (hudVisible) hud.showInactive(); else hud.hide(); }
+  settings.hudEnabled = !settings.hudEnabled;
+  saveSettings();
+  applyHud();
   updateTray();
+}
+
+// Apply all settings (HUD + launch-at-startup) and refresh the tray.
+function applySettings() {
+  applyHud();
+  try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtStartup }); } catch (e) {}
+  updateTray();
+}
+
+function openSettingsWindow() {
+  if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    width: 430, height: 580, resizable: false, title: 'OODA host settings',
+    backgroundColor: '#1F2A2C', icon: path.join(__dirname, 'build', 'icon.ico'),
+    webPreferences: {
+      preload: path.join(__dirname, 'settings-preload.js'),
+      contextIsolation: true, nodeIntegration: false,
+    },
+  });
+  settingsWin.setMenuBarVisibility(false);
+  settingsWin.loadFile(path.join(__dirname, 'settings.html'));
+  settingsWin.on('closed', () => { settingsWin = null; });
 }
 
 function setStatus(label) {
@@ -188,7 +252,7 @@ function togglePause() {
 async function poll() {
   if (paused || !win || win.isDestroyed()) return;
   try {
-    const idle = powerMonitor.getSystemIdleTime() >= IDLE_SECONDS;
+    const idle = powerMonitor.getSystemIdleTime() >= idleSeconds();
     if (idle) {
       if (!lastIdle) { send({ idle: true }); lastIdle = true; lastKey = null; setStatus('Idle / away'); }
       return;
@@ -212,11 +276,20 @@ async function poll() {
 }
 
 app.whenReady().then(() => {
+  loadSettings();
   createWindow();
   createTray();
   createHud();
+  applySettings();
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
+  ipcMain.handle('settings-get', () => settings);
+  ipcMain.on('settings-save', (_e, incoming) => {
+    settings = { ...settings, ...(incoming || {}) };
+    saveSettings();
+    applySettings();
+  });
+  ipcMain.on('settings-close', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close(); });
   setInterval(poll, POLL_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

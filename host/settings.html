@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>OODA host settings</title>
+<style>
+  :root { --bg:#1F2A2C; --surface:#26312F; --line:#3a4744; --ink:#EBE8E0; --soft:#a9b0ab; --accent:#3F7A56; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); padding: 20px;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 18px; color: var(--soft); font-size: 12.5px; }
+  .group { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .group h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--soft); margin: 0 0 10px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 9px 0; }
+  .row label { flex: 1; }
+  .row .hint { display: block; color: var(--soft); font-size: 11.5px; margin-top: 1px; }
+  select, input[type=range] { accent-color: var(--accent); }
+  select { background: var(--surface); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 8px; font-size: 13px; }
+  input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--accent); }
+  .range-wrap { display: flex; align-items: center; gap: 8px; }
+  .range-wrap output { width: 34px; text-align: right; color: var(--soft); font-variant-numeric: tabular-nums; }
+  .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  button { border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+  <h1>Host settings</h1>
+  <p class="sub">Changes apply instantly and are saved for next launch.</p>
+
+  <div class="group">
+    <h2>Mini HUD</h2>
+    <div class="row">
+      <label>Show the always-on-top mini HUD</label>
+      <input type="checkbox" id="hudEnabled">
+    </div>
+    <div class="row">
+      <label>Corner</label>
+      <select id="hudCorner">
+        <option value="top-right">Top right</option>
+        <option value="top-left">Top left</option>
+        <option value="bottom-right">Bottom right</option>
+        <option value="bottom-left">Bottom left</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Opacity</label>
+      <div class="range-wrap">
+        <input type="range" id="hudOpacity" min="0.4" max="1" step="0.05">
+        <output id="hudOpacityOut"></output>
+      </div>
+    </div>
+    <div class="row">
+      <label>Show the live timer on the HUD</label>
+      <input type="checkbox" id="hudShowTimer">
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>Capture</h2>
+    <div class="row">
+      <label>Mark me away after
+        <span class="hint">idle time before an "away" segment starts</span>
+      </label>
+      <select id="idleMinutes">
+        <option value="1">1 minute</option>
+        <option value="2">2 minutes</option>
+        <option value="5">5 minutes</option>
+        <option value="10">10 minutes</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Launch OODA when I log in</label>
+      <input type="checkbox" id="launchAtStartup">
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="close">Close</button>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let current = {};
+    function fill(s) {
+      current = s;
+      $('hudEnabled').checked = !!s.hudEnabled;
+      $('hudCorner').value = s.hudCorner || 'top-right';
+      $('hudOpacity').value = s.hudOpacity ?? 1;
+      $('hudOpacityOut').textContent = Math.round((s.hudOpacity ?? 1) * 100) + '%';
+      $('hudShowTimer').checked = !!s.hudShowTimer;
+      $('idleMinutes').value = String(s.idleMinutes || 1);
+      $('launchAtStartup').checked = !!s.launchAtStartup;
+    }
+    function collect() {
+      return {
+        hudEnabled: $('hudEnabled').checked,
+        hudCorner: $('hudCorner').value,
+        hudOpacity: parseFloat($('hudOpacity').value),
+        hudShowTimer: $('hudShowTimer').checked,
+        idleMinutes: parseInt($('idleMinutes').value, 10),
+        launchAtStartup: $('launchAtStartup').checked,
+      };
+    }
+    function push() { window.settingsApi.save(collect()); }
+    // apply-on-change for every control
+    ['hudEnabled', 'hudCorner', 'hudOpacity', 'hudShowTimer', 'idleMinutes', 'launchAtStartup']
+      .forEach(id => $(id).addEventListener('change', push));
+    $('hudOpacity').addEventListener('input', () => {
+      $('hudOpacityOut').textContent = Math.round(parseFloat($('hudOpacity').value) * 100) + '%';
+    });
+    $('close').addEventListener('click', () => window.settingsApi.close());
+    window.settingsApi.get().then(fill);
+  </script>
+</body>
+</html>
