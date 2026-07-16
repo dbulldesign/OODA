@@ -1,0 +1,102 @@
+# OODA desktop host (optional)
+
+OODA runs as a web page, and browsers are **sandboxed from the operating
+system** — a website can't read your other apps or your email. This small
+[Electron](https://www.electronjs.org/) wrapper removes that limit: it runs
+OODA in a desktop window and feeds it **real activity** — the foreground app
+and its window title, plus away/idle state — through the same
+`window.activity` bridge the app already looks for. Run it and the app's
+**Settings → Activity** panel switches to *"Desktop host connected — apps
+logged automatically."* No change to the web app is required.
+
+## How it works
+
+- `main.js` samples the **foreground window** every few seconds via
+  [`get-windows`](https://www.npmjs.com/package/get-windows) and reads **idle
+  time** from Electron's built-in `powerMonitor` (no extra native dependency).
+- It forwards each change — `{app, title}`, or `{idle:true}` after ~60s idle —
+  to the page. It only sends when the window (or idle state) actually changes,
+  so each app switch becomes exactly one timed segment.
+- `preload.js` exposes `window.activity.subscribe(cb)`. OODA subscribes on
+  startup and **auto-categorizes** every event (Email, Meetings, Coding,
+  Design, …) and times it into the daily timeline.
+
+The window title is what makes email tracking work: switching to *"Inbox —
+Outlook"* is filed under 📧 Email, *"Zoom Meeting"* under 📹 Meetings, and so
+on. Everything stays local — the host never sends anything over the network.
+
+## Run it
+
+```bash
+cd host
+npm install
+npm start          # opens OODA in a desktop window and starts tracking
+```
+
+By default it loads the sibling `../index.html`. To point at a deployed build:
+
+```bash
+OODA_URL="https://your-ooda-deploy.example" npm start
+```
+
+## Package a Windows installer
+
+[`electron-builder`](https://www.electron.build/) is wired up to produce a
+Windows **NSIS `.exe` installer**. The web app (`index.html`, `sw.js`,
+`manifest.json`, `icons/`) is copied in as `extraResources` and loaded from
+there when packaged. The app icon is `build/icon.ico`.
+
+```bash
+cd host
+npm install
+npm run pack     # quick unpacked build in dist/ (no installer) — good for testing
+npm run dist     # full Windows installer (.exe) in dist/
+```
+
+Run this **on Windows** (electron-builder targets the OS it runs on). If you're
+not on a Windows machine, use the CI workflow below instead. `get-windows` is a
+native module and is kept unpacked from the asar archive so it loads correctly
+in the packaged app.
+
+### Build in CI (no Windows machine needed)
+
+`.github/workflows/host-windows.yml` builds the installer on a GitHub-hosted
+Windows runner. Push a tag to trigger it:
+
+```bash
+git tag host-v1.2.0
+git push origin host-v1.2.0
+```
+
+The `.exe` is uploaded as a workflow artifact and attached to a GitHub Release
+for that tag. You can also run it on demand from the **Actions** tab
+(*Build Windows host → Run workflow*).
+
+### Regenerating the icon
+
+`build/icon.ico` is committed, so you don't need to rebuild it. To regenerate
+it from the OODA bulb art (renders 16–256px and packs a multi-resolution
+`.ico`):
+
+```bash
+node build/make-ico.cjs
+```
+
+## OS permissions
+
+On **Windows** the foreground app name, window title, and idle time are
+available out of the box — no special permission to grant. If anything ever
+can't be read, the host degrades gracefully (it simply logs less) rather than
+crashing.
+
+The first launch of an unsigned installer triggers a **SmartScreen** warning;
+choose *More info → Run anyway*. Code-signing (for a warning-free install) needs
+a Windows code-signing certificate and is optional.
+
+## Tuning
+
+Edit the constants at the top of `main.js`:
+
+- `IDLE_SECONDS` (default `60`) — how long with no input before you're marked
+  away. Keep it aligned with the app's idle threshold.
+- `POLL_MS` (default `4000`) — how often the foreground window is sampled.

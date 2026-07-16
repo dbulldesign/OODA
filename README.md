@@ -81,6 +81,14 @@ footer shows which mode is active).
   completion rate, time tracked, your **day streak**, active days,
   **estimate-vs-actual accuracy** (are you over- or under-estimating?), and a
   **time-by-channel** breakdown. Built entirely from data already on your device.
+- **Activity tracking** (Settings → Activity, or the ⌘K palette) — a
+  low-friction log of what you're actually doing on your computer (an app, an
+  email, a website). Type it in a tap and OODA **auto-categorizes** it (Email,
+  Meetings, Coding, Design, Docs, Chat, Browsing, Admin, Break…) and times each
+  segment into a **timeline** with a per-category breakdown. Turn on
+  **auto-detect** and OODA marks time **away from the keyboard** for you. See
+  *[Tracking your computer activity](#tracking-your-computer-activity)* for what
+  a browser can and can't see.
 - On phones, a **bottom tab bar** (List / Day / Week / Month) and a **floating +
   button** keep navigation and capture in thumb reach; a **sticky mini-strip**
   shows the running timer and capacity once you scroll past the top, the Day
@@ -144,6 +152,49 @@ footer shows which mode is active).
   **Balloons 🎈**, or **None** — tap one to preview. Icons across the app have
   springy hover/press micro-animations (the running ▶ pulses). Everything
   respects `prefers-reduced-motion`.
+
+## Tracking your computer activity
+
+OODA can keep a running log of **what you're doing on your computer** —
+which app, which email, which website — and time each stretch, so you get an
+honest picture of where the day went alongside your planned tasks.
+
+**What a browser can and can't see.** OODA runs as a web page, and browsers
+**sandbox pages from the operating system** for security: a web page *cannot*
+read your other applications, your window titles, or your email client. So the
+tracking is built to be genuinely useful within that limit:
+
+- **You log the *what* in a tap.** Open **Settings → Activity** (or ⌘K →
+  *Activity tracking* / *Log activity now*) and type what you're on — e.g.
+  `Outlook — client reply`, `Zoom standup`, `VS Code — new feature`. OODA
+  **auto-categorizes** it (📧 Email, 📹 Meetings, 💻 Coding, 🎨 Design,
+  📝 Docs & writing, 📊 Spreadsheets, 💬 Chat, 🌐 Browsing, 🗂️ Admin &
+  planning, ☕ Break) from keywords in what you typed, and starts the clock.
+  Logging a new activity closes the previous one, so your day becomes a
+  **timeline** of segments with durations and a **per-category breakdown**.
+  **Recent activities** show up as one-tap chips.
+- **OODA detects the *when* automatically.** Turn on **auto-detect** (the
+  *Enable auto-detect* button in the Activity dialog) and OODA uses the
+  browser's **Idle Detection API** to notice when you step away — after ~a
+  minute idle or when your screen locks it drops an **Away / idle** segment,
+  and resumes what you were doing when you come back. This needs a **Chromium
+  browser** (Chrome / Edge) and a one-time permission grant; it's off until you
+  enable it. In any browser you can tap **☕ Away** to log a break by hand.
+- **A desktop host can feed the real thing.** If OODA is embedded in a wrapper
+  that *can* see the OS (an Electron/desktop shell), that host can expose a
+  `window.activity` object with a `subscribe(callback)` method and push
+  `{app, title, category?, idle?}` events; OODA logs them automatically (the
+  Activity dialog shows *"Desktop host connected"*). This mirrors how OODA
+  already prefers a host-provided `window.storage` over `localStorage` — the
+  same page works as a plain website *and* as a fully-automatic tracker inside a
+  host, with no code change. A ready-to-run reference host (Electron) lives in
+  [`host/`](host/) — `cd host && npm install && npm start` opens OODA in a
+  desktop window and feeds it your real foreground app + idle state.
+
+Everything is stored **on your device** inside the day record, so activity
+**syncs, backs up, and exports** right along with your tasks and reflections —
+no extra service, no data leaving your device. Use **Clear today** in the
+dialog to wipe a day's log.
 
 ## Todoist sync
 
