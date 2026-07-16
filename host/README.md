@@ -66,6 +66,15 @@ Closing the window **minimizes to the tray** rather than quitting, so tracking
 keeps running in the background. Pausing tells the app to close the current
 segment (stops the clock) until you resume. Quit fully exits from the tray menu.
 
+The **window title** also updates live to what's being captured (e.g.
+*"OODA ⏺ Outlook — Inbox"*), so it shows on the **taskbar button**, the title
+bar, and in Alt-Tab — visible without hovering the tray.
+
+> Windows 11 hides taskbar-button labels by default (icon only). To see the
+> live title text on the taskbar button itself, set *Settings → Personalization
+> → Taskbar → Taskbar behaviors → Combine taskbar buttons and hide labels* to
+> **Never**. The title bar and Alt-Tab always show it regardless.
+
 ## Package a Windows installer
 
 [`electron-builder`](https://www.electron.build/) is wired up to produce a

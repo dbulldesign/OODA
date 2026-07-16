@@ -59,11 +59,24 @@ function createWindow() {
       if (isMainFrame) win.loadFile(localAppPath());
     });
   }
+  // Keep OUR dynamic title (what's being captured) authoritative — don't let
+  // the loaded page's <title> overwrite it. This title shows on the taskbar
+  // button, the title bar, and Alt-Tab.
+  win.on('page-title-updated', (e) => { e.preventDefault(); });
   // Closing the window hides it to the tray instead of quitting, so capture
   // keeps running in the background. Quit is available from the tray menu.
   win.on('close', (e) => {
     if (!isQuitting) { e.preventDefault(); win.hide(); }
   });
+  updateTitle();
+}
+
+// Reflect the current capture in the window title, so it's visible on the
+// Windows taskbar button (and title bar / Alt-Tab) without hovering the tray.
+function updateTitle() {
+  if (!win || win.isDestroyed()) return;
+  const s = currentStatus.length > 50 ? currentStatus.slice(0, 49) + '…' : currentStatus;
+  win.setTitle(paused ? 'OODA — paused' : 'OODA ⏺ ' + s);
 }
 
 function showWindow() {
@@ -102,6 +115,9 @@ function updateTray() {
 function setStatus(label) {
   currentStatus = label || 'Idle';
   updateTray();
+  updateTitle();
+  // macOS: also show the text next to the menu-bar icon (no-op on Windows).
+  if (tray && tray.setTitle) { try { tray.setTitle(paused ? ' paused' : ' ' + currentStatus); } catch (e) {} }
 }
 
 function send(data) {
@@ -117,6 +133,7 @@ function togglePause() {
     lastKey = null;           // force the next poll to re-report the foreground app
   }
   updateTray();
+  updateTitle();
 }
 
 async function poll() {
