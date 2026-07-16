@@ -179,7 +179,7 @@ tracking is built to be genuinely useful within that limit:
   minute idle or when your screen locks it drops an **Away / idle** segment,
   and resumes what you were doing when you come back. This needs a **Chromium
   browser** (Chrome / Edge) and a one-time permission grant; it's off until you
-  enable it.
+  enable it. In any browser you can tap **☕ Away** to log a break by hand.
 - **A desktop host can feed the real thing.** If OODA is embedded in a wrapper
   that *can* see the OS (an Electron/desktop shell), that host can expose a
   `window.activity` object with a `subscribe(callback)` method and push

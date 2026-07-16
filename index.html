@@ -235,6 +235,7 @@
   .act-input{display:flex;gap:8px;margin-bottom:8px}
   .act-input input{flex:1;border:1px solid var(--line-strong);border-radius:8px;padding:9px 10px;font-size:14px;background:var(--surface-2);color:var(--ink)}
   .act-input button{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:8px;padding:0 14px;font-size:13px;cursor:pointer;flex:none}
+  .act-input button.sec{background:var(--surface-2);color:var(--ink);border-color:var(--line-strong)}
   .act-cat-hint{font-size:12px;color:var(--ink-soft);margin:0 0 10px;min-height:16px}
   .act-cat-hint b{color:var(--ink)}
   .act-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
@@ -1975,6 +1976,7 @@
     <div class="act-now" id="actNow"></div>
     <div class="act-input">
       <input id="actInput" placeholder="What are you doing? e.g. Outlook — client reply" autocomplete="off">
+      <button id="actAway" class="sec" title="Log time away from the keyboard">☕ Away</button>
       <button id="actLog">Log</button>
     </div>
     <div class="act-cat-hint" id="actCatHint"></div>
@@ -4691,6 +4693,11 @@ async function actPush(label,cat,source){
   await actSaveTodayList(list); actRenderDialog();
 }
 async function actStop(){ await actPush(null); }
+async function actAway(){
+  const list=await actGetTodayList(); const open=list.find(s=>s.end==null);
+  if(open && open.cat==='break'){ toast('Already marked away.'); return; }
+  await actPush('Away / idle','break','manual');
+}
 async function actLogFromInput(){
   const inp=document.getElementById('actInput'); if(!inp) return;
   const v=inp.value.trim(); if(!v){ inp.focus(); return; }
@@ -4799,7 +4806,7 @@ async function actRenderDialog(){
   const live=actHostOn||(actAutoOn&&!!actIdleDetector);
   dot.classList.toggle('on',live);
   if(actHostOn){ txt.textContent='Desktop host connected — apps logged automatically'; btn.style.display='none'; }
-  else if(!('IdleDetector' in window)){ txt.textContent='Auto away-detection needs Chrome/Edge'; btn.style.display='none'; }
+  else if(!('IdleDetector' in window)){ txt.textContent='Auto away-detection needs Chrome/Edge — tap ☕ Away to log breaks'; btn.style.display='none'; }
   else if(actAutoOn){ txt.textContent='Auto away-detection on'; btn.textContent='Turn off'; btn.style.display=''; btn.onclick=()=>actDisableAuto(); }
   else { txt.textContent='Auto away-detection off'; btn.textContent='Enable auto-detect'; btn.style.display=''; btn.onclick=()=>actEnableAuto(); }
   // timeline
@@ -6567,6 +6574,7 @@ document.getElementById('revRange').addEventListener('click',e=>{ const b=e.targ
 document.getElementById('activityBtn').addEventListener('click',openActivityDialog);
 document.getElementById('actDone').addEventListener('click',()=>document.getElementById('actDialog').close());
 document.getElementById('actLog').addEventListener('click',actLogFromInput);
+document.getElementById('actAway').addEventListener('click',actAway);
 document.getElementById('actClear').addEventListener('click',actClearToday);
 document.getElementById('actInput').addEventListener('input',actInputHint);
 document.getElementById('actInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actLogFromInput(); } });
