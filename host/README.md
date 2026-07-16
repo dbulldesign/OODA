@@ -39,6 +39,24 @@ By default it loads the sibling `../index.html`. To point at a deployed build:
 OODA_URL="https://your-ooda-deploy.example" npm start
 ```
 
+## Package a distributable
+
+[`electron-builder`](https://www.electron.build/) is wired up to produce a
+native installer (`.dmg` on macOS, NSIS `.exe` on Windows, `AppImage` on
+Linux). The web app (`index.html`, `sw.js`, `manifest.json`, `icons/`) is
+copied in as `extraResources` and loaded from there when packaged.
+
+```bash
+cd host
+npm install
+npm run pack     # quick unpacked build in dist/ (no installer) — good for testing
+npm run dist     # full installer for the current OS in dist/
+```
+
+Build for the current platform only (cross-building needs the target OS or a
+CI matrix). `get-windows` is a native module and is kept unpacked from the asar
+archive so it loads correctly in the packaged app.
+
 ## OS permissions
 
 Reading other apps' window titles is privileged on some platforms:

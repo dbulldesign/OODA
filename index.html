@@ -4585,13 +4585,16 @@ async function renderReview(days){
   const hmStart=new Date(today); hmStart.setDate(hmStart.getDate()-83); const hmStartStr=dayKeyFor(hmStart).slice(4);
   const fetchFrom = days>0 ? (hmStartStr<cutoffStr?hmStartStr:cutoffStr) : '0000';
   let totalTasks=0,doneTasks=0,trackedMs=0,estSum=0,actSum=0,estCount=0,activeDays=0;
-  const byCh={}; const doneDays=new Set(); const dayTrk={};
+  const byCh={}; const byCat={}; const doneDays=new Set(); const dayTrk={};
   for(const k of keys){
     const ds=k.slice(4); if(ds>todayStr) continue; if(ds<fetchFrom) continue;
-    const rec = k===dayKey()? {tasks:state.tasks} : await sget(k);
+    const rec = k===dayKey()? {tasks:state.tasks,activity:state.activity} : await sget(k);
+    const inWindow = !(days>0 && ds<cutoffStr);                                       // window applies to the aggregate stats only
+    // computer-activity by category (windowed; covers days with activity but no tasks)
+    if(inWindow){ ((rec&&rec.activity)||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0) byCat[s.cat]=(byCat[s.cat]||0)+ms; }); }
     const tasks=(rec&&rec.tasks)||[]; if(!tasks.length) continue;
     let dTrk=0; tasks.forEach(t=>{ dTrk+=(t.actualMs||0); }); dayTrk[ds]=dTrk;        // for the heatmap (full 12-week span)
-    if(days>0 && ds<cutoffStr) continue;                                              // window applies to the aggregate stats only
+    if(!inWindow) continue;
     activeDays++;
     tasks.forEach(t=>{ totalTasks++; const act=(t.actualMs||0);
       if(t.done){ doneTasks++; doneDays.add(ds); }
@@ -4603,7 +4606,17 @@ async function renderReview(days){
   let streak=0, cur=new Date(today);
   if(!doneDays.has(dayKeyFor(cur).slice(4))) cur.setDate(cur.getDate()-1);
   while(doneDays.has(dayKeyFor(cur).slice(4))){ streak++; cur.setDate(cur.getDate()-1); }
-  if(!totalTasks){ body.innerHTML='<div class="rev-empty">No tasks recorded in this window yet.</div>'; return; }
+  // computer-activity breakdown by category (built above during the loop)
+  const actRows=ACT_CATS.map(c=>({c,ms:byCat[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
+  const actTot=actRows.reduce((s,x)=>s+x.ms,0); const actMax=actRows.reduce((m,x)=>Math.max(m,x.ms),1);
+  const actHtml = actRows.length ? ('<div class="rev-h">Computer activity by category · '+minFmt(actTot)+'</div>'+actRows.map(x=>
+    '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+x.c.color+'"></span><span class="t">'+x.c.icon+' '+escapeHtml(x.c.name)+'</span></span>'+
+    '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/actMax*100)+'%;background:'+x.c.color+'"></span></span>'+
+    '<span class="rb-v">'+minFmt(x.ms)+'</span></div>').join('')) : '';
+  if(!totalTasks){
+    body.innerHTML = actHtml ? actHtml : '<div class="rev-empty">No tasks recorded in this window yet.</div>';
+    return;
+  }
   const rate=Math.round(doneTasks/totalTasks*100);
   const hrs=(trackedMs/3600000); const hLabel=hrs>=1?hrs.toFixed(1).replace(/\.0$/,'')+'h':Math.round(trackedMs/60000)+'m';
   let acc='';
@@ -4625,7 +4638,7 @@ async function renderReview(days){
       '<div class="rev-card"><div class="rv-n">'+hLabel+'</div><div class="rv-l">time tracked</div></div>'+
       '<div class="rev-card"><div class="rv-n">'+streak+'🔥</div><div class="rv-l">day streak with a win</div></div>'+
       '<div class="rev-card"><div class="rv-n">'+activeDays+'</div><div class="rv-l">active day'+(activeDays===1?'':'s')+'</div></div>'+
-    '</div>'+acc+chHtml+reviewHeatmap(dayTrk);
+    '</div>'+acc+chHtml+actHtml+reviewHeatmap(dayTrk);
 }
 function reviewHeatmap(dayTrk){
   const today=new Date(); today.setHours(12,0,0,0);

@@ -3,14 +3,46 @@
   "version": "1.2.0",
   "private": true,
   "description": "Optional desktop wrapper that feeds OODA real foreground-app + idle activity via the window.activity bridge.",
+  "author": "OODA",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
   },
   "dependencies": {
     "get-windows": "^9.1.0"
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.ooda.desktophost",
+    "productName": "OODA",
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      { "from": "../index.html", "to": "app-web/index.html" },
+      { "from": "../manifest.json", "to": "app-web/manifest.json" },
+      { "from": "../sw.js", "to": "app-web/sw.js" },
+      { "from": "../icons", "to": "app-web/icons" }
+    ],
+    "asarUnpack": [
+      "**/node_modules/get-windows/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Utility"
+    }
   }
 }

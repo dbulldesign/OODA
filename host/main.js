@@ -29,10 +29,16 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  // OODA_URL lets you point at a deployed build; otherwise load the sibling index.html.
-  const target = process.env.OODA_URL || path.join(__dirname, '..', 'index.html');
-  if (/^https?:/i.test(target)) win.loadURL(target);
-  else win.loadFile(target);
+  // OODA_URL points at a deployed build; otherwise load the local app — from the
+  // packaged resources when built, or the sibling index.html in development.
+  if (process.env.OODA_URL) {
+    win.loadURL(process.env.OODA_URL);
+  } else {
+    const local = app.isPackaged
+      ? path.join(process.resourcesPath, 'app-web', 'index.html')
+      : path.join(__dirname, '..', 'index.html');
+    win.loadFile(local);
+  }
 }
 
 function send(data) {
