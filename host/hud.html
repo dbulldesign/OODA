@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; cursor: default; }
+  .bar { -webkit-app-region: drag; display: flex; align-items: center; gap: 8px;
+    height: 100%; box-sizing: border-box; padding: 0 10px;
+    background: rgba(31, 42, 44, .96); color: #EBE8E0;
+    border: 1px solid rgba(235, 232, 224, .14); border-radius: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #E5484D; flex: none;
+    box-shadow: 0 0 6px #E5484D; animation: pulse 1.6s ease-in-out infinite; }
+  .dot.paused { background: #8A8378; box-shadow: none; animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+  .lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+  .t { font-variant-numeric: tabular-nums; font-size: 12.5px; opacity: .85; flex: none; }
+  .btn { -webkit-app-region: no-drag; flex: none; border: 0; background: transparent; color: #EBE8E0;
+    opacity: .55; cursor: pointer; font-size: 13px; line-height: 1; padding: 3px 4px; border-radius: 6px; }
+  .btn:hover { opacity: 1; background: rgba(235, 232, 224, .12); }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <span class="dot" id="dot"></span>
+    <span class="lbl" id="lbl">Starting…</span>
+    <span class="t" id="t"></span>
+    <button class="btn" id="pause" title="Pause / resume capturing">⏸</button>
+    <button class="btn" id="open" title="Open OODA">▢</button>
+  </div>
+  <script>
+    let start = Date.now(), paused = false;
+    const dot = document.getElementById('dot'), lbl = document.getElementById('lbl'),
+          tEl = document.getElementById('t'), pauseBtn = document.getElementById('pause');
+    function fmt(ms) { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600),
+      m = Math.floor(s % 3600 / 60), ss = s % 60;
+      return (h > 0 ? h + ':' + String(m).padStart(2, '0') : '' + m) + ':' + String(ss).padStart(2, '0'); }
+    function tick() { if (paused) { tEl.textContent = ''; return; } tEl.textContent = fmt(Date.now() - start); }
+    setInterval(tick, 1000);
+    window.hud.onUpdate(d => {
+      paused = !!d.paused;
+      lbl.textContent = paused ? 'Paused' : (d.label || 'Idle');
+      dot.classList.toggle('paused', paused);
+      pauseBtn.textContent = paused ? '▶' : '⏸';
+      if (d.startedAt) start = d.startedAt;
+      tick();
+    });
+    document.getElementById('open').onclick = () => window.hud.show();
+    pauseBtn.onclick = () => window.hud.togglePause();
+  </script>
+</body>
+</html>

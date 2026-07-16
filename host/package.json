@@ -1,6 +1,6 @@
 {
   "name": "ooda-desktop-host",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "private": true,
   "description": "Optional desktop wrapper that feeds OODA real foreground-app + idle activity via the window.activity bridge.",
   "author": "OODA",
@@ -23,6 +23,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "hud.html",
+      "hud-preload.js",
       "build/icon.ico"
     ],
     "extraResources": [

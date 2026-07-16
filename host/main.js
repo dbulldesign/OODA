@@ -11,7 +11,7 @@
    Foreground app/title come from `get-windows` (a small native addon).
    Idle time comes from Electron's built-in powerMonitor — no extra
    native dependency, cross-platform. */
-const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen } = require('electron');
 const path = require('path');
 
 const IDLE_SECONDS = 60;    // match the app's Idle Detection threshold
@@ -20,11 +20,14 @@ const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
 
 let win = null;
 let tray = null;
+let hud = null;             // always-on-top mini HUD window
+let hudVisible = true;      // whether the HUD is shown
 let lastKey = null;         // last app|title we forwarded (dedupe → one segment per switch)
 let lastIdle = false;
 let paused = false;         // tray "Pause capturing"
 let isQuitting = false;     // true only when the user chooses Quit
-let currentStatus = 'Starting…';   // what the tray shows we're capturing
+let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
+let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
 
 function localAppPath() {
   return app.isPackaged
@@ -106,16 +109,61 @@ function updateTray() {
     { label: paused ? 'Capture paused' : 'Capturing: ' + status, enabled: false },
     { type: 'separator' },
     { label: paused ? 'Resume capturing' : 'Pause capturing', click: togglePause },
+    { label: hudVisible ? 'Hide mini HUD' : 'Show mini HUD', click: toggleHud },
     { label: 'Show OODA', click: showWindow },
     { type: 'separator' },
     { label: 'Quit OODA', click: () => { isQuitting = true; app.quit(); } },
   ]));
 }
 
+// --- always-on-top mini HUD: a small pill that stays above other windows and
+// shows the current activity + a live timer, so what's being captured is
+// visible at a glance regardless of Windows taskbar settings. ---
+function createHud() {
+  try {
+    const wa = screen.getPrimaryDisplay().workArea;
+    const W = 300, H = 46;
+    hud = new BrowserWindow({
+      width: W, height: H,
+      x: wa.x + wa.width - W - 12,
+      y: wa.y + 12,
+      frame: false, resizable: false, movable: true, minimizable: false, maximizable: false,
+      skipTaskbar: true, alwaysOnTop: true, transparent: true, focusable: false,
+      backgroundColor: '#00000000',
+      webPreferences: {
+        preload: path.join(__dirname, 'hud-preload.js'),
+        contextIsolation: true, nodeIntegration: false,
+      },
+    });
+    hud.setAlwaysOnTop(true, 'screen-saver');
+    hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    hud.loadFile(path.join(__dirname, 'hud.html'));
+    hud.webContents.on('did-finish-load', updateHud);
+    if (hudVisible) hud.showInactive(); else hud.hide();
+  } catch (e) {
+    // HUD is optional; never let it stop the app.
+  }
+}
+
+function updateHud() {
+  if (hud && !hud.isDestroyed()) {
+    hud.webContents.send('hud-update', { label: currentStatus, paused, startedAt: segmentStart });
+  }
+}
+
+function toggleHud() {
+  hudVisible = !hudVisible;
+  if (hud && !hud.isDestroyed()) { if (hudVisible) hud.showInactive(); else hud.hide(); }
+  updateTray();
+}
+
 function setStatus(label) {
-  currentStatus = label || 'Idle';
+  const next = label || 'Idle';
+  if (next !== currentStatus) segmentStart = Date.now();   // new activity → restart the HUD timer
+  currentStatus = next;
   updateTray();
   updateTitle();
+  updateHud();
   // macOS: also show the text next to the menu-bar icon (no-op on Windows).
   if (tray && tray.setTitle) { try { tray.setTitle(paused ? ' paused' : ' ' + currentStatus); } catch (e) {} }
 }
@@ -134,6 +182,7 @@ function togglePause() {
   }
   updateTray();
   updateTitle();
+  updateHud();
 }
 
 async function poll() {
@@ -165,6 +214,9 @@ async function poll() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  createHud();
+  ipcMain.on('hud-show', showWindow);
+  ipcMain.on('hud-pause', togglePause);
   setInterval(poll, POLL_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
