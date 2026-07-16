@@ -33,16 +33,17 @@
     "asarUnpack": [
       "**/node_modules/get-windows/**"
     ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": ["dmg"]
+    "directories": {
+      "buildResources": "build"
     },
     "win": {
-      "target": ["nsis"]
+      "target": ["nsis"],
+      "icon": "build/icon.ico"
     },
-    "linux": {
-      "target": ["AppImage"],
-      "category": "Utility"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
     }
   }
 }

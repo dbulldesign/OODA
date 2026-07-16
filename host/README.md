@@ -39,36 +39,59 @@ By default it loads the sibling `../index.html`. To point at a deployed build:
 OODA_URL="https://your-ooda-deploy.example" npm start
 ```
 
-## Package a distributable
+## Package a Windows installer
 
 [`electron-builder`](https://www.electron.build/) is wired up to produce a
-native installer (`.dmg` on macOS, NSIS `.exe` on Windows, `AppImage` on
-Linux). The web app (`index.html`, `sw.js`, `manifest.json`, `icons/`) is
-copied in as `extraResources` and loaded from there when packaged.
+Windows **NSIS `.exe` installer**. The web app (`index.html`, `sw.js`,
+`manifest.json`, `icons/`) is copied in as `extraResources` and loaded from
+there when packaged. The app icon is `build/icon.ico`.
 
 ```bash
 cd host
 npm install
 npm run pack     # quick unpacked build in dist/ (no installer) — good for testing
-npm run dist     # full installer for the current OS in dist/
+npm run dist     # full Windows installer (.exe) in dist/
 ```
 
-Build for the current platform only (cross-building needs the target OS or a
-CI matrix). `get-windows` is a native module and is kept unpacked from the asar
-archive so it loads correctly in the packaged app.
+Run this **on Windows** (electron-builder targets the OS it runs on). If you're
+not on a Windows machine, use the CI workflow below instead. `get-windows` is a
+native module and is kept unpacked from the asar archive so it loads correctly
+in the packaged app.
+
+### Build in CI (no Windows machine needed)
+
+`.github/workflows/host-windows.yml` builds the installer on a GitHub-hosted
+Windows runner. Push a tag to trigger it:
+
+```bash
+git tag host-v1.2.0
+git push origin host-v1.2.0
+```
+
+The `.exe` is uploaded as a workflow artifact and attached to a GitHub Release
+for that tag. You can also run it on demand from the **Actions** tab
+(*Build Windows host → Run workflow*).
+
+### Regenerating the icon
+
+`build/icon.ico` is committed, so you don't need to rebuild it. To regenerate
+it from the OODA bulb art (renders 16–256px and packs a multi-resolution
+`.ico`):
+
+```bash
+node build/make-ico.cjs
+```
 
 ## OS permissions
 
-Reading other apps' window titles is privileged on some platforms:
+On **Windows** the foreground app name, window title, and idle time are
+available out of the box — no special permission to grant. If anything ever
+can't be read, the host degrades gracefully (it simply logs less) rather than
+crashing.
 
-- **macOS** — grant **Screen Recording** (for window titles) and, on some
-  versions, **Accessibility** to the app under *System Settings → Privacy &
-  Security*. Without them you still get the app name and idle state.
-- **Windows / Linux** — generally works out of the box; Wayland Linux may
-  restrict titles depending on the compositor.
-
-If a permission is missing the host degrades gracefully (it simply logs less)
-rather than crashing.
+The first launch of an unsigned installer triggers a **SmartScreen** warning;
+choose *More info → Run anyway*. Code-signing (for a warning-free install) needs
+a Windows code-signing certificate and is optional.
 
 ## Tuning
 
