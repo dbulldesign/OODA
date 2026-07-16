@@ -51,6 +51,21 @@ OODA_URL="https://your-ooda-deploy.example" npm start
 OODA_URL="../index.html" npm start
 ```
 
+## System tray
+
+While running, the host keeps an icon in the Windows **taskbar notification
+area (system tray)**:
+
+- Its **tooltip** shows what's being captured right now (e.g. *"OODA —
+  capturing: Outlook — Inbox"*, or *"capture paused"*).
+- **Right-click** for a menu: the current status, **Pause / Resume capturing**,
+  **Show OODA**, and **Quit**.
+- **Click** the icon to bring the OODA window back.
+
+Closing the window **minimizes to the tray** rather than quitting, so tracking
+keeps running in the background. Pausing tells the app to close the current
+segment (stops the clock) until you resume. Quit fully exits from the tray menu.
+
 ## Package a Windows installer
 
 [`electron-builder`](https://www.electron.build/) is wired up to produce a
