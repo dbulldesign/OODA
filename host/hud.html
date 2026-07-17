@@ -51,6 +51,10 @@
     window.hud.onUpdate(d => {
       document.documentElement.style.setProperty('--s', d.scale || 1);
       document.documentElement.style.setProperty('--cat', (d.showCategory && d.color) ? d.color : 'transparent');
+      // category theme: tint the whole pill by the current category color
+      bar.style.background = (d.theme === 'category' && d.color)
+        ? 'color-mix(in srgb, ' + d.color + ' 26%, rgba(31,42,44,.96))'
+        : 'rgba(31,42,44,.96)';
       bar.classList.toggle('compact', !!d.compact);
       paused = !!d.paused;
       lbl.textContent = paused ? 'Paused' : (d.label || 'Idle');
