@@ -2331,7 +2331,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.10.2';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.11.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4722,13 +4722,16 @@ async function renderReview(days){
   const hmStart=new Date(today); hmStart.setDate(hmStart.getDate()-83); const hmStartStr=dayKeyFor(hmStart).slice(4);
   const fetchFrom = days>0 ? (hmStartStr<cutoffStr?hmStartStr:cutoffStr) : '0000';
   let totalTasks=0,doneTasks=0,trackedMs=0,estSum=0,actSum=0,estCount=0,activeDays=0;
-  const byCh={}; const byCat={}; const actByDay={}; const doneDays=new Set(); const dayTrk={};
+  const byCh={}; const byCat={}; const actByDay={}; const byLabel={}; const doneDays=new Set(); const dayTrk={};
   for(const k of keys){
     const ds=k.slice(4); if(ds>todayStr) continue; if(ds<fetchFrom) continue;
     const rec = k===dayKey()? {tasks:state.tasks,activity:state.activity} : await sget(k);
     const inWindow = !(days>0 && ds<cutoffStr);                                       // window applies to the aggregate stats only
-    // computer-activity by category (windowed; covers days with activity but no tasks)
-    if(inWindow){ ((rec&&rec.activity)||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0){ byCat[s.cat]=(byCat[s.cat]||0)+ms; actByDay[ds]=(actByDay[ds]||0)+ms; } }); }
+    // computer-activity by category + by activity (windowed; covers days with activity but no tasks)
+    if(inWindow){ ((rec&&rec.activity)||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0){
+      byCat[s.cat]=(byCat[s.cat]||0)+ms; actByDay[ds]=(actByDay[ds]||0)+ms;
+      const lk=s.label||'(unlabeled)'; if(!byLabel[lk]) byLabel[lk]={ms:0,cat:s.cat}; byLabel[lk].ms+=ms;
+    } }); }
     const tasks=(rec&&rec.tasks)||[]; if(!tasks.length) continue;
     let dTrk=0; tasks.forEach(t=>{ dTrk+=(t.actualMs||0); }); dayTrk[ds]=dTrk;        // for the heatmap (full 12-week span)
     if(!inWindow) continue;
@@ -4759,6 +4762,16 @@ async function renderReview(days){
       '<div class="aw-col" title="'+minFmt(x.ms)+'"><div class="aw-bar-wrap"><div class="aw-bar" style="height:'+Math.round(x.ms/dmax*100)+'%"></div></div>'+
       '<div class="aw-day">'+x.d.toLocaleDateString(undefined,{weekday:'narrow'})+'</div>'+
       '<div class="aw-v">'+(x.ms?minFmt(x.ms):'')+'</div></div>').join('')+'</div>';
+  }
+  // top activities/projects by time in this window
+  const topRows=Object.keys(byLabel).map(k=>({label:k,ms:byLabel[k].ms,cat:byLabel[k].cat}))
+    .filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms).slice(0,8);
+  if(topRows.length){ const tmax=topRows[0].ms;
+    actHtml += '<div class="rev-h">Top activities</div>'+topRows.map(x=>{ const c=actCatById(x.cat);
+      const nm=x.label.length>34?x.label.slice(0,33)+'…':x.label;
+      return '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+c.color+'"></span><span class="t" title="'+escapeHtml(x.label)+'">'+escapeHtml(nm)+'</span></span>'+
+        '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/tmax*100)+'%;background:'+c.color+'"></span></span>'+
+        '<span class="rb-v">'+minFmt(x.ms)+'</span></div>'; }).join('');
   }
   if(!totalTasks){
     body.innerHTML = actHtml ? actHtml : '<div class="rev-empty">No tasks recorded in this window yet.</div>';
