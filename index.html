@@ -299,6 +299,14 @@
   .cat-edit .ce-goal input[type=number]{width:56px;border:1px solid var(--line-strong);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--surface-2);color:var(--ink)}
   .cat-edit .ce-del{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;flex:none}
   .cat-edit .ce-del:hover{color:var(--over)}
+  .rule-edit{display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .rule-edit input[type=text]{border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px;font-size:13px;background:var(--surface-2);color:var(--ink)}
+  .rule-edit .re-match{flex:1;min-width:120px}
+  .rule-edit .re-rename{flex:1;min-width:120px}
+  .rule-edit select{border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px;font-size:13px;background:var(--surface-2);color:var(--ink);flex:none}
+  .rule-edit .re-arrow{color:var(--ink-faint);flex:none}
+  .rule-edit .ce-del{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;flex:none}
+  .rule-edit .ce-del:hover{color:var(--over)}
   .act-goal-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
   .act-goal-row .agr-nm{flex:0 0 40%;display:flex;align-items:center;gap:6px;min-width:0}
   .act-goal-row .agr-track{flex:1;height:9px;background:var(--surface-2);border-radius:5px;overflow:hidden}
@@ -2071,6 +2079,10 @@
     <div class="rev-h" style="margin:6px 0">Categories</div>
     <div id="catEditList"></div>
     <button id="catAdd" class="sec-btn" style="margin-top:6px">+ Add category</button>
+    <div class="rev-h" style="margin:16px 0 4px">Per-app rules</div>
+    <p class="td-hint" style="margin:0 0 8px">When an app or window title contains your text, file it under a category and (optionally) rename it to a project — so many titles collapse into one. Rules win over keywords; first match applies.</p>
+    <div id="ruleEditList"></div>
+    <button id="ruleAdd" class="sec-btn" style="margin-top:6px">+ Add rule</button>
     <div class="dlg-actions">
       <button id="catReset" class="danger">Reset to defaults</button>
       <span style="flex:1"></span>
@@ -2280,7 +2292,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.8.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.9.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -2466,7 +2478,7 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; }
   else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; state.actCats=null; state.actGoals=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; state.activity=day.activity||[]; }
@@ -2481,7 +2493,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -2492,7 +2504,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],actCats:state.actCats||null,actGoals:state.actGoals||[],updatedAt:Date.now()}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],actCats:state.actCats||null,actGoals:state.actGoals||[],actRules:state.actRules||[],updatedAt:Date.now()}); schedulePush(); }
 // write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
 async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
 async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,activity:state.activity||[],closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); histCommitSoon(); }
@@ -4780,17 +4792,47 @@ function actCategorize(label){
   for(const c of actCats()){ if((c.kw||[]).some(k=>s.includes(String(k).toLowerCase()))) return c.id; }
   return 'other';
 }
+/* Per-app rules: a rule matches text in the app/window title and can force a
+   category and rename the segment to a clean project name (so many window
+   titles collapse into one project). First matching rule wins; otherwise fall
+   back to keyword categorization. Returns {label, cat}. */
+function actClassify(rawLabel){
+  const raw=String(rawLabel||''); const s=raw.toLowerCase();
+  for(const r of (state.actRules||[])){
+    if(r && r.match && s.includes(String(r.match).toLowerCase())){
+      return { label:(r.rename&&r.rename.trim())?r.rename.trim():raw, cat:r.cat||actCategorize(raw) };
+    }
+  }
+  return { label:raw, cat:actCategorize(raw) };
+}
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
 /* ---- category & goals editor ---- */
-let catEditing=null;
+let catEditing=null, rulesEditing=null;
 function openCatEditor(){
   if(locked()){ showUnlock(); return; }
   const goals={}; (state.actGoals||[]).forEach(g=>goals[g.cat]=g);
   catEditing=actCats().map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,kw:(c.kw||[]).join(', '),
     goalType:(goals[c.id]&&goals[c.id].type)||'off', goalMin:(goals[c.id]&&goals[c.id].minutes)||60}));
-  renderCatEditor();
+  rulesEditing=(state.actRules||[]).map(r=>({match:r.match||'',cat:r.cat||'other',rename:r.rename||''}));
+  renderCatEditor(); renderRuleEditor();
   document.getElementById('actCatDialog').showModal();
 }
+function renderRuleEditor(){
+  const list=document.getElementById('ruleEditList'); if(!list) return;
+  const opts=c=>actCats().map(x=>'<option value="'+x.id+'"'+(c===x.id?' selected':'')+'>'+x.icon+' '+escapeHtml(x.name)+'</option>').join('');
+  list.innerHTML=rulesEditing.length?rulesEditing.map((r,i)=>
+    '<div class="rule-edit" data-i="'+i+'">'+
+      '<input type="text" class="re-match" data-f="match" placeholder="app or window title contains…" value="'+escapeHtml(r.match)+'">'+
+      '<select data-f="cat">'+opts(r.cat)+'</select>'+
+      '<span class="re-arrow">→</span>'+
+      '<input type="text" class="re-rename" data-f="rename" placeholder="project name (optional)" value="'+escapeHtml(r.rename)+'">'+
+      '<button class="ce-del" data-del="'+i+'" title="Delete rule">✕</button>'+
+    '</div>').join(''):'<div class="rev-empty">No rules yet — add one to map an app straight to a project.</div>';
+  list.querySelectorAll('.rule-edit').forEach(row=>{ const i=+row.dataset.i;
+    row.querySelectorAll('[data-f]').forEach(inp=>inp.addEventListener('input',()=>{ rulesEditing[i][inp.dataset.f]=inp.value; })); });
+  list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ rulesEditing.splice(+b.dataset.del,1); renderRuleEditor(); });
+}
+function ruleAddNew(){ rulesEditing.push({match:'',cat:(actCats()[0]||{id:'other'}).id,rename:''}); renderRuleEditor(); }
 function renderCatEditor(){
   const list=document.getElementById('catEditList');
   list.innerHTML=catEditing.map((c,i)=>{
@@ -4820,11 +4862,12 @@ async function catSaveEditor(){
     if(c.goalType==='max'||c.goalType==='min'){ const m=parseInt(c.goalMin,10); if(m>0) goals.push({cat:id,type:c.goalType,minutes:m}); }
   }
   if(!cats.some(c=>c.id==='other')) cats.push({id:'other',name:'Other',icon:'•',color:'#8A8378',kw:[]});
-  state.actCats=cats; state.actGoals=goals;
+  const rules=(rulesEditing||[]).map(r=>({match:String(r.match||'').trim(),cat:r.cat||'other',rename:String(r.rename||'').trim()})).filter(r=>r.match);
+  state.actCats=cats; state.actGoals=goals; state.actRules=rules;
   await saveConfig();
   document.getElementById('actCatDialog').close();
   actRenderDialog(); actReportToHost();
-  toast('Categories & goals saved.');
+  toast('Categories, rules & goals saved.');
 }
 async function catResetDefaults(){
   if(!confirm('Reset categories and keywords to the defaults? (Your goals stay.)')) return;
@@ -4937,8 +4980,11 @@ async function actPush(label,cat,source){
   // if we just closed an auto/host "away" stretch, offer to say what it was
   const closedAway=(open && open.cat==='break' && (open.source==='auto'||open.source==='host')) ? open : null;
   if(label!=null){ label=String(label).trim(); if(label){
-    list.push({id:uid(),cat:cat||actCategorize(label),label,start:now,end:null,source:source||'manual'});
-    actRemember(label);
+    // no explicit category → run per-app rules (which can also rename to a project)
+    let useLabel=label, useCat=cat;
+    if(!useCat){ const cl=actClassify(label); useLabel=cl.label; useCat=cl.cat; }
+    list.push({id:uid(),cat:useCat,label:useLabel,start:now,end:null,source:source||'manual'});
+    actRemember(useLabel);
   }}
   await actSaveTodayList(list); actRenderDialog(); actReportToHost();
   if(closedAway) actMaybePromptAway(closedAway);
@@ -4952,7 +4998,7 @@ function actMaybePromptAway(seg){
 async function actLabelAway(id){
   const list=await actGetTodayList(); const seg=list.find(s=>s.id===id); if(!seg) return;
   const v=(prompt('What were you doing while away from the keyboard?','')||'').trim(); if(!v) return;
-  seg.label=v; seg.cat=actCategorize(v); seg.source='manual';
+  const cl=actClassify(v); seg.label=cl.label; seg.cat=cl.cat; seg.source='manual';
   await actSaveTodayList(list); actRenderDialog(); actReportToHost();
   toast('Labeled that time as “'+v+'”.');
 }
@@ -5022,7 +5068,7 @@ function actInitHost(){
     if(ev.stop){ actStop(); return; }                 // host paused capture — close the current segment
     if(ev.idle){ actPush('Away / idle','break','host'); return; }
     const label = ev.title ? (ev.app? ev.app+' — '+ev.title : ev.title) : (ev.app||'');
-    if(label) actPush(label, ev.category||actCategorize(label),'host');
+    if(label) actPush(label, ev.category||null, 'host');   // null → per-app rules + keyword categorize apply
   }); actHostOn=true; }catch(e){}
 }
 // Report the current activity's category, color, and today's total back to a
@@ -6889,6 +6935,7 @@ document.getElementById('actPrevDay').addEventListener('click',async()=>{ const 
 document.getElementById('actNextDay').addEventListener('click',async()=>{ if(actViewingToday())return; const d=new Date(viewDate); d.setDate(d.getDate()+1); await gotoDate(d); actRenderDialog(); });
 document.getElementById('actCatsBtn').addEventListener('click',openCatEditor);
 document.getElementById('catAdd').addEventListener('click',catAddNew);
+document.getElementById('ruleAdd').addEventListener('click',ruleAddNew);
 document.getElementById('catCancel').addEventListener('click',()=>document.getElementById('actCatDialog').close());
 document.getElementById('catSave').addEventListener('click',catSaveEditor);
 document.getElementById('catReset').addEventListener('click',catResetDefaults);
