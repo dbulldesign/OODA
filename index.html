@@ -2339,7 +2339,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.11.1';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.11.2';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -5216,7 +5216,8 @@ function actInitHost(){
 function actReportToHost(){
   try{
     const h=window.activity; if(!h||typeof h.report!=='function') return;
-    const arr=state.activity||[]; const open=arr.find(s=>s.end==null);
+    const d0=new Date(); d0.setHours(0,0,0,0); const day0=d0.getTime();
+    const arr=(state.activity||[]).filter(s=>s.start>=day0); const open=arr.find(s=>s.end==null);
     let today=0; arr.forEach(s=>{ today+=Math.max(0,(s.end||Date.now())-s.start); });
     const c=open?actCatById(open.cat):null;
     h.report({ label:open?open.label:null, color:c?c.color:null, category:c?c.name:null, todayMs:today, startedAt:open?open.start:null });
@@ -5240,7 +5241,9 @@ async function actRenderDialog(){
   // show the *viewed* day's stored activity (each day is kept and browsable);
   // live logging still targets today (handled in actPush/actRollover)
   const viewingToday=actViewingToday();
-  const list=(state.activity||[]).slice().sort((a,b)=>a.start-b.start);
+  // only this calendar day's segments (defends against any cross-day data), oldest→newest
+  const dayStart=new Date(dayKey().slice(4)+'T00:00:00').getTime(), dayEnd=dayStart+86400000;
+  const list=(state.activity||[]).filter(s=>s.start>=dayStart && s.start<dayEnd).slice().sort((a,b)=>a.start-b.start);
   actCache=list;
   // day nav
   const lbl=document.getElementById('actDayLbl'); if(lbl) lbl.textContent=viewingToday?'Today':new Date(dayKey().slice(4)+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
@@ -5305,7 +5308,7 @@ async function actRenderDialog(){
   const tl=document.getElementById('actTl');
   if(!list.length){ tl.innerHTML='<div class="rev-empty">'+(viewingToday?'Nothing logged today yet.':'No activity recorded on this day.')+'</div>'; }
   else if(actView==='grouped'){ tl.innerHTML=actGroupHtml(list); }
-  else { tl.innerHTML=list.map(actSegRowHtml).join(''); }
+  else { tl.innerHTML=list.slice().reverse().map(actSegRowHtml).join(''); }   // current/newest first
   tl.querySelectorAll('.as-del').forEach(b=>b.onclick=async e=>{ e.stopPropagation();
     // delete from the viewed day (state.activity), works for today and history
     const i=(state.activity||[]).findIndex(x=>x.id===b.dataset.id);
