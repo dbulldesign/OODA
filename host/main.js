@@ -325,8 +325,14 @@ async function poll() {
     const { activeWindow } = await import('get-windows');
     const w = await activeWindow();
     if (!w) return;
-    const appName = (w.owner && w.owner.name) || 'Unknown';
-    const title = w.title || '';
+    // If OODA's own window is in front, log it under a FIXED label ("OODA") —
+    // never its live title. Reading our own dynamic title back would feed a
+    // runaway loop (OODA — OODA ⏺ OODA — …), so force a constant here.
+    const own = w.owner && ((w.owner.path && process.execPath && w.owner.path.toLowerCase() === process.execPath.toLowerCase())
+      || w.owner.processId === process.pid);
+    const appName = own ? 'OODA' : ((w.owner && w.owner.name) || 'Unknown');
+    let title = own ? '' : (w.title || '');
+    if (title.length > 120) title = title.slice(0, 119) + '…';   // defensive cap
     const key = appName + '|' + title;
     if (key !== lastKey) {
       lastKey = key;
