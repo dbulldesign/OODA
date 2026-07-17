@@ -783,7 +783,10 @@
   .hv-blk{position:absolute;left:18%;right:6%;border-radius:5px;color:#fff;font-size:9px;padding:2px 5px;box-shadow:inset 3px 0 0 rgba(0,0,0,.2)}
   .hv-axis{position:absolute;left:0;top:0;bottom:0;width:16%;font-size:8px;color:var(--ink-faint);display:flex;flex-direction:column;justify-content:space-between}
   @media(max-width:520px){ .help-card{grid-template-columns:1fr} .help-vis{height:66px} }
-  .dlg-in{padding:20px}
+  .dlg-in{padding:20px;position:relative}
+  /* generic close ✕ injected into every dialog */
+  .dlg-x{position:absolute;top:12px;right:12px;border:0;background:none;color:var(--ink-faint);font-size:15px;line-height:1;cursor:pointer;padding:4px 6px;border-radius:7px;z-index:3}
+  .dlg-x:hover{background:var(--surface-2);color:var(--ink)}
   .dlg-in h3{margin:0 0 12px;font-size:16px}
   .ch-edit{display:flex;align-items:center;gap:8px;margin-bottom:8px}
   .ch-edit input[type=color]{width:30px;height:30px;border:1px solid var(--line-strong);border-radius:6px;background:none;padding:2px;cursor:pointer}
@@ -2328,7 +2331,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.10.1';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.10.2';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -7029,6 +7032,19 @@ document.getElementById('actDone').addEventListener('click',()=>document.getElem
 document.getElementById('actX').addEventListener('click',()=>document.getElementById('actDialog').close());
 // click outside the sheet (on the modal backdrop) closes it
 document.getElementById('actDialog').addEventListener('click',e=>{ if(e.target===document.getElementById('actDialog')) document.getElementById('actDialog').close(); });
+// Give EVERY dialog a ✕ close button and click-outside-to-close — except the
+// mobile add-sheet (own dismissal) and Activity (handled just above).
+(function(){
+  document.querySelectorAll('dialog').forEach(dlg=>{
+    if(dlg.classList.contains('sheet') || dlg.id==='actDialog') return;
+    dlg.addEventListener('click',e=>{ if(e.target===dlg) dlg.close(); });
+    const inner=dlg.querySelector('.dlg-in'); if(!inner || inner.querySelector('.dlg-x')) return;
+    const x=document.createElement('button');
+    x.className='dlg-x'; x.type='button'; x.title='Close'; x.setAttribute('aria-label','Close'); x.textContent='✕';
+    x.addEventListener('click',()=>dlg.close());
+    inner.appendChild(x);
+  });
+})();
 document.getElementById('actLog').addEventListener('click',actLogFromInput);
 document.getElementById('actAway').addEventListener('click',actAway);
 document.getElementById('actClear').addEventListener('click',actClearToday);
