@@ -222,6 +222,11 @@
   .rev-empty{color:var(--ink-soft);font-size:13px;padding:8px 0}
   /* ---- activity tracking ---- */
   dialog.act{max-width:560px}
+  .act-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
+  .act-daynav{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft)}
+  .act-daynav button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1}
+  .act-daynav button:disabled{opacity:.35;cursor:default}
+  .act-daynav #actDayLbl{min-width:96px;text-align:center}
   .act-now{display:flex;align-items:center;gap:10px;border:1px solid var(--line-strong);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--surface-2)}
   .act-now.live{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
   .act-now .an-ico{font-size:20px;flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--surface)}
@@ -2022,7 +2027,14 @@
 
 <dialog id="actDialog" class="act">
   <div class="dlg-in">
-    <h3>Activity tracking</h3>
+    <div class="act-head">
+      <h3 style="margin:0">Activity tracking</h3>
+      <div class="act-daynav">
+        <button id="actPrevDay" title="Previous day">‹</button>
+        <span id="actDayLbl"></span>
+        <button id="actNextDay" title="Next day">›</button>
+      </div>
+    </div>
     <div class="act-now" id="actNow"></div>
     <div class="act-input">
       <input id="actInput" placeholder="What are you doing? e.g. Outlook — client reply" autocomplete="off">
@@ -2268,7 +2280,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.6.1';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.8.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4886,22 +4898,36 @@ function actSetOpenDay(k){ try{ if(k) localStorage.setItem(LS_PREFIX+'_actopenda
 function actGetOpenDay(){ try{ return localStorage.getItem(LS_PREFIX+'_actopenday'); }catch(e){ return null; } }
 function actSyncOpenDay(list){ actSetOpenDay(list.some(s=>s.end==null)?actToday():null); }
 // If an open segment is left over from a previous day, close it at that day's
-// midnight boundary so each day's activity stays within that day.
-async function actRollover(){
+// midnight boundary so each day's activity stays within that day. When called
+// live (cont=true) an ongoing non-break activity is carried into the new day
+// as a fresh segment starting at midnight, so overnight work isn't lost.
+async function actRollover(cont){
   const openDay=actGetOpenDay();
   if(!openDay || openDay===actToday()) return;
+  let carried=null;
   const rec=await sget(openDay);
   if(rec && Array.isArray(rec.activity)){
     const seg=rec.activity.find(s=>s.end==null);
     if(seg){
       const d=new Date(openDay.slice(4)+'T00:00:00'); d.setDate(d.getDate()+1);  // midnight ending that day
-      seg.end=Math.max(seg.start, d.getTime());
+      const boundary=Math.max(seg.start, d.getTime());
+      seg.end=boundary;
       await ssetDay(openDay,rec); schedulePush();
+      if(cont && seg.cat!=='break') carried={label:seg.label,cat:seg.cat};
     }
   }
   actSetOpenDay(null);
   if(dayKey()===openDay){ await loadDay(); render(); }   // refresh if that day is on screen
-  actRenderDialog();
+  // carry the ongoing activity into today, starting at midnight
+  if(carried){
+    const list=await actGetTodayList();
+    if(!list.some(s=>s.end==null)){
+      const mid=new Date(); mid.setHours(0,0,0,0);
+      list.push({id:uid(),cat:carried.cat,label:carried.label,start:mid.getTime(),end:null,source:'auto'});
+      await actSaveTodayList(list);
+    }
+  }
+  actRenderDialog(); actReportToHost();
 }
 // close the current open segment and (optionally) begin a new one
 async function actPush(label,cat,source){
@@ -5026,11 +5052,30 @@ function actInputHint(){
 }
 async function actRenderDialog(){
   const dlg=document.getElementById('actDialog'); if(!dlg||!dlg.open) return;
-  const list=(await actGetTodayList()).slice().sort((a,b)=>a.start-b.start);
+  // show the *viewed* day's stored activity (each day is kept and browsable);
+  // live logging still targets today (handled in actPush/actRollover)
+  const viewingToday=actViewingToday();
+  const list=(state.activity||[]).slice().sort((a,b)=>a.start-b.start);
   actCache=list;
-  // current activity
+  // day nav
+  const lbl=document.getElementById('actDayLbl'); if(lbl) lbl.textContent=viewingToday?'Today':new Date(dayKey().slice(4)+'T12:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  const nx=document.getElementById('actNextDay'); if(nx) nx.disabled=viewingToday;
+  // logging controls only make sense for today — hide them when browsing history
+  const inputWrap=document.querySelector('#actDialog .act-input');
+  [inputWrap,document.getElementById('actCatHint'),document.getElementById('actChips'),document.getElementById('actPerm'),document.getElementById('actSync')]
+    .forEach(el=>{ if(el) el.style.display=viewingToday?'':'none'; });
+  const clearBtn=document.getElementById('actClear'); if(clearBtn) clearBtn.style.display=viewingToday?'':'none';
+  // current activity (today) / day summary (history)
   const nowEl=document.getElementById('actNow'); const open=list.find(s=>s.end==null);
-  if(open){ const c=actCatById(open.cat);
+  if(!viewingToday){
+    const total=list.reduce((s,x)=>s+Math.max(0,(x.end||Date.now())-x.start),0);
+    const dl=new Date(dayKey().slice(4)+'T12:00:00').toLocaleDateString(undefined,{weekday:'long',month:'short',day:'numeric'});
+    nowEl.classList.remove('live');
+    nowEl.innerHTML='<div class="an-ico">🗓️</div><div class="an-body"><div class="an-lbl">'+escapeHtml(dl)+'</div>'+
+      '<div class="an-sub">'+minFmt(total)+' tracked · viewing history</div></div>'+
+      '<button class="an-stop" id="actGoToday">Today</button>';
+    const gb=document.getElementById('actGoToday'); if(gb) gb.onclick=async()=>{ await gotoDate(new Date()); actRenderDialog(); };
+  } else if(open){ const c=actCatById(open.cat);
     nowEl.classList.add('live');
     nowEl.innerHTML='<div class="an-ico" style="background:'+c.color+'22">'+c.icon+'</div>'+
       '<div class="an-body"><div class="an-lbl">'+escapeHtml(open.label)+'</div>'+
@@ -5071,12 +5116,13 @@ async function actRenderDialog(){
   // timeline / grouped
   document.querySelectorAll('#actViewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===actView));
   const tl=document.getElementById('actTl');
-  if(!list.length){ tl.innerHTML='<div class="rev-empty">Nothing logged today yet.</div>'; }
+  if(!list.length){ tl.innerHTML='<div class="rev-empty">'+(viewingToday?'Nothing logged today yet.':'No activity recorded on this day.')+'</div>'; }
   else if(actView==='grouped'){ tl.innerHTML=actGroupHtml(list); }
   else { tl.innerHTML=list.map(actSegRowHtml).join(''); }
   tl.querySelectorAll('.as-del').forEach(b=>b.onclick=async e=>{ e.stopPropagation();
-    const l=await actGetTodayList(); const i=l.findIndex(x=>x.id===b.dataset.id);
-    if(i>=0){ l.splice(i,1); await actSaveTodayList(l); actRenderDialog(); } });
+    // delete from the viewed day (state.activity), works for today and history
+    const i=(state.activity||[]).findIndex(x=>x.id===b.dataset.id);
+    if(i>=0){ state.activity.splice(i,1); if(viewingToday) actSyncOpenDay(state.activity); await saveDay(); actRenderDialog(); actReportToHost(); } });
   // category breakdown for today
   const brk=document.getElementById('actBreak');
   const byCat={}; let tot=0;
@@ -5088,8 +5134,8 @@ async function actRenderDialog(){
       '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/max*100)+'%;background:'+x.c.color+'"></span></span>'+
       '<span class="rb-v">'+minFmt(x.ms)+'</span></div>').join('');
   } else brk.innerHTML='';
-  // today's goal progress
-  const gEl=document.getElementById('actGoalsToday'); if(gEl) gEl.innerHTML=actGoalsHtml(byCat);
+  // goal progress (today only — goals are a per-today concept)
+  const gEl=document.getElementById('actGoalsToday'); if(gEl) gEl.innerHTML=viewingToday?actGoalsHtml(byCat):'';
 }
 // keep the live timer ticking while the dialog is open
 function actTick(){
@@ -5106,9 +5152,9 @@ function actInit(){
   actLoadAuto(); actInitHost();
   try{ const v=localStorage.getItem(LS_PREFIX+'_actview'); if(v==='grouped'||v==='timeline') actView=v; }catch(e){}
   if(actAutoOn && ('IdleDetector' in window)){ actStartIdle().catch(()=>{}); }
-  actRollover();   // close any segment left open overnight
+  actRollover(false);   // on launch: just close any segment left open overnight (don't fabricate)
   actReportToHost();
-  setInterval(()=>{ actRollover(); actReportToHost(); },20000);   // roll at midnight + keep a host's HUD total fresh
+  setInterval(()=>{ actRollover(true); actReportToHost(); },20000);   // live: roll at midnight (carry ongoing work) + keep a host's HUD total fresh
 }
 /* ---------- day templates (save / apply a day shape) ---------- */
 function openTemplatesDialog(){
@@ -6839,6 +6885,8 @@ document.getElementById('actClear').addEventListener('click',actClearToday);
 document.getElementById('actInput').addEventListener('input',actInputHint);
 document.getElementById('actInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actLogFromInput(); } });
 document.getElementById('actViewSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b){ actView=b.dataset.v; try{ localStorage.setItem(LS_PREFIX+'_actview',actView); }catch(err){} actRenderDialog(); } });
+document.getElementById('actPrevDay').addEventListener('click',async()=>{ const d=new Date(viewDate); d.setDate(d.getDate()-1); await gotoDate(d); actRenderDialog(); });
+document.getElementById('actNextDay').addEventListener('click',async()=>{ if(actViewingToday())return; const d=new Date(viewDate); d.setDate(d.getDate()+1); await gotoDate(d); actRenderDialog(); });
 document.getElementById('actCatsBtn').addEventListener('click',openCatEditor);
 document.getElementById('catAdd').addEventListener('click',catAddNew);
 document.getElementById('catCancel').addEventListener('click',()=>document.getElementById('actCatDialog').close());
