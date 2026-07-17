@@ -11,7 +11,7 @@
    Foreground app/title come from `get-windows` (a small native addon).
    Idle time comes from Electron's built-in powerMonitor — no extra
    native dependency, cross-platform. */
-const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -29,6 +29,9 @@ const DEFAULTS = {
   hudShowCategory: true,     // tint by category color + show today's total
   hudRemember: false,        // remember a custom dragged position instead of a corner
   hudX: null, hudY: null,    // saved custom position (when hudRemember)
+  hudAutoHideIdle: false,    // hide the HUD while you're away/idle
+  hudTheme: 'dark',          // 'dark' | 'category' (tint the whole pill by category)
+  hotkeys: false,            // enable global keyboard shortcuts
   idleMinutes: 1,            // mark "away" after this many minutes idle
   launchAtStartup: false,    // start the host at login
 };
@@ -205,6 +208,7 @@ function updateHud() {
       label: currentStatus, paused, startedAt: segmentStart,
       showTimer: settings.hudShowTimer, compact: settings.hudCompact, scale: settings.hudScale || 1,
       showCategory: settings.hudShowCategory, color: reported.color, category: reported.category, todayMs: reported.todayMs,
+      theme: settings.hudTheme || 'dark',
     });
   }
 }
@@ -221,8 +225,18 @@ function applyHud() {
   const { x, y } = hudXY();
   hud.setPosition(x, y);
   hud.setOpacity(settings.hudOpacity);
-  if (settings.hudEnabled) hud.showInactive(); else hud.hide();
+  applyHudVisibility();
   updateHud();
+}
+// whether the HUD should currently be visible (respects auto-hide-while-idle)
+function hudShouldShow() {
+  if (!settings.hudEnabled) return false;
+  if (settings.hudAutoHideIdle && !paused && currentStatus === 'Idle / away') return false;
+  return true;
+}
+function applyHudVisibility() {
+  if (!hud || hud.isDestroyed()) return;
+  if (hudShouldShow()) hud.showInactive(); else hud.hide();
 }
 
 function toggleHud() {
@@ -232,17 +246,31 @@ function toggleHud() {
   updateTray();
 }
 
-// Apply all settings (HUD + launch-at-startup) and refresh the tray.
+// Global keyboard shortcuts (opt-in). Registration can fail if another app
+// already owns the combo — that's fine, we just skip it.
+const HOTKEYS = [
+  { accel: 'CommandOrControl+Shift+O', run: showWindow },       // open the OODA window
+  { accel: 'CommandOrControl+Shift+H', run: toggleHud },        // show / hide the mini HUD
+  { accel: 'CommandOrControl+Shift+P', run: togglePause },      // pause / resume capture
+];
+function registerHotkeys() {
+  try { globalShortcut.unregisterAll(); } catch (e) {}
+  if (!settings.hotkeys) return;
+  for (const h of HOTKEYS) { try { globalShortcut.register(h.accel, h.run); } catch (e) {} }
+}
+
+// Apply all settings (HUD + launch-at-startup + hotkeys) and refresh the tray.
 function applySettings() {
   applyHud();
   try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtStartup }); } catch (e) {}
+  registerHotkeys();
   updateTray();
 }
 
 function openSettingsWindow() {
   if (settingsWin && !settingsWin.isDestroyed()) { settingsWin.show(); settingsWin.focus(); return; }
   settingsWin = new BrowserWindow({
-    width: 430, height: 580, resizable: false, title: 'OODA host settings',
+    width: 430, height: 720, resizable: false, title: 'OODA host settings',
     backgroundColor: '#1F2A2C', icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'settings-preload.js'),
@@ -261,6 +289,7 @@ function setStatus(label) {
   updateTray();
   updateTitle();
   updateHud();
+  applyHudVisibility();   // auto-hide/show as you go idle/active
   // macOS: also show the text next to the menu-bar icon (no-op on Windows).
   if (tray && tray.setTitle) { try { tray.setTitle(paused ? ' paused' : ' ' + currentStatus); } catch (e) {} }
 }
@@ -280,6 +309,7 @@ function togglePause() {
   updateTray();
   updateTitle();
   updateHud();
+  applyHudVisibility();
 }
 
 async function poll() {
@@ -336,7 +366,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { isQuitting = true; });
+app.on('before-quit', () => { isQuitting = true; try { globalShortcut.unregisterAll(); } catch (e) {} });
 
 // Keep running in the tray when the window is closed; quit only via the tray.
 app.on('window-all-closed', () => {

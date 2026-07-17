@@ -83,6 +83,29 @@
       </label>
       <input type="checkbox" id="hudRemember">
     </div>
+    <div class="row">
+      <label>Theme</label>
+      <select id="hudTheme">
+        <option value="dark">Dark</option>
+        <option value="category">Category color</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Auto-hide while I'm away
+        <span class="hint">hide the HUD when idle, show it when you're back</span>
+      </label>
+      <input type="checkbox" id="hudAutoHideIdle">
+    </div>
+  </div>
+
+  <div class="group">
+    <h2>Shortcuts</h2>
+    <div class="row">
+      <label>Global keyboard shortcuts
+        <span class="hint">Ctrl+Shift+O open · Ctrl+Shift+H HUD · Ctrl+Shift+P pause</span>
+      </label>
+      <input type="checkbox" id="hotkeys">
+    </div>
   </div>
 
   <div class="group">
@@ -122,6 +145,9 @@
       $('hudCompact').checked = !!s.hudCompact;
       $('hudShowCategory').checked = s.hudShowCategory !== false;
       $('hudRemember').checked = !!s.hudRemember;
+      $('hudTheme').value = s.hudTheme || 'dark';
+      $('hudAutoHideIdle').checked = !!s.hudAutoHideIdle;
+      $('hotkeys').checked = !!s.hotkeys;
       $('idleMinutes').value = String(s.idleMinutes || 1);
       $('launchAtStartup').checked = !!s.launchAtStartup;
     }
@@ -135,13 +161,16 @@
         hudCompact: $('hudCompact').checked,
         hudShowCategory: $('hudShowCategory').checked,
         hudRemember: $('hudRemember').checked,
+        hudTheme: $('hudTheme').value,
+        hudAutoHideIdle: $('hudAutoHideIdle').checked,
+        hotkeys: $('hotkeys').checked,
         idleMinutes: parseInt($('idleMinutes').value, 10),
         launchAtStartup: $('launchAtStartup').checked,
       };
     }
     function push() { window.settingsApi.save(collect()); }
     // apply-on-change for every control
-    ['hudEnabled', 'hudCorner', 'hudOpacity', 'hudShowTimer', 'hudScale', 'hudCompact', 'hudShowCategory', 'hudRemember', 'idleMinutes', 'launchAtStartup']
+    ['hudEnabled', 'hudCorner', 'hudOpacity', 'hudShowTimer', 'hudScale', 'hudCompact', 'hudShowCategory', 'hudRemember', 'hudTheme', 'hudAutoHideIdle', 'hotkeys', 'idleMinutes', 'launchAtStartup']
       .forEach(id => $(id).addEventListener('change', push));
     $('hudOpacity').addEventListener('input', () => {
       $('hudOpacityOut').textContent = Math.round(parseFloat($('hudOpacity').value) * 100) + '%';

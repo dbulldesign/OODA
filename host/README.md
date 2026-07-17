@@ -99,6 +99,12 @@ Open **Settings…** from the tray menu. Changes apply instantly and persist to
   category and append your running day total (fed from the OODA web app).
 - **Remember a custom position** — drag the HUD where you like and it stays
   there instead of snapping to a corner.
+- **Theme** — Dark, or **Category color** (tints the whole pill by the current
+  activity's category).
+- **Auto-hide while away** — hide the HUD when you go idle and bring it back
+  when you return.
+- **Global keyboard shortcuts** (opt-in) — `Ctrl/Cmd+Shift+O` open OODA ·
+  `Ctrl/Cmd+Shift+H` show/hide the HUD · `Ctrl/Cmd+Shift+P` pause/resume.
 - **Mark me away after** — idle time (1 / 2 / 5 / 10 min) before an *away*
   segment starts.
 - **Launch OODA when I log in** — start the host automatically at sign-in.
