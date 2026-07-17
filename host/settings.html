@@ -58,6 +58,31 @@
       <label>Show the live timer on the HUD</label>
       <input type="checkbox" id="hudShowTimer">
     </div>
+    <div class="row">
+      <label>Size</label>
+      <select id="hudScale">
+        <option value="0.85">Small</option>
+        <option value="1">Medium</option>
+        <option value="1.15">Large</option>
+        <option value="1.3">Extra large</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Compact mode
+        <span class="hint">just the dot + timer, tiny footprint</span>
+      </label>
+      <input type="checkbox" id="hudCompact">
+    </div>
+    <div class="row">
+      <label>Show category color &amp; today's total</label>
+      <input type="checkbox" id="hudShowCategory">
+    </div>
+    <div class="row">
+      <label>Remember a custom position
+        <span class="hint">drag the HUD where you want; it stays there instead of a corner</span>
+      </label>
+      <input type="checkbox" id="hudRemember">
+    </div>
   </div>
 
   <div class="group">
@@ -93,6 +118,10 @@
       $('hudOpacity').value = s.hudOpacity ?? 1;
       $('hudOpacityOut').textContent = Math.round((s.hudOpacity ?? 1) * 100) + '%';
       $('hudShowTimer').checked = !!s.hudShowTimer;
+      $('hudScale').value = String(s.hudScale || 1);
+      $('hudCompact').checked = !!s.hudCompact;
+      $('hudShowCategory').checked = s.hudShowCategory !== false;
+      $('hudRemember').checked = !!s.hudRemember;
       $('idleMinutes').value = String(s.idleMinutes || 1);
       $('launchAtStartup').checked = !!s.launchAtStartup;
     }
@@ -102,13 +131,17 @@
         hudCorner: $('hudCorner').value,
         hudOpacity: parseFloat($('hudOpacity').value),
         hudShowTimer: $('hudShowTimer').checked,
+        hudScale: parseFloat($('hudScale').value),
+        hudCompact: $('hudCompact').checked,
+        hudShowCategory: $('hudShowCategory').checked,
+        hudRemember: $('hudRemember').checked,
         idleMinutes: parseInt($('idleMinutes').value, 10),
         launchAtStartup: $('launchAtStartup').checked,
       };
     }
     function push() { window.settingsApi.save(collect()); }
     // apply-on-change for every control
-    ['hudEnabled', 'hudCorner', 'hudOpacity', 'hudShowTimer', 'idleMinutes', 'launchAtStartup']
+    ['hudEnabled', 'hudCorner', 'hudOpacity', 'hudShowTimer', 'hudScale', 'hudCompact', 'hudShowCategory', 'hudRemember', 'idleMinutes', 'launchAtStartup']
       .forEach(id => $(id).addEventListener('change', push));
     $('hudOpacity').addEventListener('input', () => {
       $('hudOpacityOut').textContent = Math.round(parseFloat($('hudOpacity').value) * 100) + '%';

@@ -24,6 +24,11 @@ const DEFAULTS = {
   hudCorner: 'top-right',    // top-right | top-left | bottom-right | bottom-left
   hudOpacity: 1,             // 0.4 – 1
   hudShowTimer: true,        // show the live timer on the HUD
+  hudScale: 1,               // 0.85 | 1 | 1.15 | 1.3 — HUD size / text scale
+  hudCompact: false,         // compact: dot + timer only (no label)
+  hudShowCategory: true,     // tint by category color + show today's total
+  hudRemember: false,        // remember a custom dragged position instead of a corner
+  hudX: null, hudY: null,    // saved custom position (when hudRemember)
   idleMinutes: 1,            // mark "away" after this many minutes idle
   launchAtStartup: false,    // start the host at login
 };
@@ -48,6 +53,7 @@ let paused = false;         // tray "Pause capturing"
 let isQuitting = false;     // true only when the user chooses Quit
 let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
 let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
+let reported = { color: null, category: null, todayMs: 0 };   // fed back by the web app
 
 function localAppPath() {
   return app.isPackaged
@@ -140,11 +146,22 @@ function updateTray() {
 // --- always-on-top mini HUD: a small pill that stays above other windows and
 // shows the current activity + a live timer, so what's being captured is
 // visible at a glance regardless of Windows taskbar settings. ---
-const HUD_W = 300, HUD_H = 46;
+function hudSize() {
+  const s = settings.hudScale || 1;
+  return { w: Math.round((settings.hudCompact ? 156 : 300) * s), h: Math.round(46 * s) };
+}
 function hudXY() {
+  const { w, h } = hudSize();
   const wa = screen.getPrimaryDisplay().workArea, m = 12;
-  const right = wa.x + wa.width - HUD_W - m, left = wa.x + m;
-  const top = wa.y + m, bottom = wa.y + wa.height - HUD_H - m;
+  // a remembered custom position wins (clamped so it can't land off-screen)
+  if (settings.hudRemember && settings.hudX != null && settings.hudY != null) {
+    return {
+      x: Math.min(Math.max(settings.hudX, wa.x), wa.x + wa.width - w),
+      y: Math.min(Math.max(settings.hudY, wa.y), wa.y + wa.height - h),
+    };
+  }
+  const right = wa.x + wa.width - w - m, left = wa.x + m;
+  const top = wa.y + m, bottom = wa.y + wa.height - h - m;
   switch (settings.hudCorner) {
     case 'top-left': return { x: left, y: top };
     case 'bottom-left': return { x: left, y: bottom };
@@ -154,9 +171,10 @@ function hudXY() {
 }
 function createHud() {
   try {
+    const { w, h } = hudSize();
     const { x, y } = hudXY();
     hud = new BrowserWindow({
-      width: HUD_W, height: HUD_H, x, y,
+      width: w, height: h, x, y,
       frame: false, resizable: false, movable: true, minimizable: false, maximizable: false,
       skipTaskbar: true, alwaysOnTop: true, transparent: true, focusable: false,
       backgroundColor: '#00000000',
@@ -170,6 +188,11 @@ function createHud() {
     hud.setOpacity(settings.hudOpacity);
     hud.loadFile(path.join(__dirname, 'hud.html'));
     hud.webContents.on('did-finish-load', updateHud);
+    // remember where the user drags it (only persisted while "remember" is on)
+    hud.on('moved', () => {
+      if (!settings.hudRemember || !hud || hud.isDestroyed()) return;
+      const [px, py] = hud.getPosition(); settings.hudX = px; settings.hudY = py; saveSettings();
+    });
     if (settings.hudEnabled) hud.showInactive(); else hud.hide();
   } catch (e) {
     // HUD is optional; never let it stop the app.
@@ -178,13 +201,23 @@ function createHud() {
 
 function updateHud() {
   if (hud && !hud.isDestroyed()) {
-    hud.webContents.send('hud-update', { label: currentStatus, paused, startedAt: segmentStart, showTimer: settings.hudShowTimer });
+    hud.webContents.send('hud-update', {
+      label: currentStatus, paused, startedAt: segmentStart,
+      showTimer: settings.hudShowTimer, compact: settings.hudCompact, scale: settings.hudScale || 1,
+      showCategory: settings.hudShowCategory, color: reported.color, category: reported.category, todayMs: reported.todayMs,
+    });
   }
 }
 
-// Apply the current settings to the live HUD window (position, opacity, visibility).
+// Apply the current settings to the live HUD window (size, position, opacity, visibility).
 function applyHud() {
   if (!hud || hud.isDestroyed()) return;
+  const { w, h } = hudSize();
+  hud.setSize(w, h);
+  // when "remember" was just turned on with no saved point yet, capture where it is now
+  if (settings.hudRemember && (settings.hudX == null || settings.hudY == null)) {
+    const [px, py] = hud.getPosition(); settings.hudX = px; settings.hudY = py; saveSettings();
+  }
   const { x, y } = hudXY();
   hud.setPosition(x, y);
   hud.setOpacity(settings.hudOpacity);
@@ -283,6 +316,12 @@ app.whenReady().then(() => {
   applySettings();
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
+  // the web app reports the current category, its color, and today's total back
+  ipcMain.on('activity-report', (_e, d) => {
+    if (!d) return;
+    reported = { color: d.color || null, category: d.category || null, todayMs: d.todayMs || 0 };
+    updateHud();
+  });
   ipcMain.handle('settings-get', () => settings);
   ipcMain.on('settings-save', (_e, incoming) => {
     settings = { ...settings, ...(incoming || {}) };
