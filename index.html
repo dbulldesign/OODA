@@ -281,6 +281,32 @@
   .act-sync.ok .as-dot{background:#3F7A56}
   .act-sync.off .as-dot{background:#C2752A}
   .act-sync.warn .as-dot{background:var(--over)}
+  /* category & goals editor */
+  .sec-btn{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer}
+  .cat-edit{display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .cat-edit input[type=text]{border:1px solid var(--line-strong);border-radius:7px;padding:6px 8px;font-size:13px;background:var(--surface-2);color:var(--ink)}
+  .cat-edit .ce-ico{width:38px;text-align:center;flex:none}
+  .cat-edit .ce-name{width:130px;flex:none}
+  .cat-edit input[type=color]{width:28px;height:28px;border:1px solid var(--line-strong);border-radius:6px;background:none;padding:2px;cursor:pointer;flex:none}
+  .cat-edit .ce-kw{flex:1;min-width:140px}
+  .cat-edit .ce-goal{display:flex;align-items:center;gap:4px;flex:none;width:100%;padding-left:44px;color:var(--ink-soft);font-size:12px}
+  .cat-edit .ce-goal select{border:1px solid var(--line-strong);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--surface-2);color:var(--ink)}
+  .cat-edit .ce-goal input[type=number]{width:56px;border:1px solid var(--line-strong);border-radius:6px;padding:4px 6px;font-size:12px;background:var(--surface-2);color:var(--ink)}
+  .cat-edit .ce-del{border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:15px;flex:none}
+  .cat-edit .ce-del:hover{color:var(--over)}
+  .act-goal-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+  .act-goal-row .agr-nm{flex:0 0 40%;display:flex;align-items:center;gap:6px;min-width:0}
+  .act-goal-row .agr-track{flex:1;height:9px;background:var(--surface-2);border-radius:5px;overflow:hidden}
+  .act-goal-row .agr-fill{height:100%;border-radius:5px}
+  .act-goal-row .agr-v{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .act-goal-row.hit .agr-v{color:#3F7A56;font-weight:600}
+  .act-goal-row.over .agr-v{color:var(--over);font-weight:600}
+  .act-week{display:flex;gap:6px;align-items:flex-end;margin:4px 0}
+  .aw-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+  .aw-bar-wrap{width:100%;height:56px;display:flex;align-items:flex-end;justify-content:center}
+  .aw-bar{width:60%;min-height:2px;border-radius:4px 4px 0 0;background:var(--accent)}
+  .aw-day{font-size:10.5px;color:var(--ink-soft)}
+  .aw-v{font-size:9.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums;white-space:nowrap}
   .heatmap{display:flex;gap:3px;overflow-x:auto;padding:2px 0}
   .hm-col{display:flex;flex-direction:column;gap:3px}
   .hm-cell{width:12px;height:12px;border-radius:2px;background:var(--surface-2);flex:none}
@@ -2020,8 +2046,25 @@
     </div>
     <div class="act-tl" id="actTl"></div>
     <div id="actBreak"></div>
+    <div id="actGoalsToday"></div>
     <p class="td-hint" style="margin:14px 0 0">A web page can't read your other apps or email directly — you log <b>what</b> you're doing in a tap and OODA auto-categorizes it and tracks the time. Turn on <b>auto-detect</b> and OODA marks time away from the keyboard for you. A desktop host that exposes <code>window.activity</code> can feed your foreground app &amp; email automatically.</p>
-    <div class="dlg-actions"><button id="actClear" class="danger">Clear today</button><button class="primary" id="actDone">Done</button></div>
+    <div class="dlg-actions"><button id="actCatsBtn">Categories &amp; goals…</button><button id="actClear" class="danger">Clear today</button><button class="primary" id="actDone">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="actCatDialog" class="act">
+  <div class="dlg-in">
+    <h3>Categories &amp; goals</h3>
+    <p class="td-hint" style="margin:0 0 10px">Rename, recolor, and set the keywords that auto-file each activity. Set an optional daily goal per category (at most / at least). Changes sync across your devices.</p>
+    <div class="rev-h" style="margin:6px 0">Categories</div>
+    <div id="catEditList"></div>
+    <button id="catAdd" class="sec-btn" style="margin-top:6px">+ Add category</button>
+    <div class="dlg-actions">
+      <button id="catReset" class="danger">Reset to defaults</button>
+      <span style="flex:1"></span>
+      <button id="catCancel">Cancel</button>
+      <button class="primary" id="catSave">Save</button>
+    </div>
   </div>
 </dialog>
 
@@ -2225,7 +2268,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.4.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.6.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -2411,8 +2454,8 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
-  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; await saveConfig(); }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; }
+  else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; state.actCats=null; state.actGoals=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; state.activity=day.activity||[]; }
   // resume a running task across reloads
@@ -2426,7 +2469,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -2437,7 +2480,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],updatedAt:Date.now()}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],actCats:state.actCats||null,actGoals:state.actGoals||[],updatedAt:Date.now()}); schedulePush(); }
 // write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
 async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
 async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,activity:state.activity||[],closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); histCommitSoon(); }
@@ -4616,13 +4659,13 @@ async function renderReview(days){
   const hmStart=new Date(today); hmStart.setDate(hmStart.getDate()-83); const hmStartStr=dayKeyFor(hmStart).slice(4);
   const fetchFrom = days>0 ? (hmStartStr<cutoffStr?hmStartStr:cutoffStr) : '0000';
   let totalTasks=0,doneTasks=0,trackedMs=0,estSum=0,actSum=0,estCount=0,activeDays=0;
-  const byCh={}; const byCat={}; const doneDays=new Set(); const dayTrk={};
+  const byCh={}; const byCat={}; const actByDay={}; const doneDays=new Set(); const dayTrk={};
   for(const k of keys){
     const ds=k.slice(4); if(ds>todayStr) continue; if(ds<fetchFrom) continue;
     const rec = k===dayKey()? {tasks:state.tasks,activity:state.activity} : await sget(k);
     const inWindow = !(days>0 && ds<cutoffStr);                                       // window applies to the aggregate stats only
     // computer-activity by category (windowed; covers days with activity but no tasks)
-    if(inWindow){ ((rec&&rec.activity)||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0) byCat[s.cat]=(byCat[s.cat]||0)+ms; }); }
+    if(inWindow){ ((rec&&rec.activity)||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0){ byCat[s.cat]=(byCat[s.cat]||0)+ms; actByDay[ds]=(actByDay[ds]||0)+ms; } }); }
     const tasks=(rec&&rec.tasks)||[]; if(!tasks.length) continue;
     let dTrk=0; tasks.forEach(t=>{ dTrk+=(t.actualMs||0); }); dayTrk[ds]=dTrk;        // for the heatmap (full 12-week span)
     if(!inWindow) continue;
@@ -4638,12 +4681,22 @@ async function renderReview(days){
   if(!doneDays.has(dayKeyFor(cur).slice(4))) cur.setDate(cur.getDate()-1);
   while(doneDays.has(dayKeyFor(cur).slice(4))){ streak++; cur.setDate(cur.getDate()-1); }
   // computer-activity breakdown by category (built above during the loop)
-  const actRows=ACT_CATS.map(c=>({c,ms:byCat[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
+  const actRows=actCats().map(c=>({c,ms:byCat[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
   const actTot=actRows.reduce((s,x)=>s+x.ms,0); const actMax=actRows.reduce((m,x)=>Math.max(m,x.ms),1);
-  const actHtml = actRows.length ? ('<div class="rev-h">Computer activity by category · '+minFmt(actTot)+'</div>'+actRows.map(x=>
+  let actHtml = actRows.length ? ('<div class="rev-h">Computer activity by category · '+minFmt(actTot)+'</div>'+actRows.map(x=>
     '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+x.c.color+'"></span><span class="t">'+x.c.icon+' '+escapeHtml(x.c.name)+'</span></span>'+
     '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/actMax*100)+'%;background:'+x.c.color+'"></span></span>'+
     '<span class="rb-v">'+minFmt(x.ms)+'</span></div>').join('')) : '';
+  // activity per day for the last 7 days (a compact weekly report)
+  if(Object.keys(actByDay).length){
+    const cols=[]; let dmax=1;
+    for(let i=6;i>=0;i--){ const d=new Date(today); d.setDate(d.getDate()-i); const ds=dayKeyFor(d).slice(4);
+      const ms=actByDay[ds]||0; dmax=Math.max(dmax,ms); cols.push({d,ms}); }
+    actHtml += '<div class="rev-h">Activity — last 7 days</div><div class="act-week">'+cols.map(x=>
+      '<div class="aw-col" title="'+minFmt(x.ms)+'"><div class="aw-bar-wrap"><div class="aw-bar" style="height:'+Math.round(x.ms/dmax*100)+'%"></div></div>'+
+      '<div class="aw-day">'+x.d.toLocaleDateString(undefined,{weekday:'narrow'})+'</div>'+
+      '<div class="aw-v">'+(x.ms?minFmt(x.ms):'')+'</div></div>').join('')+'</div>';
+  }
   if(!totalTasks){
     body.innerHTML = actHtml ? actHtml : '<div class="rev-empty">No tasks recorded in this window yet.</div>';
     return;
@@ -4694,7 +4747,7 @@ function reviewHeatmap(dayTrk){
    window.activity hook), while active/away time can be detected automatically
    with the browser Idle Detection API. Segments live in the day record
    (day.activity), so they sync, back up and export with everything else. */
-const ACT_CATS=[
+const ACT_CATS_DEFAULT=[
   {id:'email',   name:'Email',        icon:'📧', color:'#B14233', kw:['outlook','gmail','mail','inbox','superhuman','spark','thunderbird','proton','hey.com',' hey ','email','e-mail','reply','sent','fastmail','postbox','newsletter']},
   {id:'meeting', name:'Meetings',     icon:'📹', color:'#2E6B9E', kw:['zoom','teams','google meet',' meet ','webex','call','meeting','standup','stand-up','1:1','one on one','interview','hangout','facetime','skype','huddle','webinar','sync ']},
   {id:'code',    name:'Coding',       icon:'💻', color:'#5B4B9E', kw:['vscode','vs code','visual studio','intellij','xcode','terminal','iterm','github','gitlab','bitbucket',' git ','pull request',' pr ','jira','debug','cursor','sublime','neovim',' vim ','pycharm','webstorm','android studio','compile','deploy','code','coding','localhost']},
@@ -4707,13 +4760,78 @@ const ACT_CATS=[
   {id:'break',   name:'Break / away',  icon:'☕', color:'#9A7B4F', kw:['lunch','break','coffee','walk','away','afk','idle','rest','out ','offline','off desk','stepped away']},
   {id:'other',   name:'Other',         icon:'•',  color:'#8A8378', kw:[]}
 ];
-function actCatById(id){ return ACT_CATS.find(c=>c.id===id)||ACT_CATS[ACT_CATS.length-1]; }
+// the live category set — user-customized (state.actCats) or the defaults
+function actCats(){ return (state.actCats && state.actCats.length) ? state.actCats : ACT_CATS_DEFAULT; }
+function actCatById(id){ const cs=actCats(); return cs.find(c=>c.id===id)||cs.find(c=>c.id==='other')||cs[cs.length-1]; }
 function actCategorize(label){
   const s=' '+String(label||'').toLowerCase().replace(/\s+/g,' ').trim()+' ';
-  for(const c of ACT_CATS){ if(c.kw.some(k=>s.includes(k))) return c.id; }
+  for(const c of actCats()){ if((c.kw||[]).some(k=>s.includes(String(k).toLowerCase()))) return c.id; }
   return 'other';
 }
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
+/* ---- category & goals editor ---- */
+let catEditing=null;
+function openCatEditor(){
+  if(locked()){ showUnlock(); return; }
+  const goals={}; (state.actGoals||[]).forEach(g=>goals[g.cat]=g);
+  catEditing=actCats().map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,kw:(c.kw||[]).join(', '),
+    goalType:(goals[c.id]&&goals[c.id].type)||'off', goalMin:(goals[c.id]&&goals[c.id].minutes)||60}));
+  renderCatEditor();
+  document.getElementById('actCatDialog').showModal();
+}
+function renderCatEditor(){
+  const list=document.getElementById('catEditList');
+  list.innerHTML=catEditing.map((c,i)=>{
+    const builtin = c.id==='other'||c.id==='break';
+    return '<div class="cat-edit" data-i="'+i+'">'+
+      '<input type="text" class="ce-ico" data-f="icon" value="'+escapeHtml(c.icon)+'" maxlength="2" title="Emoji">'+
+      '<input type="text" class="ce-name" data-f="name" value="'+escapeHtml(c.name)+'" title="Name">'+
+      '<input type="color" data-f="color" value="'+escapeHtml(c.color)+'" title="Color">'+
+      '<input type="text" class="ce-kw" data-f="kw" placeholder="keywords, comma-separated"'+(c.id==='other'?' disabled':'')+' value="'+escapeHtml(c.kw)+'">'+
+      (builtin?'<span class="ce-del" style="opacity:.3" title="Built-in — can\'t delete">🔒</span>':'<button class="ce-del" data-del="'+i+'" title="Delete category">✕</button>')+
+      '<div class="ce-goal">Daily goal: <select data-f="goalType">'+
+        [['off','no goal'],['max','at most'],['min','at least']].map(o=>'<option value="'+o[0]+'"'+(c.goalType===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+
+        '</select> <input type="number" data-f="goalMin" min="5" step="5" value="'+c.goalMin+'"> min</div>'+
+    '</div>';
+  }).join('');
+  list.querySelectorAll('.cat-edit').forEach(row=>{ const i=+row.dataset.i;
+    row.querySelectorAll('[data-f]').forEach(inp=>inp.addEventListener('input',()=>{ catEditing[i][inp.dataset.f]=inp.value; })); });
+  list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{ catEditing.splice(+b.dataset.del,1); renderCatEditor(); });
+}
+function catAddNew(){ catEditing.splice(Math.max(0,catEditing.length-1),0,{id:'c'+uid(),name:'New category',icon:'🏷️',color:'#7A746B',kw:'',goalType:'off',goalMin:60}); renderCatEditor(); }
+async function catSaveEditor(){
+  const cats=[], goals=[], seen=new Set();
+  for(const c of catEditing){
+    let id=c.id||('c'+uid()); if(seen.has(id)) id='c'+uid(); seen.add(id);
+    cats.push({id,name:(c.name||'Untitled').trim()||'Untitled',icon:(String(c.icon||'').trim()||'•'),color:c.color||'#8A8378',
+      kw:String(c.kw||'').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)});
+    if(c.goalType==='max'||c.goalType==='min'){ const m=parseInt(c.goalMin,10); if(m>0) goals.push({cat:id,type:c.goalType,minutes:m}); }
+  }
+  if(!cats.some(c=>c.id==='other')) cats.push({id:'other',name:'Other',icon:'•',color:'#8A8378',kw:[]});
+  state.actCats=cats; state.actGoals=goals;
+  await saveConfig();
+  document.getElementById('actCatDialog').close();
+  actRenderDialog(); actReportToHost();
+  toast('Categories & goals saved.');
+}
+async function catResetDefaults(){
+  if(!confirm('Reset categories and keywords to the defaults? (Your goals stay.)')) return;
+  state.actCats=null; await saveConfig(); openCatEditor(); toast('Reset to default categories.');
+}
+// today's goal progress (byCat = ms-by-category for today)
+function actGoalsHtml(byCat){
+  const goals=state.actGoals||[]; if(!goals.length) return '';
+  const rows=goals.map(g=>{ const c=actCatById(g.cat); const min=Math.round((byCat[g.cat]||0)/60000);
+    const pct=Math.min(100,Math.round(min/g.minutes*100));
+    const hit = g.type==='min' ? min>=g.minutes : min<=g.minutes;
+    const over = g.type==='max' && min>g.minutes;
+    return '<div class="act-goal-row '+(over?'over':(hit?'hit':''))+'">'+
+      '<span class="agr-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+c.color+'"></span><span class="t">'+c.icon+' '+escapeHtml(c.name)+'</span></span>'+
+      '<span class="agr-track"><span class="agr-fill" style="width:'+pct+'%;background:'+(over?'var(--over)':c.color)+'"></span></span>'+
+      '<span class="agr-v">'+min+' / '+(g.type==='min'?'≥':'≤')+g.minutes+'m'+(hit?' ✓':'')+'</span></div>';
+  }).join('');
+  return '<div class="rev-h">Today\'s goals</div>'+rows;
+}
 let actView='timeline';   // 'timeline' (chronological) or 'grouped' (by activity/project)
 // one chronological segment row
 function actSegRowHtml(s){ const c=actCatById(s.cat); const end=s.end||Date.now();
@@ -4765,13 +4883,28 @@ async function actSaveTodayList(list){
 async function actPush(label,cat,source){
   const list=await actGetTodayList(); const now=Date.now();
   const open=list.find(s=>s.end==null); if(open) open.end=now;
+  // if we just closed an auto/host "away" stretch, offer to say what it was
+  const closedAway=(open && open.cat==='break' && (open.source==='auto'||open.source==='host')) ? open : null;
   if(label!=null){ label=String(label).trim(); if(label){
     list.push({id:uid(),cat:cat||actCategorize(label),label,start:now,end:null,source:source||'manual'});
     actRemember(label);
   }}
-  await actSaveTodayList(list); actRenderDialog();
+  await actSaveTodayList(list); actRenderDialog(); actReportToHost();
+  if(closedAway) actMaybePromptAway(closedAway);
 }
 async function actStop(){ await actPush(null); }
+// on returning from an auto-detected away stretch, offer to label the gap
+function actMaybePromptAway(seg){
+  if(!seg||!seg.end) return; const mins=Math.round((seg.end-seg.start)/60000); if(mins<3) return;
+  toastAction('Away '+actHM(seg.start)+'–'+actHM(seg.end)+' ('+mins+'m). What were you doing?','Label',()=>actLabelAway(seg.id));
+}
+async function actLabelAway(id){
+  const list=await actGetTodayList(); const seg=list.find(s=>s.id===id); if(!seg) return;
+  const v=(prompt('What were you doing while away from the keyboard?','')||'').trim(); if(!v) return;
+  seg.label=v; seg.cat=actCategorize(v); seg.source='manual';
+  await actSaveTodayList(list); actRenderDialog(); actReportToHost();
+  toast('Labeled that time as “'+v+'”.');
+}
 async function actAway(){
   const list=await actGetTodayList(); const open=list.find(s=>s.end==null);
   if(open && open.cat==='break'){ toast('Already marked away.'); return; }
@@ -4840,6 +4973,18 @@ function actInitHost(){
     const label = ev.title ? (ev.app? ev.app+' — '+ev.title : ev.title) : (ev.app||'');
     if(label) actPush(label, ev.category||actCategorize(label),'host');
   }); actHostOn=true; }catch(e){}
+}
+// Report the current activity's category, color, and today's total back to a
+// desktop host (if any) so its mini HUD can tint itself and show the running
+// day total. No-op in a plain browser.
+function actReportToHost(){
+  try{
+    const h=window.activity; if(!h||typeof h.report!=='function') return;
+    const arr=state.activity||[]; const open=arr.find(s=>s.end==null);
+    let today=0; arr.forEach(s=>{ today+=Math.max(0,(s.end||Date.now())-s.start); });
+    const c=open?actCatById(open.cat):null;
+    h.report({ label:open?open.label:null, color:c?c.color:null, category:c?c.name:null, todayMs:today, startedAt:open?open.start:null });
+  }catch(e){}
 }
 /* ---- dialog ---- */
 let actCache=[];
@@ -4911,13 +5056,15 @@ async function actRenderDialog(){
   const brk=document.getElementById('actBreak');
   const byCat={}; let tot=0;
   list.forEach(s=>{ const ms=(s.end||Date.now())-s.start; byCat[s.cat]=(byCat[s.cat]||0)+ms; tot+=ms; });
-  const rows=ACT_CATS.map(c=>({c,ms:byCat[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
+  const rows=actCats().map(c=>({c,ms:byCat[c.id]||0})).filter(x=>x.ms>0).sort((a,b)=>b.ms-a.ms);
   if(rows.length){ const max=rows.reduce((m,x)=>Math.max(m,x.ms),1);
     brk.innerHTML='<div class="rev-h">By category · '+minFmt(tot)+' tracked</div>'+rows.map(x=>
       '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+x.c.color+'"></span><span class="t">'+x.c.icon+' '+escapeHtml(x.c.name)+'</span></span>'+
       '<span class="rb-track"><span class="rb-fill" style="width:'+(x.ms/max*100)+'%;background:'+x.c.color+'"></span></span>'+
       '<span class="rb-v">'+minFmt(x.ms)+'</span></div>').join('');
   } else brk.innerHTML='';
+  // today's goal progress
+  const gEl=document.getElementById('actGoalsToday'); if(gEl) gEl.innerHTML=actGoalsHtml(byCat);
 }
 // keep the live timer ticking while the dialog is open
 function actTick(){
@@ -4934,6 +5081,7 @@ function actInit(){
   actLoadAuto(); actInitHost();
   try{ const v=localStorage.getItem(LS_PREFIX+'_actview'); if(v==='grouped'||v==='timeline') actView=v; }catch(e){}
   if(actAutoOn && ('IdleDetector' in window)){ actStartIdle().catch(()=>{}); }
+  actReportToHost(); setInterval(actReportToHost,20000);   // keep a desktop host's HUD total fresh
 }
 /* ---------- day templates (save / apply a day shape) ---------- */
 function openTemplatesDialog(){
@@ -6664,6 +6812,11 @@ document.getElementById('actClear').addEventListener('click',actClearToday);
 document.getElementById('actInput').addEventListener('input',actInputHint);
 document.getElementById('actInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actLogFromInput(); } });
 document.getElementById('actViewSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b){ actView=b.dataset.v; try{ localStorage.setItem(LS_PREFIX+'_actview',actView); }catch(err){} actRenderDialog(); } });
+document.getElementById('actCatsBtn').addEventListener('click',openCatEditor);
+document.getElementById('catAdd').addEventListener('click',catAddNew);
+document.getElementById('catCancel').addEventListener('click',()=>document.getElementById('actCatDialog').close());
+document.getElementById('catSave').addEventListener('click',catSaveEditor);
+document.getElementById('catReset').addEventListener('click',catResetDefaults);
 document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
 document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
 document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
