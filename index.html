@@ -223,6 +223,9 @@
   /* ---- activity tracking ---- */
   dialog.act{max-width:560px}
   .act-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
+  .act-head-r{display:flex;align-items:center;gap:8px}
+  .act-x{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-soft);font-size:14px;line-height:1;cursor:pointer;border-radius:8px;width:30px;height:30px;flex:none}
+  .act-x:hover{color:var(--ink);border-color:var(--ink-soft)}
   .act-daynav{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft)}
   .act-daynav button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1}
   .act-daynav button:disabled{opacity:.35;cursor:default}
@@ -2047,10 +2050,13 @@
   <div class="dlg-in">
     <div class="act-head">
       <h3 style="margin:0">Activity tracking</h3>
-      <div class="act-daynav">
-        <button id="actPrevDay" title="Previous day">‹</button>
-        <span id="actDayLbl"></span>
-        <button id="actNextDay" title="Next day">›</button>
+      <div class="act-head-r">
+        <div class="act-daynav">
+          <button id="actPrevDay" title="Previous day">‹</button>
+          <span id="actDayLbl"></span>
+          <button id="actNextDay" title="Next day">›</button>
+        </div>
+        <button id="actX" class="act-x" title="Close" aria-label="Close">✕</button>
       </div>
     </div>
     <div class="act-now" id="actNow"></div>
@@ -2322,7 +2328,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.10.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.10.1';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -5071,7 +5077,8 @@ async function actPush(label,cat,source){
   const open=list.find(s=>s.end==null); if(open) open.end=now;
   // if we just closed an auto/host "away" stretch, offer to say what it was
   const closedAway=(open && open.cat==='break' && (open.source==='auto'||open.source==='host')) ? open : null;
-  if(label!=null){ label=String(label).trim(); if(label){
+  if(label!=null){ label=String(label).trim(); if(label.length>160) label=label.slice(0,159)+'…';   // defensive cap
+    if(label){
     // no explicit category → run per-app rules (which can also rename to a project)
     let useLabel=label, useCat=cat;
     if(!useCat){ const cl=actClassify(label); useLabel=cl.label; useCat=cl.cat; }
@@ -7019,6 +7026,9 @@ document.getElementById('revDone').addEventListener('click',()=>document.getElem
 document.getElementById('revRange').addEventListener('click',e=>{ const b=e.target.closest('button[data-r]'); if(b) renderReview(+b.dataset.r); });
 document.getElementById('activityBtn').addEventListener('click',openActivityDialog);
 document.getElementById('actDone').addEventListener('click',()=>document.getElementById('actDialog').close());
+document.getElementById('actX').addEventListener('click',()=>document.getElementById('actDialog').close());
+// click outside the sheet (on the modal backdrop) closes it
+document.getElementById('actDialog').addEventListener('click',e=>{ if(e.target===document.getElementById('actDialog')) document.getElementById('actDialog').close(); });
 document.getElementById('actLog').addEventListener('click',actLogFromInput);
 document.getElementById('actAway').addEventListener('click',actAway);
 document.getElementById('actClear').addEventListener('click',actClearToday);
