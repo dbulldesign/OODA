@@ -78,9 +78,9 @@ bar, and in Alt-Tab — visible without hovering the tray.
 ## Always-on-top mini HUD
 
 A small **always-on-top pill** shows the current activity and a live timer
-(e.g. *●  Outlook — Inbox  4:12*) — visible at a glance over any window,
-regardless of taskbar settings. It has a **⏸/▶** button to pause/resume capture
-and a **▢** button to open the main OODA window, and you can **drag** it
+(e.g. *●  Outlook — Inbox  4:12  · 2h today*) — visible at a glance over any
+window, regardless of taskbar settings. It has a **⏸/▶** button to pause/resume
+capture and a **▢** button to open the main OODA window, and you can **drag** it
 anywhere. Toggle it with **Show / Hide mini HUD** in the tray menu. It never
 appears in the taskbar and doesn't steal focus.
 
@@ -93,6 +93,12 @@ Open **Settings…** from the tray menu. Changes apply instantly and persist to
 - **Corner** — which screen corner the HUD sits in (top/bottom · left/right).
 - **Opacity** — HUD transparency (40–100%).
 - **Show the live timer** on the HUD.
+- **Size** — Small / Medium / Large / Extra large.
+- **Compact mode** — just the dot + timer, tiny footprint.
+- **Category color & today's total** — tint the pill's edge by the current
+  category and append your running day total (fed from the OODA web app).
+- **Remember a custom position** — drag the HUD where you like and it stays
+  there instead of snapping to a corner.
 - **Mark me away after** — idle time (1 / 2 / 5 / 10 min) before an *away*
   segment starts.
 - **Launch OODA when I log in** — start the host automatically at sign-in.

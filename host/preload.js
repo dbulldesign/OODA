@@ -19,4 +19,7 @@ contextBridge.exposeInMainWorld('activity', {
     subscribers.push(cb);
     return () => { const i = subscribers.indexOf(cb); if (i >= 0) subscribers.splice(i, 1); };
   },
+  // OODA calls this to feed the current category, color, and today's total back
+  // to the host so the mini HUD can tint itself and show the running day total.
+  report(data) { ipcRenderer.send('activity-report', data); },
 });
