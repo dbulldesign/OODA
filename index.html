@@ -2268,7 +2268,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.6.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.6.1';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4875,12 +4875,37 @@ async function actGetTodayList(){
   const rec=await sget(actToday()); return (rec&&rec.activity)?rec.activity:[];
 }
 async function actSaveTodayList(list){
+  actSyncOpenDay(list);
   if(actViewingToday()){ state.activity=list; await saveDay(); return; }
   const rec=(await sget(actToday()))||{date:actToday().slice(4),tasks:[],reflection:'',closed:false};
   rec.activity=list; await ssetDay(actToday(),rec); schedulePush();
 }
+/* Remember which day currently holds an open (running) segment, so we can close
+   it at midnight and it never bleeds into the next day. */
+function actSetOpenDay(k){ try{ if(k) localStorage.setItem(LS_PREFIX+'_actopenday',k); else localStorage.removeItem(LS_PREFIX+'_actopenday'); }catch(e){} }
+function actGetOpenDay(){ try{ return localStorage.getItem(LS_PREFIX+'_actopenday'); }catch(e){ return null; } }
+function actSyncOpenDay(list){ actSetOpenDay(list.some(s=>s.end==null)?actToday():null); }
+// If an open segment is left over from a previous day, close it at that day's
+// midnight boundary so each day's activity stays within that day.
+async function actRollover(){
+  const openDay=actGetOpenDay();
+  if(!openDay || openDay===actToday()) return;
+  const rec=await sget(openDay);
+  if(rec && Array.isArray(rec.activity)){
+    const seg=rec.activity.find(s=>s.end==null);
+    if(seg){
+      const d=new Date(openDay.slice(4)+'T00:00:00'); d.setDate(d.getDate()+1);  // midnight ending that day
+      seg.end=Math.max(seg.start, d.getTime());
+      await ssetDay(openDay,rec); schedulePush();
+    }
+  }
+  actSetOpenDay(null);
+  if(dayKey()===openDay){ await loadDay(); render(); }   // refresh if that day is on screen
+  actRenderDialog();
+}
 // close the current open segment and (optionally) begin a new one
 async function actPush(label,cat,source){
+  await actRollover();   // first event of a new day closes yesterday's open segment at midnight
   const list=await actGetTodayList(); const now=Date.now();
   const open=list.find(s=>s.end==null); if(open) open.end=now;
   // if we just closed an auto/host "away" stretch, offer to say what it was
@@ -5081,7 +5106,9 @@ function actInit(){
   actLoadAuto(); actInitHost();
   try{ const v=localStorage.getItem(LS_PREFIX+'_actview'); if(v==='grouped'||v==='timeline') actView=v; }catch(e){}
   if(actAutoOn && ('IdleDetector' in window)){ actStartIdle().catch(()=>{}); }
-  actReportToHost(); setInterval(actReportToHost,20000);   // keep a desktop host's HUD total fresh
+  actRollover();   // close any segment left open overnight
+  actReportToHost();
+  setInterval(()=>{ actRollover(); actReportToHost(); },20000);   // roll at midnight + keep a host's HUD total fresh
 }
 /* ---------- day templates (save / apply a day shape) ---------- */
 function openTemplatesDialog(){
