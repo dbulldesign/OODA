@@ -2,8 +2,8 @@ name: Build Windows host
 
 # Builds the OODA desktop host into a Windows installer (.exe) with
 # electron-builder. Triggers on a `host-v*` tag (e.g. host-v1.2.0) and can be
-# run on demand. The installer is uploaded as a workflow artifact and, on a
-# tag, attached to a GitHub Release.
+# run on demand. The installer is uploaded as a workflow artifact and always
+# published to a GitHub Release (tagged host-v<version>) for a direct download.
 on:
   push:
     tags:
@@ -40,14 +40,20 @@ jobs:
           path: host/dist/*.exe
           if-no-files-found: error
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish to release
         shell: bash
         working-directory: host
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.exe \
-            --title "$GITHUB_REF_NAME" \
-            --notes "OODA Windows desktop host" \
-          || gh release upload "$GITHUB_REF_NAME" dist/*.exe --clobber
+          # tag pushes use their own tag; manual runs derive host-v<version>
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="host-v$(node -p "require('./package.json').version")"
+          fi
+          echo "Publishing release $TAG"
+          gh release create "$TAG" dist/*.exe \
+            --title "OODA host $TAG" \
+            --notes "OODA Windows desktop host. Download the .exe below, run it, and (at the SmartScreen prompt) choose More info -> Run anyway." \
+          || gh release upload "$TAG" dist/*.exe --clobber
