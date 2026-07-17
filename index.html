@@ -280,8 +280,13 @@
   .as-rule{flex:none;border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0 2px;opacity:0}
   .act-seg:hover .as-rule,.act-grp>summary:hover .as-rule{opacity:.65}
   .as-rule:hover{color:var(--accent);opacity:1}
-  #actRuleDialog .td-field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px}
-  #actRuleDialog .td-field input,#actRuleDialog .td-field select{width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--surface-2);color:var(--ink)}
+  .as-link{flex:none;border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:0 2px;opacity:0}
+  .act-seg:hover .as-link{opacity:.65}
+  .as-link:hover{color:var(--accent);opacity:1}
+  .act-seg .as-link.linked{opacity:.9;color:var(--accent)}
+  .as-tasktag{font-size:10.5px;color:var(--accent);display:inline-flex;align-items:center;gap:2px}
+  #actRuleDialog .td-field label,#actLinkDialog .td-field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px}
+  #actRuleDialog .td-field input,#actRuleDialog .td-field select,#actLinkDialog .td-field select{width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--surface-2);color:var(--ink)}
   .act-perm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin:2px 0 12px}
   .act-perm button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
   .act-status-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-faint);flex:none}
@@ -2108,6 +2113,15 @@
   </div>
 </dialog>
 
+<dialog id="actLinkDialog">
+  <div class="dlg-in">
+    <h3>Link to a task</h3>
+    <p class="td-hint" style="margin:0 0 12px">Add this activity's tracked time to one of the day's tasks, so it counts toward your plan (its actual-vs-estimate and the Review time-by-channel).</p>
+    <div class="td-field"><label>Task</label><select id="alTask"></select></div>
+    <div class="dlg-actions"><button id="alUnlink" class="danger">Unlink</button><span style="flex:1"></span><button id="alCancel">Cancel</button><button class="primary" id="alSave">Link</button></div>
+  </div>
+</dialog>
+
 <dialog id="settingsDialog">
   <div class="dlg-in">
     <h3>Settings</h3>
@@ -2308,7 +2322,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.9.1';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.10.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4847,6 +4861,38 @@ async function actSaveRuleFromDialog(){
   actRenderDialog(); actReportToHost();
   toast('Rule added'+(n?' · updated '+n+' entr'+(n===1?'y':'ies'):'')+'.');
 }
+/* ---- link an activity to a task so its tracked time counts toward the plan ----
+   The linked amount is added to the task's actualMs and remembered on the
+   segment (linkedMs) so relinking/unlinking reverses cleanly. Activity and
+   tasks share the day record, so linking is within the viewed day. */
+let actLinkId=null;
+function actTaskName(id){ const t=(state.tasks||[]).find(x=>x.id===id); return t?(t.name||'(untitled)'):null; }
+function actOpenLink(segId){
+  const seg=(state.activity||[]).find(s=>s.id===segId); if(!seg) return;
+  const tasks=state.tasks||[];
+  if(!tasks.length){ toast('No tasks on this day to link to — add one first.'); return; }
+  actLinkId=segId;
+  const sel=document.getElementById('alTask');
+  sel.innerHTML=tasks.map(t=>'<option value="'+t.id+'"'+(seg.taskId===t.id?' selected':'')+'>'+escapeHtml(t.name||'(untitled)')+'</option>').join('');
+  document.getElementById('alUnlink').style.display=seg.taskId?'':'none';
+  document.getElementById('actLinkDialog').showModal();
+}
+async function actDoLink(){
+  const seg=(state.activity||[]).find(s=>s.id===actLinkId);
+  const dlg=document.getElementById('actLinkDialog');
+  if(!seg){ dlg.close(); return; }
+  const taskId=document.getElementById('alTask').value;
+  if(seg.taskId){ const prev=(state.tasks||[]).find(t=>t.id===seg.taskId); if(prev) prev.actualMs=Math.max(0,(prev.actualMs||0)-(seg.linkedMs||0)); }
+  const t=(state.tasks||[]).find(x=>x.id===taskId);
+  if(t){ const dur=Math.max(0,(seg.end||Date.now())-seg.start); t.actualMs=(t.actualMs||0)+dur; seg.taskId=taskId; seg.linkedMs=dur; }
+  await saveDay(); render(); dlg.close(); actRenderDialog();
+  toast('Linked to “'+(t?t.name:'')+'”.');
+}
+async function actUnlink(){
+  const seg=(state.activity||[]).find(s=>s.id===actLinkId);
+  if(seg && seg.taskId){ const prev=(state.tasks||[]).find(t=>t.id===seg.taskId); if(prev) prev.actualMs=Math.max(0,(prev.actualMs||0)-(seg.linkedMs||0)); delete seg.taskId; seg.linkedMs=0; await saveDay(); render(); }
+  document.getElementById('actLinkDialog').close(); actRenderDialog(); toast('Unlinked.');
+}
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
 /* ---- category & goals editor ---- */
 let catEditing=null, rulesEditing=null;
@@ -4932,10 +4978,12 @@ function actGoalsHtml(byCat){
 let actView='timeline';   // 'timeline' (chronological) or 'grouped' (by activity/project)
 // one chronological segment row
 function actSegRowHtml(s){ const c=actCatById(s.cat); const end=s.end||Date.now();
+  const tn=s.taskId?actTaskName(s.taskId):null;
   return '<div class="act-seg" data-id="'+s.id+'"><div class="as-ico" style="background:'+c.color+'22">'+c.icon+'</div>'+
     '<div class="as-body"><div class="as-lbl">'+escapeHtml(s.label)+(s.source==='auto'||s.source==='host'?' <span style="opacity:.5">·auto</span>':'')+'</div>'+
-      '<div class="as-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+'</div></div>'+
+      '<div class="as-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+(tn?' · <span class="as-tasktag">🔗 '+escapeHtml(tn)+'</span>':'')+'</div></div>'+
     '<div class="as-dur">'+durFmt(end-s.start)+'</div>'+
+    '<button class="as-link'+(s.taskId?' linked':'')+'" data-id="'+s.id+'" title="Link to a task">🔗</button>'+
     '<button class="as-rule" data-rlbl="'+escapeHtml(s.label).replace(/"/g,'&quot;')+'" data-rcat="'+s.cat+'" title="Create a rule from this">⤳</button>'+
     '<button class="as-del" data-id="'+s.id+'" title="Delete">✕</button></div>';
 }
@@ -5214,6 +5262,7 @@ async function actRenderDialog(){
     const i=(state.activity||[]).findIndex(x=>x.id===b.dataset.id);
     if(i>=0){ state.activity.splice(i,1); if(viewingToday) actSyncOpenDay(state.activity); await saveDay(); actRenderDialog(); actReportToHost(); } });
   tl.querySelectorAll('.as-rule').forEach(b=>b.onclick=e=>{ e.stopPropagation(); e.preventDefault(); actOpenRuleFor(b.dataset.rlbl,b.dataset.rcat); });
+  tl.querySelectorAll('.as-link').forEach(b=>b.onclick=e=>{ e.stopPropagation(); e.preventDefault(); actOpenLink(b.dataset.id); });
   // category breakdown for today
   const brk=document.getElementById('actBreak');
   const byCat={}; let tot=0;
@@ -6987,6 +7036,9 @@ document.getElementById('catReset').addEventListener('click',catResetDefaults);
 document.getElementById('arCancel').addEventListener('click',()=>document.getElementById('actRuleDialog').close());
 document.getElementById('arSave').addEventListener('click',actSaveRuleFromDialog);
 document.getElementById('arMatch').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actSaveRuleFromDialog(); } });
+document.getElementById('alCancel').addEventListener('click',()=>document.getElementById('actLinkDialog').close());
+document.getElementById('alSave').addEventListener('click',actDoLink);
+document.getElementById('alUnlink').addEventListener('click',actUnlink);
 document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
 document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
 document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
