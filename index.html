@@ -277,6 +277,11 @@
   .act-seg .as-del{flex:none;border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:14px;padding:0 2px;opacity:0}
   .act-seg:hover .as-del{opacity:.7}
   .act-seg .as-del:hover{color:var(--over);opacity:1}
+  .as-rule{flex:none;border:0;background:none;color:var(--ink-faint);cursor:pointer;font-size:13px;padding:0 2px;opacity:0}
+  .act-seg:hover .as-rule,.act-grp>summary:hover .as-rule{opacity:.65}
+  .as-rule:hover{color:var(--accent);opacity:1}
+  #actRuleDialog .td-field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px}
+  #actRuleDialog .td-field input,#actRuleDialog .td-field select{width:100%;border:1px solid var(--line-strong);border-radius:8px;padding:8px 10px;font-size:14px;background:var(--surface-2);color:var(--ink)}
   .act-perm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin:2px 0 12px}
   .act-perm button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
   .act-status-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-faint);flex:none}
@@ -2092,6 +2097,17 @@
   </div>
 </dialog>
 
+<dialog id="actRuleDialog">
+  <div class="dlg-in">
+    <h3>Create a rule</h3>
+    <p class="td-hint" style="margin:0 0 12px">When an app or window title contains this text, file it under a category and (optionally) rename it to a project — so it groups with everything else in that project.</p>
+    <div class="td-field"><label>When title contains</label><input id="arMatch" type="text" placeholder="e.g. Visual Studio Code"></div>
+    <div class="td-field" style="margin-top:8px"><label>Category</label><select id="arCat"></select></div>
+    <div class="td-field" style="margin-top:8px"><label>Rename to project (optional)</label><input id="arRename" type="text" placeholder="e.g. OODA project"></div>
+    <div class="dlg-actions"><span></span><button id="arCancel">Cancel</button><button class="primary" id="arSave">Add rule</button></div>
+  </div>
+</dialog>
+
 <dialog id="settingsDialog">
   <div class="dlg-in">
     <h3>Settings</h3>
@@ -2292,7 +2308,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.9.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.9.1';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4805,6 +4821,32 @@ function actClassify(rawLabel){
   }
   return { label:raw, cat:actCategorize(raw) };
 }
+// "create rule from this activity" — open the quick dialog prefilled from a segment/group
+function actOpenRuleFor(label,cat){
+  const raw=String(label||'');
+  const match = raw.includes(' — ') ? raw.split(' — ')[0].trim() : raw;   // the app part by default
+  document.getElementById('arMatch').value=match;
+  const sel=document.getElementById('arCat');
+  sel.innerHTML=actCats().map(c=>'<option value="'+c.id+'"'+(c.id===cat?' selected':'')+'>'+c.icon+' '+escapeHtml(c.name)+'</option>').join('');
+  // if the label was already a clean project name (no " — "), pre-suggest it as the rename
+  document.getElementById('arRename').value = raw.includes(' — ') ? '' : raw;
+  document.getElementById('actRuleDialog').showModal();
+  setTimeout(()=>document.getElementById('arMatch').focus(),30);
+}
+async function actSaveRuleFromDialog(){
+  const match=document.getElementById('arMatch').value.trim();
+  if(!match){ toast('Enter some text to match.'); return; }
+  const cat=document.getElementById('arCat').value;
+  const rename=document.getElementById('arRename').value.trim();
+  state.actRules=state.actRules||[]; state.actRules.unshift({match,cat,rename});
+  await saveConfig();
+  // apply to the viewed day's matching segments right away
+  let n=0; (state.activity||[]).forEach(s=>{ const cl=actClassify(s.label); if(cl.label!==s.label||cl.cat!==s.cat){ s.label=cl.label; s.cat=cl.cat; n++; } });
+  if(n){ if(actViewingToday()) actSyncOpenDay(state.activity); await saveDay(); }
+  document.getElementById('actRuleDialog').close();
+  actRenderDialog(); actReportToHost();
+  toast('Rule added'+(n?' · updated '+n+' entr'+(n===1?'y':'ies'):'')+'.');
+}
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
 /* ---- category & goals editor ---- */
 let catEditing=null, rulesEditing=null;
@@ -4894,6 +4936,7 @@ function actSegRowHtml(s){ const c=actCatById(s.cat); const end=s.end||Date.now(
     '<div class="as-body"><div class="as-lbl">'+escapeHtml(s.label)+(s.source==='auto'||s.source==='host'?' <span style="opacity:.5">·auto</span>':'')+'</div>'+
       '<div class="as-time">'+actHM(s.start)+' – '+(s.end?actHM(s.end):'now')+'</div></div>'+
     '<div class="as-dur">'+durFmt(end-s.start)+'</div>'+
+    '<button class="as-rule" data-rlbl="'+escapeHtml(s.label).replace(/"/g,'&quot;')+'" data-rcat="'+s.cat+'" title="Create a rule from this">⤳</button>'+
     '<button class="as-del" data-id="'+s.id+'" title="Delete">✕</button></div>';
 }
 // group segments that share a label (case-insensitive) into one collapsible
@@ -4918,7 +4961,8 @@ function actGroupHtml(list){
       '<span class="as-ico" style="background:'+c.color+'22">'+c.icon+'</span>'+
       '<span class="ag-lbl">'+escapeHtml(g.label)+'</span>'+
       '<span class="ag-cnt">×'+g.segs.length+'</span>'+
-      '<span class="ag-dur">'+minFmt(g.ms)+'</span></summary>'+
+      '<span class="ag-dur">'+minFmt(g.ms)+'</span>'+
+      '<button class="as-rule" data-rlbl="'+escapeHtml(g.label).replace(/"/g,'&quot;')+'" data-rcat="'+cat+'" title="Create a rule from this">⤳</button></summary>'+
       '<div class="ag-kids">'+kids+'</div></details>';
   }).join('');
 }
@@ -5169,6 +5213,7 @@ async function actRenderDialog(){
     // delete from the viewed day (state.activity), works for today and history
     const i=(state.activity||[]).findIndex(x=>x.id===b.dataset.id);
     if(i>=0){ state.activity.splice(i,1); if(viewingToday) actSyncOpenDay(state.activity); await saveDay(); actRenderDialog(); actReportToHost(); } });
+  tl.querySelectorAll('.as-rule').forEach(b=>b.onclick=e=>{ e.stopPropagation(); e.preventDefault(); actOpenRuleFor(b.dataset.rlbl,b.dataset.rcat); });
   // category breakdown for today
   const brk=document.getElementById('actBreak');
   const byCat={}; let tot=0;
@@ -6939,6 +6984,9 @@ document.getElementById('ruleAdd').addEventListener('click',ruleAddNew);
 document.getElementById('catCancel').addEventListener('click',()=>document.getElementById('actCatDialog').close());
 document.getElementById('catSave').addEventListener('click',catSaveEditor);
 document.getElementById('catReset').addEventListener('click',catResetDefaults);
+document.getElementById('arCancel').addEventListener('click',()=>document.getElementById('actRuleDialog').close());
+document.getElementById('arSave').addEventListener('click',actSaveRuleFromDialog);
+document.getElementById('arMatch').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actSaveRuleFromDialog(); } });
 document.getElementById('tplBtn').addEventListener('click',openTemplatesDialog);
 document.getElementById('tplDone').addEventListener('click',()=>document.getElementById('tplDialog').close());
 document.getElementById('tplSave').addEventListener('click',saveCurrentAsTemplate);
