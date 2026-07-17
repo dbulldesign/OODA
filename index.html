@@ -230,6 +230,10 @@
   .act-daynav button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:14px;line-height:1}
   .act-daynav button:disabled{opacity:.35;cursor:default}
   .act-daynav #actDayLbl{min-width:96px;text-align:center}
+  .act-heat-wrap{margin:-2px 0 12px}
+  .act-heat{position:relative;height:16px;border-radius:8px;background:var(--surface-2);overflow:hidden}
+  .act-heat .hb{position:absolute;top:0;bottom:0;min-width:1px}
+  .act-heat-ax{display:flex;justify-content:space-between;font-size:10px;color:var(--ink-faint);margin-top:3px;font-variant-numeric:tabular-nums}
   .act-now{display:flex;align-items:center;gap:10px;border:1px solid var(--line-strong);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--surface-2)}
   .act-now.live{border-color:var(--accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 40%,transparent)}
   .act-now .an-ico{font-size:20px;flex:none;width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:9px;background:var(--surface)}
@@ -2063,6 +2067,10 @@
       </div>
     </div>
     <div class="act-now" id="actNow"></div>
+    <div class="act-heat-wrap" id="actHeatWrap" style="display:none">
+      <div class="act-heat" id="actHeat"></div>
+      <div class="act-heat-ax"><span id="actHeatL"></span><span id="actHeatR"></span></div>
+    </div>
     <div class="act-input">
       <input id="actInput" placeholder="What are you doing? e.g. Outlook — client reply" autocomplete="off">
       <button id="actAway" class="sec" title="Log time away from the keyboard">☕ Away</button>
@@ -2331,7 +2339,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.11.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.11.1';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -4916,6 +4924,22 @@ async function actUnlink(){
   document.getElementById('actLinkDialog').close(); actRenderDialog(); toast('Unlinked.');
 }
 function actHM(ms){ const d=new Date(ms); return hmFromMin(d.getHours()*60+d.getMinutes()); }
+// day heat-strip: draw each segment as a coloured slice across the tracked span
+function actRenderHeat(list){
+  const wrap=document.getElementById('actHeatWrap'), strip=document.getElementById('actHeat'); if(!wrap||!strip) return;
+  const segs=(list||[]).filter(s=>(s.end||Date.now())>s.start);
+  if(!segs.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const t0=Math.min(...segs.map(s=>s.start));
+  const t1=Math.max(...segs.map(s=>s.end||Date.now()));
+  const span=Math.max(1,t1-t0);
+  strip.innerHTML=segs.map(s=>{ const c=actCatById(s.cat); const end=s.end||Date.now();
+    const left=(s.start-t0)/span*100, w=(end-s.start)/span*100;
+    return '<span class="hb" style="left:'+left+'%;width:'+w+'%;background:'+c.color+'" title="'+escapeHtml(s.label)+' · '+actHM(s.start)+'–'+(s.end?actHM(s.end):'now')+' · '+durFmt(end-s.start)+'"></span>';
+  }).join('');
+  document.getElementById('actHeatL').textContent=actHM(t0);
+  document.getElementById('actHeatR').textContent=t1?actHM(t1):'';
+}
 /* ---- category & goals editor ---- */
 let catEditing=null, rulesEditing=null;
 function openCatEditor(){
@@ -5249,6 +5273,8 @@ async function actRenderDialog(){
     nowEl.innerHTML='<div class="an-ico">⏸</div><div class="an-body"><div class="an-lbl">Not tracking</div>'+
       '<div class="an-sub">Log what you\'re doing below to start the clock</div></div>';
   }
+  // day heat-strip: the day's activity laid out across a time axis, coloured by category
+  actRenderHeat(list);
   // recent / starter chips
   const chipEl=document.getElementById('actChips');
   let chips=actRecents();
