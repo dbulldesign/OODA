@@ -258,6 +258,7 @@
   .act-viewseg{display:flex;gap:4px;flex:none}
   .act-viewseg button{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink-soft);border-radius:7px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:var(--display)}
   .act-viewseg button.on{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+  .act-search{width:100%;box-sizing:border-box;border:1px solid var(--line-strong);border-radius:8px;padding:6px 9px;font-size:13px;background:var(--surface-2);color:var(--ink);margin:0 0 6px}
   .act-tl{display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto;margin-bottom:4px}
   .act-grp{border-bottom:1px solid var(--line)}
   .act-grp>summary{display:flex;align-items:center;gap:10px;padding:7px 4px;cursor:pointer;font-size:13px;list-style:none}
@@ -2097,6 +2098,7 @@
         <button data-v="grouped">Grouped</button>
       </div>
     </div>
+    <input id="actSearch" class="act-search" placeholder="Filter activity…" autocomplete="off">
     <div class="act-tl" id="actTl"></div>
     <div id="actBreak"></div>
     <div id="actGoalsToday"></div>
@@ -2346,7 +2348,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.12.1';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.13.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -2535,7 +2537,25 @@ function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-
 function actSanitize(arr){
   if(!Array.isArray(arr)) return [];
   let a = arr.length>2000 ? arr.slice(arr.length-2000) : arr;
-  return a.map(s=>(s && typeof s.label==='string' && s.label.length>200) ? {...s,label:s.label.slice(0,200)+'…'} : s);
+  a = a.map(s=>(s && typeof s.label==='string' && s.label.length>200) ? {...s,label:s.label.slice(0,200)+'…'} : s);
+  return actCoalesce(a);
+}
+/* Auto-combine consecutive entries of the same thing: merge back-to-back
+   segments that share a label + category and sit within ~2 min of each other,
+   so "the same thing" logged repeatedly collapses into one block. Genuinely
+   separate sessions (with a real gap or something else in between) stay apart. */
+const ACT_COALESCE_GAP=120000;
+function actCoalesce(arr){
+  const a=(arr||[]).filter(Boolean).slice().sort((x,y)=>x.start-y.start);
+  const out=[];
+  for(const s of a){
+    const p=out[out.length-1];
+    if(p && p.end!=null && (p.label||'')===(s.label||'') && p.cat===s.cat && (s.start-p.end)<=ACT_COALESCE_GAP){
+      p.end=s.end;                                   // extend (null keeps it running)
+      if(!p.taskId && s.taskId){ p.taskId=s.taskId; p.linkedMs=s.linkedMs; }
+    } else out.push(s);
+  }
+  return out;
 }
 /* ---------- load ---------- */
 async function load(){
@@ -5152,6 +5172,7 @@ function actGoalsHtml(byCat){
   return '<div class="rev-h">Today\'s goals</div>'+rows;
 }
 let actView='timeline';   // 'timeline' (chronological) or 'grouped' (by activity/project)
+let actFilter='';         // text filter for the activity list
 // one chronological segment row
 function actSegRowHtml(s){ const c=actCatById(s.cat); const end=s.end||Date.now();
   const tn=s.taskId?actTaskName(s.taskId):null;
@@ -5198,6 +5219,7 @@ async function actGetTodayList(){
   const rec=await sget(actToday()); return actSanitize((rec&&rec.activity)||[]);
 }
 async function actSaveTodayList(list){
+  list=actCoalesce(list);                 // auto-combine consecutive same-activity entries
   actSyncOpenDay(list);
   if(actViewingToday()){ state.activity=list; await saveDay(); return; }
   const rec=(await sget(actToday()))||{date:actToday().slice(4),tasks:[],reflection:'',closed:false};
@@ -5244,17 +5266,17 @@ async function actRollover(cont){
 async function actPush(label,cat,source){
   await actRollover();   // first event of a new day closes yesterday's open segment at midnight
   const list=await actGetTodayList(); const now=Date.now();
-  const open=list.find(s=>s.end==null); if(open) open.end=now;
+  const open=list.find(s=>s.end==null);
+  // classify the incoming label first (per-app rules can rename to a project)
+  let useLabel=null, useCat=null;
+  if(label!=null){ label=String(label).trim(); if(label.length>160) label=label.slice(0,159)+'…';
+    if(label){ if(cat){ useLabel=label; useCat=cat; } else { const cl=actClassify(label); useLabel=cl.label; useCat=cl.cat; } } }
+  // if the very same activity is already running, just keep it — don't fragment
+  if(open && useLabel!=null && open.label===useLabel && open.cat===useCat) return;
+  if(open) open.end=now;
   // if we just closed an auto/host "away" stretch, offer to say what it was
   const closedAway=(open && open.cat==='break' && (open.source==='auto'||open.source==='host')) ? open : null;
-  if(label!=null){ label=String(label).trim(); if(label.length>160) label=label.slice(0,159)+'…';   // defensive cap
-    if(label){
-    // no explicit category → run per-app rules (which can also rename to a project)
-    let useLabel=label, useCat=cat;
-    if(!useCat){ const cl=actClassify(label); useLabel=cl.label; useCat=cl.cat; }
-    list.push({id:uid(),cat:useCat,label:useLabel,start:now,end:null,source:source||'manual'});
-    actRemember(useLabel);
-  }}
+  if(useLabel!=null){ list.push({id:uid(),cat:useCat,label:useLabel,start:now,end:null,source:source||'manual'}); actRemember(useLabel); }
   await actSaveTodayList(list); actRenderDialog(); actReportToHost();
   if(closedAway) actMaybePromptAway(closedAway);
 }
@@ -5362,6 +5384,7 @@ function actReportToHost(){
 /* ---- dialog ---- */
 let actCache=[];
 function openActivityDialog(){ if(locked()){ showUnlock(); return; }
+  actFilter=''; const sr=document.getElementById('actSearch'); if(sr) sr.value='';
   document.getElementById('actDialog').showModal(); actRenderDialog();
   const inp=document.getElementById('actInput'); if(inp){ inp.value=''; actInputHint(); setTimeout(()=>inp.focus(),30); }
 }
@@ -5440,12 +5463,14 @@ async function actRenderDialog(){
   else if(typeof syncOn==='function' && syncOn()){ sCls='ok'; sMsg='Saved on this device and synced across your devices.'; }
   else { sCls='ok'; sMsg='Saved on this device.'; }
   sync.classList.add(sCls); sync.innerHTML='<span class="as-dot"></span><span>'+sMsg+'</span>';
-  // timeline / grouped
+  // timeline / grouped (with optional filter)
   document.querySelectorAll('#actViewSeg button').forEach(b=>b.classList.toggle('on',b.dataset.v===actView));
   const tl=document.getElementById('actTl');
+  const shown = actFilter ? list.filter(s=>(s.label||'').toLowerCase().includes(actFilter)) : list;
   if(!list.length){ tl.innerHTML='<div class="rev-empty">'+(viewingToday?'Nothing logged today yet.':'No activity recorded on this day.')+'</div>'; }
-  else if(actView==='grouped'){ tl.innerHTML=actGroupHtml(list); }
-  else { tl.innerHTML=list.slice().reverse().map(actSegRowHtml).join(''); }   // current/newest first
+  else if(!shown.length){ tl.innerHTML='<div class="rev-empty">No activity matches “'+escapeHtml(actFilter)+'”.</div>'; }
+  else if(actView==='grouped'){ tl.innerHTML=actGroupHtml(shown); }
+  else { tl.innerHTML=shown.slice().reverse().map(actSegRowHtml).join(''); }   // current/newest first
   tl.querySelectorAll('.as-del').forEach(b=>b.onclick=async e=>{ e.stopPropagation();
     // delete from the viewed day (state.activity), works for today and history
     const i=(state.activity||[]).findIndex(x=>x.id===b.dataset.id);
@@ -7236,6 +7261,7 @@ document.getElementById('actClear').addEventListener('click',actClearToday);
 document.getElementById('actInput').addEventListener('input',actInputHint);
 document.getElementById('actInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); actLogFromInput(); } });
 document.getElementById('actViewSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b){ actView=b.dataset.v; try{ localStorage.setItem(LS_PREFIX+'_actview',actView); }catch(err){} actRenderDialog(); } });
+document.getElementById('actSearch').addEventListener('input',e=>{ actFilter=e.target.value.trim().toLowerCase(); actRenderDialog(); });
 document.getElementById('actPrevDay').addEventListener('click',async()=>{ const d=new Date(viewDate); d.setDate(d.getDate()-1); await gotoDate(d); actRenderDialog(); });
 document.getElementById('actNextDay').addEventListener('click',async()=>{ if(actViewingToday())return; const d=new Date(viewDate); d.setDate(d.getDate()+1); await gotoDate(d); actRenderDialog(); });
 document.getElementById('actCatsBtn').addEventListener('click',openCatEditor);
