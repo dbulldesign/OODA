@@ -2339,7 +2339,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.11.2';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.11.3';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -5183,11 +5183,17 @@ async function actOnIdleChange(){
     else await actStop();
   }
 }
+let actAutoDenied=false;
 async function actEnableAuto(){
   if(!('IdleDetector' in window)){ toast('Auto-detect needs a Chromium browser (Chrome/Edge).'); return; }
   try{
     const perm=await IdleDetector.requestPermission();
-    if(perm!=='granted'){ toast('Idle-detection permission denied.'); return; }
+    if(perm!=='granted'){
+      actAutoDenied=true; actRenderDialog();
+      toast('Idle detection is blocked for this site. Click the icon at the left of the address bar → Site settings → set “Idle detection” to Allow, then try again. (Or just use ☕ Away.)');
+      return;
+    }
+    actAutoDenied=false;
     await actStartIdle();
     actAutoOn=true; try{ localStorage.setItem(LS_PREFIX+'_actauto','1'); }catch(e){}
     toast('Auto away-detection on.'); actRenderDialog();
@@ -5293,6 +5299,7 @@ async function actRenderDialog(){
   if(actHostOn){ txt.textContent='Desktop host connected — apps logged automatically'; btn.style.display='none'; }
   else if(!('IdleDetector' in window)){ txt.textContent='Auto away-detection needs Chrome/Edge — tap ☕ Away to log breaks'; btn.style.display='none'; }
   else if(actAutoOn){ txt.textContent='Auto away-detection on'; btn.textContent='Turn off'; btn.style.display=''; btn.onclick=()=>actDisableAuto(); }
+  else if(actAutoDenied){ txt.textContent='Idle detection blocked — allow it in the browser’s site settings, or use ☕ Away'; btn.textContent='Try again'; btn.style.display=''; btn.onclick=()=>actEnableAuto(); }
   else { txt.textContent='Auto away-detection off'; btn.textContent='Enable auto-detect'; btn.style.display=''; btn.onclick=()=>actEnableAuto(); }
   // storage / sync state — makes it clear captures are saved even with no connection
   const sync=document.getElementById('actSync'); sync.className='act-sync';
