@@ -118,6 +118,14 @@ function showWindow() {
   win.show();
   win.focus();
 }
+// Force the newest web build: drop the service-worker + cache (keeps localStorage
+// data) and hard-reload, so a stale cached UI updates immediately.
+async function forceUpdateUI() {
+  if (!win || win.isDestroyed()) { createWindow(); return; }
+  try { await win.webContents.session.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }); } catch (e) {}
+  try { win.webContents.reloadIgnoringCache(); } catch (e) { try { win.webContents.reload(); } catch (e2) {} }
+  showWindow();
+}
 
 function createTray() {
   try {
@@ -142,6 +150,7 @@ function updateTray() {
     { label: settings.hudEnabled ? 'Hide mini HUD' : 'Show mini HUD', click: toggleHud },
     { label: 'Settings…', click: openSettingsWindow },
     { label: 'Show OODA', click: showWindow },
+    { label: 'Update UI to latest', click: forceUpdateUI },
     { type: 'separator' },
     { label: 'Quit OODA', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -259,6 +268,7 @@ function tweenHud(target, done) {
 function hudExpand(on) {
   if (!hud || hud.isDestroyed() || !settings.hudEnabled) return;
   hudHovered = on;
+  try { hud.webContents.send('hud-expanded', on); } catch (e) {}   // toggle the label reveal
   if (on) {
     if (!hudBaseBounds) hudBaseBounds = hud.getBounds();
     const base = hudBaseBounds, wa = screen.getPrimaryDisplay().workArea;
@@ -387,6 +397,15 @@ app.whenReady().then(() => {
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
   ipcMain.on('hud-hover', (_e, on) => hudExpand(!!on));
+  // detect hover over the HUD by cursor position (its drag region eats DOM mouse events)
+  setInterval(() => {
+    if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating) return;
+    let pt; try { pt = screen.getCursorScreenPoint(); } catch (e) { return; }
+    const b = hud.getBounds();
+    const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+    if (inside && !hudHovered) hudExpand(true);
+    else if (!inside && hudHovered) hudExpand(false);
+  }, 200);
   // the web app reports the current category, its color, and today's total back
   ipcMain.on('activity-report', (_e, d) => {
     if (!d) return;
