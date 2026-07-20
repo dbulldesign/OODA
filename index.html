@@ -2339,7 +2339,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.11.3';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.11.4';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -2422,7 +2422,7 @@ async function loadDay(){
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
-  state.activity=day&&day.activity?day.activity:[];
+  state.activity=actSanitize(day&&day.activity?day.activity:[]);
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   const rt=document.getElementById('reflectText'); if(rt) rt.value=state.reflection;
   await seedRecurringForViewedDay();
@@ -2522,13 +2522,21 @@ function hmInput(min){ if(min==null)return ''; return String(Math.floor(min/60))
 function minFromHM(s){ if(!s)return null; const p=s.split(':'); const n=(+p[0])*60+(+p[1]); return isNaN(n)?null:n; }
 function liveActual(t){ return t.actualMs + (t.running&&t.startedAt? Date.now()-t.startedAt : 0); }
 
+/* Guard against pathological activity data (e.g. the old desktop-host feedback
+   loop that wrote ever-growing labels): cap the number of segments kept in
+   memory and truncate any oversized label so loading/rendering can't choke. */
+function actSanitize(arr){
+  if(!Array.isArray(arr)) return [];
+  let a = arr.length>2000 ? arr.slice(arr.length-2000) : arr;
+  return a.map(s=>(s && typeof s.label==='string' && s.label.length>200) ? {...s,label:s.label.slice(0,200)+'…'} : s);
+}
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
   if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; }
   else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; state.actCats=null; state.actGoals=[]; await saveConfig(); }
   const day=await sget(dayKey());
-  if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; state.activity=day.activity||[]; }
+  if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; state.activity=actSanitize(day.activity); }
   // resume a running task across reloads
   const run=state.tasks.find(t=>t.running);
   state.activeId = run? run.id : null;
@@ -2544,7 +2552,7 @@ async function reloadState(){
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
-  state.activity=day&&day.activity?day.activity:[];
+  state.activity=actSanitize(day&&day.activity?day.activity:[]);
   const run=state.tasks.find(t=>t.running); state.activeId=run?run.id:null;
   document.getElementById('capInput').value=state.capacityHours;
   document.getElementById('reflectText').value=state.reflection;
@@ -4930,8 +4938,7 @@ function actRenderHeat(list){
   const segs=(list||[]).filter(s=>(s.end||Date.now())>s.start);
   if(!segs.length){ wrap.style.display='none'; return; }
   wrap.style.display='';
-  const t0=Math.min(...segs.map(s=>s.start));
-  const t1=Math.max(...segs.map(s=>s.end||Date.now()));
+  let t0=Infinity,t1=0; for(const s of segs){ if(s.start<t0)t0=s.start; const e=s.end||Date.now(); if(e>t1)t1=e; }
   const span=Math.max(1,t1-t0);
   strip.innerHTML=segs.map(s=>{ const c=actCatById(s.cat); const end=s.end||Date.now();
     const left=(s.start-t0)/span*100, w=(end-s.start)/span*100;
@@ -5065,7 +5072,7 @@ function actViewingToday(){ return dayKey()===actToday(); }
 // live logging always targets *today* even while you browse another day's history
 async function actGetTodayList(){
   if(actViewingToday()){ if(!state.activity) state.activity=[]; return state.activity; }
-  const rec=await sget(actToday()); return (rec&&rec.activity)?rec.activity:[];
+  const rec=await sget(actToday()); return actSanitize((rec&&rec.activity)||[]);
 }
 async function actSaveTodayList(list){
   actSyncOpenDay(list);
@@ -6124,6 +6131,12 @@ async function pullGist(silent){
     if(!f){ if(!silent)toast('No OODA data in that gist yet.'); return false; }
     let content=f.content;
     if(f.truncated&&f.raw_url){ const r=await fetch(f.raw_url); content=await r.text(); }
+    // guard against a corrupted/oversized cloud payload (e.g. old runaway data) crashing the tab
+    if(content && content.length>15000000){
+      setSyncStatus('Cloud data too large — skipped to avoid a crash. Push from a clean device to reset it.','err');
+      if(!silent)toast('Cloud data looks corrupted (too large) — skipped. Push from a cleaned device to reset it.');
+      return false;
+    }
     const parsed=JSON.parse(content), data=parsed.data||parsed;
     const {changed,localNewer}=await mergeRemote(data);
     sync.lastPull=Date.now(); saveSync();
