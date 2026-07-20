@@ -1222,6 +1222,12 @@
   .chip-pop .cp-det .d-desc{white-space:pre-wrap}
   .cal-backlog .hint{margin:8px 0 0;font-size:11.5px;color:var(--ink-faint)}
   .cal-grid{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .cal-actblk{position:absolute;right:4px;width:16px;border-radius:4px;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18);opacity:.85;z-index:2}
+  .cal-actblk:hover{opacity:1;outline:2px solid var(--ink);outline-offset:-1px}
+  .cal-actblk.live{box-shadow:inset 0 0 0 1px rgba(255,255,255,.55)}
+  .cal-actsum{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+  .cal-actsum .cal-bl-head{margin-bottom:6px}
+  .cal-actsum .rev-bar{margin:4px 0}
   /* the timeline renders at full height — the page scrolls, not an inner box */
   .cal-scroll{position:relative;overflow:visible}
   .cal-canvas{position:relative}
@@ -2340,7 +2346,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.11.4';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.12.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -3747,6 +3753,7 @@ function startTick(){ clearInterval(tick); tick=setInterval(()=>{
   if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); if(viewMode==='list'&&listLayout==='dashboard') dashLiveTick(); }
   if(focusOpen){ if(pomo.on&&pomoActive) pomoTick(); renderFocus(); }   // keep Pomodoro counting through breaks
   actTick();   // live activity timer
+  if((state.activity||[]).some(s=>s.end==null)) actDayLiveUpdate();   // grow the running block + summary on the Day view
 },1000); }
 /* periodic background sync — pull Todoist + cloud every few minutes */
 let autoSyncTimer=null;
@@ -3893,6 +3900,8 @@ function renderDay(){
   const START=calStart(), END=calEnd();
   const sched=state.tasks.filter(t=>t.scheduledMin!=null);
   const back=state.tasks.filter(t=>t.scheduledMin==null && !t.done);
+  const daySegs=actDaySegs();                 // tracked activity for this day
+  const AW = daySegs.length ? 24 : 0;         // reserve a lane on the right for activity blocks
   // header: scheduled load vs capacity + adjustable day range
   const schedMin=sched.filter(t=>!t.done).reduce((s,t)=>s+blockDur(t),0);
   const capMin=state.capacityHours*60, pct=capMin?Math.min(100,schedMin/capMin*100):0;
@@ -3930,6 +3939,7 @@ function renderDay(){
   const hint=document.createElement('p'); hint.className='hint';
   hint.textContent = calSel? 'Tap a time slot to place it. Drag blocks to move, drag the bottom edge to resize.' : 'Tap a task then a time to schedule, drag blocks to move/resize, drag an empty stretch to create, or ⇧-click blocks to bulk-edit.';
   bl.appendChild(hint);
+  bl.appendChild(actDaySummaryEl(daySegs));   // by-category activity summary for this day
   // body wraps backlog + grid (two columns on wide screens)
   const body=document.createElement('div'); body.className='cal-body';
   body.appendChild(bl);
@@ -3974,8 +3984,8 @@ function renderDay(){
     const overEst = t.running && t.estimateMin>0 && (nowMinutesFloat()-t.scheduledMin)>t.estimateMin;
     const b=document.createElement('div'); b.className='cal-block'+(t.done?' done':'')+(t.running?' running':'')+(overEst?' overest':'')+(t.pinned?' pinned':'')+(t.id===daySel?' sel':'')+(blockSel.has(t.id)?' multi-sel':''); b.dataset.id=t.id;
     b.style.top=top+"px"; b.style.height=h+"px"; b.style.background=blockBg(t);
-    b.style.left='calc(52px + (100% - 58px) * '+(info.col/info.cols)+')';
-    b.style.width='calc((100% - 58px) / '+info.cols+' - 3px)';
+    b.style.left='calc(52px + (100% - '+(58+AW)+'px) * '+(info.col/info.cols)+')';
+    b.style.width='calc((100% - '+(58+AW)+'px) / '+info.cols+' - 3px)';
     b.style.right='auto';
     const proj=escapeHtml(taskProjectLabel(t)); const tall=h>=58;   // tall enough for the tag on its own line
     const showPin=h>=48;   // on short blocks the pin would sit over the time — pin via right-click instead
@@ -4001,12 +4011,95 @@ function renderDay(){
   });
   const now=new Date(); const nowMin=now.getHours()*60+now.getMinutes();
   if(nowMin>=START&&nowMin<=END){ const nl=document.createElement('div'); nl.className='cal-now'; nl.style.top=((nowMin-START)*PXM)+'px'; canvas.appendChild(nl); }
+  buildActLane(canvas,START,END);   // tracked-activity blocks on the right lane
   scroll.appendChild(canvas); grid.appendChild(scroll); body.appendChild(grid);
   const insp=document.createElement('div'); insp.className='cal-inspector'; insp.id='calInspector'; body.appendChild(insp);
   cal.appendChild(body); renderInspector();
   lastCanvas=canvas;
   renderBulkBar();
   requestAnimationFrame(()=>{ if(dayScrollPending){ dayScrollPending=false; scrollDayToNow(); } });
+}
+/* ---------- tracked activity on the Day timeline ---------- */
+// the viewed day's activity segments
+function actDaySegs(){
+  const d0=new Date(dayKey().slice(4)+'T00:00:00').getTime(), d1=d0+86400000;
+  return (state.activity||[]).filter(s=>s && s.start>=d0 && s.start<d1);
+}
+// draw each segment as a coloured block in the right-hand lane of the canvas
+function buildActLane(canvas,START,END){
+  if(!canvas) return;
+  canvas.querySelectorAll('.cal-actblk').forEach(n=>n.remove());
+  const segs=actDaySegs(); if(!segs.length) return;
+  const mm=ms=>{ const d=new Date(ms); return d.getHours()*60+d.getMinutes()+d.getSeconds()/60; };
+  segs.slice().sort((a,b)=>a.start-b.start).forEach(s=>{
+    const c=actCatById(s.cat); const endMs=s.end||Date.now();
+    let a=mm(s.start), b=s.end?mm(endMs):nowMinutesFloat();
+    if(b<a) b=END;                       // crossed midnight / clamp
+    a=Math.max(START,a); b=Math.min(END,b); if(b<=a) return;
+    const el=document.createElement('div');
+    el.className='cal-actblk'+(s.end==null?' live':''); el.dataset.id=s.id;
+    el.style.top=((a-START)*PXM)+'px'; el.style.height=Math.max((b-a)*PXM,3)+'px'; el.style.background=c.color;
+    el.title=(s.label||'')+' · '+c.icon+' '+c.name+' · '+actHM(s.start)+'–'+(s.end?actHM(s.end):'now')+' · '+durFmt(endMs-s.start);
+    el.addEventListener('click',ev=>{ ev.stopPropagation(); actLaneMenu(s.id,{x:ev.clientX,y:ev.clientY}); });
+    canvas.appendChild(el);
+  });
+}
+// by-category summary for the backlog side column (includes all custom categories)
+function actDaySummaryEl(segs){
+  const wrap=document.createElement('div'); wrap.className='cal-actsum';
+  const byCat={}; let tot=0; (segs||[]).forEach(s=>{ const ms=(s.end||Date.now())-s.start; if(ms>0){ byCat[s.cat]=(byCat[s.cat]||0)+ms; tot+=ms; } });
+  const defIds=new Set(ACT_CATS_DEFAULT.map(c=>c.id));
+  const rows=actCats().filter(c=> (byCat[c.id]||0)>0 || !defIds.has(c.id) )   // custom cats always shown
+    .sort((a,b)=>(byCat[b.id]||0)-(byCat[a.id]||0));
+  const max=rows.reduce((m,c)=>Math.max(m,byCat[c.id]||0),1);
+  let html='<div class="cal-bl-head"><h4>Activity · '+(tot?minFmt(tot):'0m')+'</h4></div>';
+  if(!rows.length) html+='<span class="hint">Nothing tracked yet today.</span>';
+  else html+=rows.map(c=>{ const ms=byCat[c.id]||0;
+    return '<div class="rev-bar"><span class="rb-nm"><span class="dot" style="width:8px;height:8px;border-radius:50%;background:'+c.color+'"></span><span class="t">'+c.icon+' '+escapeHtml(c.name)+'</span></span>'+
+      '<span class="rb-track"><span class="rb-fill" style="width:'+(ms/max*100)+'%;background:'+c.color+'"></span></span>'+
+      '<span class="rb-v">'+(ms?minFmt(ms):'—')+'</span></div>';
+  }).join('');
+  wrap.innerHTML=html;
+  return wrap;
+}
+// live refresh of the lane + summary (called each tick while on the Day view)
+function actDayLiveUpdate(){
+  if(viewMode!=='day' || dayCols>1) return;
+  const canvas=document.querySelector('#calView .cal-canvas'); if(canvas) buildActLane(canvas,calStart(),calEnd());
+  const sum=document.querySelector('#calView .cal-actsum'); if(sum) sum.replaceWith(actDaySummaryEl(actDaySegs()));
+}
+// right-click / tap menu on an activity block: edit, combine, link, delete
+function actLaneMenu(id,pos){
+  const seg=(state.activity||[]).find(s=>s.id===id); if(!seg) return;
+  showMenu([
+    {icon:'✎',label:'Edit label…',run:()=>actEditSeg(id)},
+    {icon:'🏷️',label:'Make a rule…',run:()=>actOpenRuleFor(seg.label,seg.cat)},
+    {icon:'⬆️',label:'Merge into previous',run:()=>actMergeSeg(id,-1)},
+    {icon:'⬇️',label:'Merge into next',run:()=>actMergeSeg(id,1)},
+    {icon:'🔗',label:'Link to task…',run:()=>actOpenLink(id)},
+    {sep:true},
+    {icon:'🗑',label:'Delete',danger:true,run:()=>actDeleteSeg(id)},
+  ],pos);
+}
+async function actAfterSegChange(){ if(actViewingToday()) actSyncOpenDay(state.activity); await saveDay(); renderDay(); if(document.getElementById('actDialog').open) actRenderDialog(); actReportToHost(); }
+async function actEditSeg(id){
+  const seg=(state.activity||[]).find(s=>s.id===id); if(!seg) return;
+  const v=(prompt('Activity label:', seg.label||'')||'').trim(); if(!v) return;
+  const cl=actClassify(v); seg.label=cl.label; seg.cat=cl.cat; await actAfterSegChange();
+}
+async function actDeleteSeg(id){
+  const i=(state.activity||[]).findIndex(s=>s.id===id); if(i<0) return;
+  state.activity.splice(i,1); await actAfterSegChange();
+}
+async function actMergeSeg(id,dir){
+  const ordered=(state.activity||[]).slice().sort((a,b)=>a.start-b.start);
+  const idx=ordered.findIndex(s=>s.id===id); const j=idx+dir;
+  if(idx<0||j<0||j>=ordered.length){ toast('No adjacent entry to merge with.'); return; }
+  const cur=ordered[idx], other=ordered[j];   // "other" keeps its label/category; absorbs cur's span
+  other.start=Math.min(cur.start,other.start);
+  other.end=(cur.end==null||other.end==null)?null:Math.max(cur.end,other.end);
+  const i=state.activity.findIndex(s=>s.id===cur.id); if(i>=0) state.activity.splice(i,1);
+  await actAfterSegChange(); toast('Merged into “'+(other.label||'')+'”.');
 }
 /* ---------- bulk-select blocks on the timeline (shift/⌘-click) ---------- */
 let blockSel=new Set();
