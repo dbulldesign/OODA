@@ -25,6 +25,9 @@
   .btn:hover { opacity: 1; background: rgba(235, 232, 224, .12); }
   /* compact: dot + timer + open button only */
   .bar.compact .lbl, .bar.compact .tot, .bar.compact #pause { display: none; }
+  /* on hover the window widens (main process) and we reveal the full label */
+  .bar.expanded .lbl { white-space: normal; overflow: visible; }
+  .bar.compact.expanded .lbl, .bar.compact.expanded .tot { display: block; }
 </style>
 </head>
 <body>
@@ -68,6 +71,9 @@
     });
     document.getElementById('open').onclick = () => window.hud.show();
     pauseBtn.onclick = () => window.hud.togglePause();
+    // hover → widen to show the full title, then shrink back on leave
+    bar.addEventListener('mouseenter', () => { bar.classList.add('expanded'); window.hud.hover(true); });
+    bar.addEventListener('mouseleave', () => { bar.classList.remove('expanded'); window.hud.hover(false); });
   </script>
 </body>
 </html>

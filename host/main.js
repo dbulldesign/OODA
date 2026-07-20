@@ -57,6 +57,7 @@ let isQuitting = false;     // true only when the user chooses Quit
 let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
 let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
 let reported = { color: null, category: null, todayMs: 0 };   // fed back by the web app
+let hudHovered = false, hudAnimating = false, hudBaseBounds = null, hudTween = null;
 
 function localAppPath() {
   return app.isPackaged
@@ -194,6 +195,7 @@ function createHud() {
     // remember where the user drags it (only persisted while "remember" is on)
     hud.on('moved', () => {
       if (!settings.hudRemember || !hud || hud.isDestroyed()) return;
+      if (hudAnimating || hudHovered) return;   // don't save the temporary hover-expand position
       const [px, py] = hud.getPosition(); settings.hudX = px; settings.hudY = py; saveSettings();
     });
     if (settings.hudEnabled) hud.showInactive(); else hud.hide();
@@ -237,6 +239,38 @@ function hudShouldShow() {
 function applyHudVisibility() {
   if (!hud || hud.isDestroyed()) return;
   if (hudShouldShow()) hud.showInactive(); else hud.hide();
+}
+// smoothly animate the HUD window between two bounds
+function tweenHud(target, done) {
+  if (!hud || hud.isDestroyed()) return;
+  clearInterval(hudTween);
+  const start = hud.getBounds(); const steps = 8; let i = 0; hudAnimating = true;
+  hudTween = setInterval(() => {
+    i++; const t = i / steps, e = t * (2 - t);   // ease-out
+    if (!hud || hud.isDestroyed()) { clearInterval(hudTween); hudAnimating = false; return; }
+    hud.setBounds({
+      x: Math.round(start.x + (target.x - start.x) * e), y: Math.round(start.y + (target.y - start.y) * e),
+      width: Math.round(start.width + (target.width - start.width) * e), height: Math.round(start.height + (target.height - start.height) * e),
+    });
+    if (i >= steps) { clearInterval(hudTween); hud.setBounds(target); hudAnimating = false; if (done) done(); }
+  }, 16);
+}
+// widen on hover to reveal the full title; shrink back on leave
+function hudExpand(on) {
+  if (!hud || hud.isDestroyed() || !settings.hudEnabled) return;
+  hudHovered = on;
+  if (on) {
+    if (!hudBaseBounds) hudBaseBounds = hud.getBounds();
+    const base = hudBaseBounds, wa = screen.getPrimaryDisplay().workArea;
+    const expW = Math.min(Math.round((settings.hudScale || 1) * 560), wa.width - 24);
+    const nearRight = (base.x + base.width / 2) > (wa.x + wa.width / 2);
+    let x = nearRight ? (base.x + base.width - expW) : base.x;
+    x = Math.min(Math.max(x, wa.x), wa.x + wa.width - expW);
+    tweenHud({ x, y: base.y, width: expW, height: base.height });
+  } else if (hudBaseBounds) {
+    const b = hudBaseBounds;
+    tweenHud({ ...b }, () => { hudBaseBounds = null; });
+  }
 }
 
 function toggleHud() {
@@ -352,6 +386,7 @@ app.whenReady().then(() => {
   applySettings();
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
+  ipcMain.on('hud-hover', (_e, on) => hudExpand(!!on));
   // the web app reports the current category, its color, and today's total back
   ipcMain.on('activity-report', (_e, d) => {
     if (!d) return;
