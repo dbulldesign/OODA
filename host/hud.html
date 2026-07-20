@@ -68,12 +68,23 @@
       else { tot.style.display = 'none'; }
       if (d.startedAt) start = d.startedAt;
       tick();
+      measure();
     });
     document.getElementById('open').onclick = () => window.hud.show();
     pauseBtn.onclick = () => window.hud.togglePause();
     // the pill is a drag region, so DOM hover events don't fire on it — the main
     // process detects hover by cursor position and tells us when to expand
     window.hud.onExpanded(on => bar.classList.toggle('expanded', on));
+    // report whether the label is actually truncated (or hidden in compact mode),
+    // so the host only bothers expanding when there's more text to reveal
+    function measure() {
+      let over;
+      if (bar.classList.contains('compact') && !bar.classList.contains('expanded')) over = true;
+      else over = lbl.scrollWidth > lbl.clientWidth + 2;
+      window.hud.overflow(over);
+    }
+    window.addEventListener('resize', () => requestAnimationFrame(measure));
+    requestAnimationFrame(measure);
   </script>
 </body>
 </html>

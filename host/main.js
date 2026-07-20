@@ -57,7 +57,10 @@ let isQuitting = false;     // true only when the user chooses Quit
 let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
 let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
 let reported = { color: null, category: null, todayMs: 0 };   // fed back by the web app
-let hudHovered = false, hudAnimating = false, hudBaseBounds = null, hudTween = null;
+let hudExpanded = false, hudAnimating = false, hudTween = null;
+let hudRest = null;              // the collapsed resting bounds (tracks user drags)
+let hudMoving = false, hudMoveTimer = null, hudAnchorRight = false;
+let hudCanExpand = false;        // renderer reports whether the label is actually truncated
 
 function localAppPath() {
   return app.isPackaged
@@ -201,11 +204,19 @@ function createHud() {
     hud.setOpacity(settings.hudOpacity);
     hud.loadFile(path.join(__dirname, 'hud.html'));
     hud.webContents.on('did-finish-load', updateHud);
-    // remember where the user drags it (only persisted while "remember" is on)
-    hud.on('moved', () => {
-      if (!settings.hudRemember || !hud || hud.isDestroyed()) return;
-      if (hudAnimating || hudHovered) return;   // don't save the temporary hover-expand position
-      const [px, py] = hud.getPosition(); settings.hudX = px; settings.hudY = py; saveSettings();
+    hudRest = hud.getBounds();
+    // a user drag (not our own tween) updates the resting position; skip our tweens
+    hud.on('move', () => {
+      if (hudAnimating || !hud || hud.isDestroyed()) return;
+      hudMoving = true; clearTimeout(hudMoveTimer);
+      hudMoveTimer = setTimeout(() => {
+        hudMoving = false;
+        const b = hud.getBounds();
+        // if dragged while expanded, keep the anchored edge so it collapses in place
+        const x = hudExpanded ? (hudAnchorRight ? (b.x + b.width - hudRest.width) : b.x) : b.x;
+        hudRest = { x, y: b.y, width: hudExpanded ? hudRest.width : b.width, height: hudExpanded ? hudRest.height : b.height };
+        if (settings.hudRemember) { settings.hudX = hudRest.x; settings.hudY = hudRest.y; saveSettings(); }
+      }, 300);
     });
     if (settings.hudEnabled) hud.showInactive(); else hud.hide();
   } catch (e) {
@@ -236,6 +247,7 @@ function applyHud() {
   const { x, y } = hudXY();
   hud.setPosition(x, y);
   hud.setOpacity(settings.hudOpacity);
+  hudExpanded = false; hudRest = hud.getBounds();   // settings changed → new resting bounds
   applyHudVisibility();
   updateHud();
 }
@@ -249,38 +261,41 @@ function applyHudVisibility() {
   if (!hud || hud.isDestroyed()) return;
   if (hudShouldShow()) hud.showInactive(); else hud.hide();
 }
-// smoothly animate the HUD window between two bounds
+// smoothly animate the HUD window between two bounds (time-based, eased, ~60fps)
 function tweenHud(target, done) {
   if (!hud || hud.isDestroyed()) return;
   clearInterval(hudTween);
-  const start = hud.getBounds(); const steps = 8; let i = 0; hudAnimating = true;
+  const start = hud.getBounds(), t0 = Date.now(), dur = 200; hudAnimating = true;
+  let last = null;
   hudTween = setInterval(() => {
-    i++; const t = i / steps, e = t * (2 - t);   // ease-out
     if (!hud || hud.isDestroyed()) { clearInterval(hudTween); hudAnimating = false; return; }
-    hud.setBounds({
+    const p = Math.min(1, (Date.now() - t0) / dur);
+    const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;   // ease-in-out cubic
+    const b = {
       x: Math.round(start.x + (target.x - start.x) * e), y: Math.round(start.y + (target.y - start.y) * e),
       width: Math.round(start.width + (target.width - start.width) * e), height: Math.round(start.height + (target.height - start.height) * e),
-    });
-    if (i >= steps) { clearInterval(hudTween); hud.setBounds(target); hudAnimating = false; if (done) done(); }
-  }, 16);
+    };
+    if (!last || b.x !== last.x || b.y !== last.y || b.width !== last.width || b.height !== last.height) { hud.setBounds(b); last = b; }
+    if (p >= 1) { clearInterval(hudTween); hud.setBounds(target); hudAnimating = false; if (done) done(); }
+  }, 1000 / 60);
 }
-// widen on hover to reveal the full title; shrink back on leave
-function hudExpand(on) {
-  if (!hud || hud.isDestroyed() || !settings.hudEnabled) return;
-  hudHovered = on;
-  try { hud.webContents.send('hud-expanded', on); } catch (e) {}   // toggle the label reveal
-  if (on) {
-    if (!hudBaseBounds) hudBaseBounds = hud.getBounds();
-    const base = hudBaseBounds, wa = screen.getPrimaryDisplay().workArea;
-    const expW = Math.min(Math.round((settings.hudScale || 1) * 560), wa.width - 24);
-    const nearRight = (base.x + base.width / 2) > (wa.x + wa.width / 2);
-    let x = nearRight ? (base.x + base.width - expW) : base.x;
-    x = Math.min(Math.max(x, wa.x), wa.x + wa.width - expW);
-    tweenHud({ x, y: base.y, width: expW, height: base.height });
-  } else if (hudBaseBounds) {
-    const b = hudBaseBounds;
-    tweenHud({ ...b }, () => { hudBaseBounds = null; });
-  }
+// widen on hover to reveal the full title (only when there's more to show)
+function hudDoExpand() {
+  if (!hud || hud.isDestroyed() || !settings.hudEnabled || !hudRest) return;
+  hudExpanded = true;
+  try { hud.webContents.send('hud-expanded', true); } catch (e) {}
+  const wa = screen.getPrimaryDisplay().workArea;
+  const expW = Math.min(Math.round((settings.hudScale || 1) * 560), wa.width - 24);
+  if (expW <= hudRest.width) { hudExpanded = false; return; }   // nothing to gain
+  hudAnchorRight = (hudRest.x + hudRest.width / 2) > (wa.x + wa.width / 2);
+  let x = hudAnchorRight ? (hudRest.x + hudRest.width - expW) : hudRest.x;
+  x = Math.min(Math.max(x, wa.x), wa.x + wa.width - expW);
+  tweenHud({ x, y: hudRest.y, width: expW, height: hudRest.height });
+}
+function hudDoCollapse() {
+  hudExpanded = false;
+  try { hud.webContents.send('hud-expanded', false); } catch (e) {}
+  if (hudRest) tweenHud({ ...hudRest });
 }
 
 function toggleHud() {
@@ -396,15 +411,15 @@ app.whenReady().then(() => {
   applySettings();
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
-  ipcMain.on('hud-hover', (_e, on) => hudExpand(!!on));
+  ipcMain.on('hud-overflow', (_e, b) => { hudCanExpand = !!b; });   // is the label actually truncated?
   // detect hover over the HUD by cursor position (its drag region eats DOM mouse events)
   setInterval(() => {
-    if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating) return;
+    if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating || hudMoving) return;
     let pt; try { pt = screen.getCursorScreenPoint(); } catch (e) { return; }
     const b = hud.getBounds();
     const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
-    if (inside && !hudHovered) hudExpand(true);
-    else if (!inside && hudHovered) hudExpand(false);
+    if (inside && !hudExpanded && hudCanExpand) hudDoExpand();       // only expand if there's more text
+    else if (!inside && hudExpanded) hudDoCollapse();
   }, 200);
   // the web app reports the current category, its color, and today's total back
   ipcMain.on('activity-report', (_e, d) => {
