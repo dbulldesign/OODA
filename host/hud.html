@@ -71,9 +71,9 @@
     });
     document.getElementById('open').onclick = () => window.hud.show();
     pauseBtn.onclick = () => window.hud.togglePause();
-    // hover → widen to show the full title, then shrink back on leave
-    bar.addEventListener('mouseenter', () => { bar.classList.add('expanded'); window.hud.hover(true); });
-    bar.addEventListener('mouseleave', () => { bar.classList.remove('expanded'); window.hud.hover(false); });
+    // the pill is a drag region, so DOM hover events don't fire on it — the main
+    // process detects hover by cursor position and tells us when to expand
+    window.hud.onExpanded(on => bar.classList.toggle('expanded', on));
   </script>
 </body>
 </html>
