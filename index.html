@@ -2110,6 +2110,7 @@
     <p class="td-hint" style="margin:0 0 8px">When an app or window title contains your text, file it under a category and (optionally) rename it to a project — so many titles collapse into one. Rules win over keywords; first match applies.</p>
     <div id="ruleEditList"></div>
     <button id="ruleAdd" class="sec-btn" style="margin-top:6px">+ Add rule</button>
+    <label class="td-check" style="margin:14px 0 0"><input type="checkbox" id="actAutoMatchChk"> <span>Auto-match activities to my projects<span class="hint" style="display:block;color:var(--ink-soft);font-size:11.5px">When a window title contains a Todoist project, a custom channel, or a rule's project name, group it under that project automatically.</span></span></label>
     <div class="dlg-actions">
       <button id="catReset" class="danger">Reset to defaults</button>
       <span style="flex:1"></span>
@@ -2533,7 +2534,7 @@ function actSanitize(arr){
 /* ---------- load ---------- */
 async function load(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; state.actAutoMatch=cfg.actAutoMatch!==false; }
   else { state.channels=DEFAULT_CHANNELS.slice(); state.capacityHours=9; state.todoist={...DEFAULT_TODOIST}; state.templates=[]; state.recurring=[]; state.actCats=null; state.actGoals=[]; await saveConfig(); }
   const day=await sget(dayKey());
   if(day){ state.tasks=day.tasks||[]; state.reflection=day.reflection||''; state.activity=actSanitize(day.activity); }
@@ -2548,7 +2549,7 @@ async function load(){
 // re-read in-memory state from storage without re-saving (used after a cloud pull)
 async function reloadState(){
   const cfg=await sget('config');
-  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; }
+  if(cfg){ state.channels=cfg.channels||DEFAULT_CHANNELS; state.capacityHours=cfg.capacityHours||9; state.dayStartH=cfg.dayStartH??6; state.dayEndH=cfg.dayEndH??22; state.autoArrange=!!cfg.autoArrange; state.todoist={...DEFAULT_TODOIST,...(cfg.todoist||{})}; state.templates=cfg.templates||[]; state.recurring=cfg.recurring||[]; state.actCats=cfg.actCats||null; state.actGoals=cfg.actGoals||[]; state.actRules=cfg.actRules||[]; state.actAutoMatch=cfg.actAutoMatch!==false; }
   const day=await sget(dayKey());
   state.tasks=day&&day.tasks?day.tasks:[];
   state.reflection=day&&day.reflection?day.reflection:'';
@@ -2559,7 +2560,7 @@ async function reloadState(){
   updateDateLabel(); buildChannelSelect(); render(); updateTdLink(); updateStoreState();
 }
 async function saveConfig(){ const td = secureOn()? {...state.todoist,token:''} : state.todoist;
-  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],actCats:state.actCats||null,actGoals:state.actGoals||[],actRules:state.actRules||[],updatedAt:Date.now()}); schedulePush(); }
+  await sset('config',{channels:state.channels,capacityHours:state.capacityHours,dayStartH:state.dayStartH,dayEndH:state.dayEndH,autoArrange:state.autoArrange,todoist:td,templates:state.templates||[],recurring:state.recurring||[],actCats:state.actCats||null,actGoals:state.actGoals||[],actRules:state.actRules||[],actAutoMatch:state.actAutoMatch!==false,updatedAt:Date.now()}); schedulePush(); }
 // write a day record, stamping updatedAt so cloud sync can merge per-day instead of clobbering
 async function ssetDay(key,rec){ rec.updatedAt=Date.now(); return sset(key,rec); }
 async function saveDay(){ await ssetDay(dayKey(),{date:dayKey().slice(4),tasks:state.tasks,reflection:state.reflection,activity:state.activity||[],closed:false}); schedulePush(); if(typeof scheduleNotifications==='function') scheduleNotifications(); histCommitSoon(); }
@@ -4866,12 +4867,39 @@ function actCategorize(label){
    back to keyword categorization. Returns {label, cat}. */
 function actClassify(rawLabel){
   const raw=String(rawLabel||''); const s=raw.toLowerCase();
+  // 1) explicit user rules win
   for(const r of (state.actRules||[])){
     if(r && r.match && s.includes(String(r.match).toLowerCase())){
       return { label:(r.rename&&r.rename.trim())?r.rename.trim():raw, cat:r.cat||actCategorize(raw) };
     }
   }
+  // 2) smart auto-match: if a known project name appears in the title, group under it
+  if(state.actAutoMatch!==false){
+    const proj=actMatchProject(s);
+    if(proj) return { label:proj, cat:actCategorize(raw) };
+  }
+  // 3) fall back to keyword categorization, label unchanged
   return { label:raw, cat:actCategorize(raw) };
+}
+/* Known project names OODA can auto-match a window title against: your Todoist
+   projects, your own rule renames, and any custom (non-default) channels.
+   Generic default channel names are excluded to avoid false matches. */
+const DEFAULT_CH_NAMES=new Set(DEFAULT_CHANNELS.map(c=>c.name.toLowerCase()));
+let _actProjCache=null, _actProjKey='';
+function actKnownProjects(){
+  const key=JSON.stringify([(state.actRules||[]).map(r=>r.rename),(state.channels||[]).map(c=>c.name),(tdProjects()||[]).map(p=>p.name)]);
+  if(key===_actProjKey && _actProjCache) return _actProjCache;
+  const out=[], seen=new Set();
+  const add=nm=>{ nm=String(nm||'').trim(); if(nm.length<4) return; const lc=nm.toLowerCase(); if(seen.has(lc))return; seen.add(lc); out.push({name:nm,lc}); };
+  try{ (tdProjects()||[]).forEach(p=>add(p.name)); }catch(e){}
+  (state.actRules||[]).forEach(r=>add(r.rename));
+  (state.channels||[]).forEach(c=>{ if(!DEFAULT_CH_NAMES.has(String(c.name).toLowerCase())) add(c.name); });
+  out.sort((a,b)=>b.lc.length-a.lc.length);   // longest (most specific) name wins
+  _actProjKey=key; _actProjCache=out; return out;
+}
+function actMatchProject(sLower){
+  for(const p of actKnownProjects()){ if(sLower.includes(p.lc)) return p.name; }
+  return null;
 }
 // "create rule from this activity" — open the quick dialog prefilled from a segment/group
 function actOpenRuleFor(label,cat){
@@ -4955,6 +4983,7 @@ function openCatEditor(){
   catEditing=actCats().map(c=>({id:c.id,name:c.name,icon:c.icon,color:c.color,kw:(c.kw||[]).join(', '),
     goalType:(goals[c.id]&&goals[c.id].type)||'off', goalMin:(goals[c.id]&&goals[c.id].minutes)||60}));
   rulesEditing=(state.actRules||[]).map(r=>({match:r.match||'',cat:r.cat||'other',rename:r.rename||''}));
+  const am=document.getElementById('actAutoMatchChk'); if(am) am.checked=state.actAutoMatch!==false;
   renderCatEditor(); renderRuleEditor();
   document.getElementById('actCatDialog').showModal();
 }
@@ -5004,7 +5033,8 @@ async function catSaveEditor(){
   }
   if(!cats.some(c=>c.id==='other')) cats.push({id:'other',name:'Other',icon:'•',color:'#8A8378',kw:[]});
   const rules=(rulesEditing||[]).map(r=>({match:String(r.match||'').trim(),cat:r.cat||'other',rename:String(r.rename||'').trim()})).filter(r=>r.match);
-  state.actCats=cats; state.actGoals=goals; state.actRules=rules;
+  const am=document.getElementById('actAutoMatchChk');
+  state.actCats=cats; state.actGoals=goals; state.actRules=rules; state.actAutoMatch=am?am.checked:true;
   await saveConfig();
   document.getElementById('actCatDialog').close();
   actRenderDialog(); actReportToHost();
