@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('hud', {
   onUpdate: (cb) => { if (typeof cb === 'function') ipcRenderer.on('hud-update', (_e, d) => cb(d)); },
   show: () => ipcRenderer.send('hud-show'),
   togglePause: () => ipcRenderer.send('hud-pause'),
+  hover: (on) => ipcRenderer.send('hud-hover', !!on),   // expand on hover to reveal the full text
 });
