@@ -216,7 +216,7 @@
   .rev-bar .rb-nm{flex:0 0 34%;display:flex;align-items:center;gap:6px;min-width:0}
   .rev-bar .rb-nm span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rev-bar .rb-track{flex:1;height:10px;background:var(--surface-2);border-radius:6px;overflow:hidden}
-  .rev-bar .rb-fill{height:100%;border-radius:6px}
+  .rev-bar .rb-fill{display:block;height:100%;border-radius:6px;min-width:2px}
   .rev-bar .rb-v{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
   .rev-acc{font-size:13px;margin-top:4px}
   .rev-empty{color:var(--ink-soft);font-size:13px;padding:8px 0}
@@ -327,7 +327,7 @@
   .act-goal-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
   .act-goal-row .agr-nm{flex:0 0 40%;display:flex;align-items:center;gap:6px;min-width:0}
   .act-goal-row .agr-track{flex:1;height:9px;background:var(--surface-2);border-radius:5px;overflow:hidden}
-  .act-goal-row .agr-fill{height:100%;border-radius:5px}
+  .act-goal-row .agr-fill{display:block;height:100%;border-radius:5px}
   .act-goal-row .agr-v{flex:0 0 auto;color:var(--ink-soft);font-variant-numeric:tabular-nums}
   .act-goal-row.hit .agr-v{color:#3F7A56;font-weight:600}
   .act-goal-row.over .agr-v{color:var(--over);font-weight:600}
@@ -2346,7 +2346,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.12.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.12.1';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
