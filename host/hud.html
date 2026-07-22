@@ -7,7 +7,10 @@
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
     -webkit-user-select: none; user-select: none; cursor: default; }
+  body { display: flex; justify-content: flex-start; }
   .bar { -webkit-app-region: drag; display: flex; align-items: center; gap: calc(8px * var(--s));
+    flex: none; width: 100%;
+    transition: width .2s cubic-bezier(.2, .7, .2, 1);
     height: 100%; box-sizing: border-box; padding: 0 calc(10px * var(--s));
     background: rgba(31, 42, 44, .96); color: #EBE8E0;
     border: 1px solid rgba(235, 232, 224, .14);
@@ -25,8 +28,7 @@
   .btn:hover { opacity: 1; background: rgba(235, 232, 224, .12); }
   /* compact: dot + timer + open button only */
   .bar.compact .lbl, .bar.compact .tot, .bar.compact #pause { display: none; }
-  /* on hover the window widens (main process) and we reveal the full label */
-  .bar.expanded .lbl { white-space: normal; overflow: visible; }
+  /* on hover the pill slides wider (CSS transition) to reveal the full label */
   .bar.compact.expanded .lbl, .bar.compact.expanded .tot { display: block; }
 </style>
 </head>
@@ -40,7 +42,7 @@
     <button class="btn" id="open" title="Open OODA">▢</button>
   </div>
   <script>
-    let start = Date.now(), paused = false;
+    let start = Date.now(), paused = false, expanded = false, restW = 0;
     const bar = document.getElementById('bar'), dot = document.getElementById('dot'),
           lbl = document.getElementById('lbl'), tEl = document.getElementById('t'),
           tot = document.getElementById('tot'), pauseBtn = document.getElementById('pause');
@@ -67,14 +69,30 @@
       if (d.showCategory && d.todayMs > 0) { tot.textContent = '· ' + fmtTot(d.todayMs) + ' today'; tot.style.display = ''; }
       else { tot.style.display = 'none'; }
       if (d.startedAt) start = d.startedAt;
+      // keep the pill pinned to an explicit pixel width at rest, so it never
+      // snaps to 100% when the window is resized — that's what lets the width
+      // transition run smoothly instead of jumping.
+      if (typeof d.restW === 'number') { restW = d.restW; if (!expanded) bar.style.width = restW + 'px'; }
       tick();
       measure();
     });
     document.getElementById('open').onclick = () => window.hud.show();
     pauseBtn.onclick = () => window.hud.togglePause();
     // the pill is a drag region, so DOM hover events don't fire on it — the main
-    // process detects hover by cursor position and tells us when to expand
-    window.hud.onExpanded(on => bar.classList.toggle('expanded', on));
+    // process detects hover by cursor position and tells us when to expand. It
+    // has already resized the (transparent) window; we just slide the pill's
+    // width between the collapsed and expanded sizes, anchored to the correct
+    // edge, so the animation is a GPU-composited CSS transition (smooth) rather
+    // than a per-frame OS window resize (juttery).
+    window.hud.onExpanded(d => {
+      if (!d || typeof d !== 'object') return;
+      expanded = !!d.expanded;
+      document.body.style.justifyContent = d.anchor === 'right' ? 'flex-end' : 'flex-start';
+      if (typeof d.restW === 'number') restW = d.restW;
+      bar.classList.toggle('expanded', expanded);
+      const target = expanded ? d.expW : d.restW;
+      requestAnimationFrame(() => { bar.style.width = target + 'px'; });
+    });
     // report whether the label is actually truncated (or hidden in compact mode),
     // so the host only bothers expanding when there's more text to reveal
     function measure() {

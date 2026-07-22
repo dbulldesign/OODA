@@ -57,7 +57,8 @@ let isQuitting = false;     // true only when the user chooses Quit
 let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
 let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
 let reported = { color: null, category: null, todayMs: 0 };   // fed back by the web app
-let hudExpanded = false, hudAnimating = false, hudTween = null;
+let hudExpanded = false, hudAnimating = false;
+let hudAnimTimer = null, hudCollapseTimer = null;   // guard/settle timers for the single window resize
 let hudRest = null;              // the collapsed resting bounds (tracks user drags)
 let hudMoving = false, hudMoveTimer = null, hudAnchorRight = false;
 let hudCanExpand = false;        // renderer reports whether the label is actually truncated
@@ -231,6 +232,7 @@ function updateHud() {
       showTimer: settings.hudShowTimer, compact: settings.hudCompact, scale: settings.hudScale || 1,
       showCategory: settings.hudShowCategory, color: reported.color, category: reported.category, todayMs: reported.todayMs,
       theme: settings.hudTheme || 'dark',
+      restW: hudRest ? hudRest.width : hudSize().w,
     });
   }
 }
@@ -261,41 +263,55 @@ function applyHudVisibility() {
   if (!hud || hud.isDestroyed()) return;
   if (hudShouldShow()) hud.showInactive(); else hud.hide();
 }
-// smoothly animate the HUD window between two bounds (time-based, eased, ~60fps)
-function tweenHud(target, done) {
-  if (!hud || hud.isDestroyed()) return;
-  clearInterval(hudTween);
-  const start = hud.getBounds(), t0 = Date.now(), dur = 200; hudAnimating = true;
-  let last = null;
-  hudTween = setInterval(() => {
-    if (!hud || hud.isDestroyed()) { clearInterval(hudTween); hudAnimating = false; return; }
-    const p = Math.min(1, (Date.now() - t0) / dur);
-    const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;   // ease-in-out cubic
-    const b = {
-      x: Math.round(start.x + (target.x - start.x) * e), y: Math.round(start.y + (target.y - start.y) * e),
-      width: Math.round(start.width + (target.width - start.width) * e), height: Math.round(start.height + (target.height - start.height) * e),
-    };
-    if (!last || b.x !== last.x || b.y !== last.y || b.width !== last.width || b.height !== last.height) { hud.setBounds(b); last = b; }
-    if (p >= 1) { clearInterval(hudTween); hud.setBounds(target); hudAnimating = false; if (done) done(); }
-  }, 1000 / 60);
-}
-// widen on hover to reveal the full title (only when there's more to show)
-function hudDoExpand() {
-  if (!hud || hud.isDestroyed() || !settings.hudEnabled || !hudRest) return;
-  hudExpanded = true;
-  try { hud.webContents.send('hud-expanded', true); } catch (e) {}
+// the full expanded pill width (capped to the screen)
+function hudExpW() {
   const wa = screen.getPrimaryDisplay().workArea;
-  const expW = Math.min(Math.round((settings.hudScale || 1) * 560), wa.width - 24);
-  if (expW <= hudRest.width) { hudExpanded = false; return; }   // nothing to gain
+  return Math.min(Math.round((settings.hudScale || 1) * 560), wa.width - 24);
+}
+// Widen on hover to reveal the full title. Rather than resizing the OS window
+// every frame (which is choppy on Windows), we resize the window ONCE to the
+// full width — the extra area is transparent — and let the pill itself slide
+// open via a GPU-composited CSS width transition in the renderer. No per-frame
+// window resize means no jutter.
+function hudDoExpand() {
+  if (!hud || hud.isDestroyed() || !settings.hudEnabled || !hudRest || hudExpanded) return;
+  const wa = screen.getPrimaryDisplay().workArea;
+  const expW = hudExpW();
+  if (expW <= hudRest.width) return;   // nothing to gain
+  hudExpanded = true;
+  clearTimeout(hudCollapseTimer);
   hudAnchorRight = (hudRest.x + hudRest.width / 2) > (wa.x + wa.width / 2);
   let x = hudAnchorRight ? (hudRest.x + hudRest.width - expW) : hudRest.x;
   x = Math.min(Math.max(x, wa.x), wa.x + wa.width - expW);
-  tweenHud({ x, y: hudRest.y, width: expW, height: hudRest.height });
+  // grow the window instantly, then let the pill animate open inside it
+  hudAnimating = true; clearTimeout(hudAnimTimer);
+  try { hud.setBounds({ x, y: hudRest.y, width: expW, height: hudRest.height }); } catch (e) {}
+  hudAnimTimer = setTimeout(() => { hudAnimating = false; }, 260);
+  try {
+    hud.webContents.send('hud-expanded', {
+      expanded: true, anchor: hudAnchorRight ? 'right' : 'left',
+      restW: hudRest.width, expW,
+    });
+  } catch (e) {}
 }
 function hudDoCollapse() {
+  if (!hudExpanded) return;
   hudExpanded = false;
-  try { hud.webContents.send('hud-expanded', false); } catch (e) {}
-  if (hudRest) tweenHud({ ...hudRest });
+  const restW = hudRest ? hudRest.width : hudSize().w;
+  try {
+    hud.webContents.send('hud-expanded', {
+      expanded: false, anchor: hudAnchorRight ? 'right' : 'left',
+      restW, expW: hudExpW(),
+    });
+  } catch (e) {}
+  // let the pill finish its CSS shrink, then pull the window back in
+  clearTimeout(hudCollapseTimer);
+  hudCollapseTimer = setTimeout(() => {
+    if (!hud || hud.isDestroyed() || hudExpanded || !hudRest) return;
+    hudAnimating = true; clearTimeout(hudAnimTimer);
+    try { hud.setBounds({ ...hudRest }); } catch (e) {}
+    hudAnimTimer = setTimeout(() => { hudAnimating = false; }, 200);
+  }, 230);
 }
 
 function toggleHud() {
