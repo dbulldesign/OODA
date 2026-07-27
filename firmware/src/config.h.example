@@ -1,0 +1,77 @@
+/* OODA Pomodoro puck — user configuration.
+ *
+ * Copy this file to `config.h` and fill in your values:
+ *
+ *     cp src/config.h.example src/config.h
+ *
+ * `config.h` is git-ignored (see firmware/.gitignore) so your WiFi password
+ * and host token never get committed.
+ *
+ * Link model: the puck is always powered from USB-C and talks to the OODA host
+ * over that same cable (USB serial) as the PRIMARY link. WiFi is a FALLBACK,
+ * used automatically only when the USB link goes quiet. Leave WIFI_SSID empty
+ * for a USB-only puck.
+ *
+ * Board: Adafruit ESP32 Feather V2. USB here is a CP2102 USB-serial bridge, so
+ * `Serial` is both the flash/monitor port AND the host link — debug logging must
+ * go to a separate UART (see DEBUG_LOG).
+ */
+#pragma once
+
+// ── USB link (primary) ───────────────────────────────────────────────────────
+// `Serial` is the USB-C serial bridge; it carries the host protocol. The baud
+// here is a real UART rate and MUST match the host bridge (control-serial.js
+// opens at 115200).
+#define HOST_SERIAL        Serial
+#define HOST_SERIAL_BAUD   115200
+#define SERIAL_STALE_MS    6000        // no data for this long → USB link is down
+#define SERIAL_HELLO_MS    1000        // probe interval while hunting for the host
+
+// ── WiFi link (fallback) ─────────────────────────────────────────────────────
+// Leave WIFI_SSID = "" to disable WiFi entirely (USB-only). Otherwise: HTTP
+// commands + an SSE state stream. The token comes from the OODA tray menu
+// (Remote control → On — allow LAN devices).
+#define WIFI_SSID       ""
+#define WIFI_PASSWORD   ""
+#define OODA_HOST       "192.168.1.50"
+#define OODA_PORT       7420
+#define OODA_TOKEN      "paste-your-token-here"
+
+// ── Debug logging ─────────────────────────────────────────────────────────────
+// The USB port is the host link, so logs can't go there. Set DEBUG_LOG to 1 to
+// emit logs on a second UART (any free pins wired to a USB-serial adapter), or
+// leave it 0 for a silent puck.
+#define DEBUG_LOG       0
+#define DEBUG_SERIAL    Serial1
+#define DEBUG_TX_PIN    14             // any free Feather V2 GPIO
+#define DEBUG_RX_PIN    32             // any free Feather V2 GPIO
+
+// ── Display: 3.5" 480×320 color TFT FeatherWing (#3651, HX8357) ───────────────
+// The wing stacks on the Feather over SPI. These are the control pins for an
+// ESP32 Feather per Adafruit's 3.5" TFT FeatherWing guide — VERIFY against the
+// V2 pinout page for your exact board and change if the screen stays blank.
+// (The #3651 V2 has resistive touch over I²C; we don't use touch — the knob is
+// the interface — so no touch pins are needed.)
+#define TFT_CS          15
+#define TFT_DC          33
+#define TFT_RST         -1             // tied to the Feather reset on the wing
+#define TFT_ROTATION    1              // 1 or 3 → 480×320 landscape
+
+// ── I²C rotary encoder (STEMMA QT — no wiring pins needed) ────────────────────
+// The encoder plugs into the Feather's STEMMA QT connector; `Wire` uses the board
+// defaults. The board's STEMMA QT power is enabled in firmware (NEOPIXEL_I2C_POWER).
+#define SEESAW_ADDR     0x36           // Adafruit I²C QT Rotary Encoder (#5880)
+#define SEESAW_SWITCH   24             // seesaw pin for the encoder push switch
+#define ENC_INVERT      0              // set 1 if turning feels backwards
+
+// ── Buzzer (one GPIO → a screw terminal) ──────────────────────────────────────
+// Driven with a plain on/off buzz — no tones. Use an ACTIVE buzzer (Adafruit
+// #1536, self-oscillating) with its two legs in the "A0" and "GND" screw
+// terminals. A vibration motor (#1201) also works but needs a driver transistor.
+#define PIN_BUZZER      26             // "A0" on the ESP32 Feather V2
+
+// ── Behavior tuning ───────────────────────────────────────────────────────────
+#define LONG_PRESS_MS   700            // hold time that counts as a long-press (→ skip)
+#define PREVIEW_MIN_LO  5              // idle knob preview: min minutes
+#define PREVIEW_MIN_HI  90             // idle knob preview: max minutes
+#define PREVIEW_MIN_DEF 25             // idle knob preview: default minutes

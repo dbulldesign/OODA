@@ -1,0 +1,12 @@
+# PlatformIO build output
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Local secrets — copied from src/config.h.example, never committed
+src/config.h
+
+# Editor / OS cruft
+.vscode/
+*.swp
+.DS_Store

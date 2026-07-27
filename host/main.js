@@ -17,6 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { createControlServer } = require('./control');
+const { createSerialControl } = require('./control-serial');
 
 const POLL_MS = 4000;       // how often to sample the foreground window
 const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
@@ -41,6 +42,7 @@ const DEFAULTS = {
   controlLan: false,         // bind to the LAN (0.0.0.0) instead of loopback only
   controlPort: 7420,         // control endpoint port
   controlToken: '',          // shared token required for non-loopback requests
+  controlSerial: true,       // USB serial bridge for a puck plugged in over USB-C
 };
 let settings = { ...DEFAULTS };
 function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
@@ -172,6 +174,14 @@ function updateTray() {
         { label: 'On — allow LAN devices', type: 'radio', checked: settings.controlEnabled && settings.controlLan, click: () => setControlMode('lan') },
         { type: 'separator' },
         { label: 'Copy address' + (settings.controlEnabled ? ' (' + controlAddress(false) + ')' : ''), enabled: settings.controlEnabled, click: copyControlAddress },
+        { type: 'separator' },
+        {
+          label: 'USB puck' + (serialControl.available() ? '' : ' (needs serialport)'),
+          type: 'checkbox',
+          checked: settings.controlSerial,
+          enabled: serialControl.available(),
+          click: () => setSerialMode(!settings.controlSerial),
+        },
       ],
     },
     { type: 'separator' },
@@ -258,6 +268,7 @@ function updateHud() {
   // any HUD-worthy change (status, pause, pomo phase) is also pushed to any
   // connected control-endpoint device
   try { if (control && control.running()) control.broadcast(controlState()); } catch (e) {}
+  try { if (serialControl && serialControl.running()) serialControl.broadcast(controlState()); } catch (e) {}
 }
 
 // Apply the current settings to the live HUD window (size, position, opacity, visibility).
@@ -363,6 +374,7 @@ function applySettings() {
   try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtStartup }); } catch (e) {}
   registerHotkeys();
   applyControl();
+  applySerialControl();
   updateTray();
 }
 
@@ -420,6 +432,15 @@ const control = createControlServer({
   onCommand: controlCommand,
   log: (m) => { try { console.log('[control] ' + m); } catch (e) {} },
 });
+// USB serial bridge: the same Pomodoro controls + state over a plain USB-C
+// serial link, for a puck plugged straight into this machine. Shares getState /
+// onCommand with the HTTP endpoint above; see control-serial.js.
+const serialControl = createSerialControl({
+  version: app.getVersion(),
+  getState: controlState,
+  onCommand: controlCommand,
+  log: (m) => { try { console.log('[serial] ' + m); } catch (e) {} },
+});
 function controlState() {
   return {
     version: app.getVersion(),
@@ -464,6 +485,16 @@ function applyControl() {
   } else {
     control.stop();
   }
+}
+function applySerialControl() {
+  if (settings.controlSerial) serialControl.start({});
+  else serialControl.stop();
+}
+function setSerialMode(on) {
+  settings.controlSerial = !!on;
+  saveSettings();
+  applySerialControl();
+  updateTray();
 }
 function setControlMode(mode) {                 // 'off' | 'local' | 'lan'
   settings.controlEnabled = (mode !== 'off');
@@ -544,7 +575,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { isQuitting = true; try { globalShortcut.unregisterAll(); } catch (e) {} try { control.stop(); } catch (e) {} });
+app.on('before-quit', () => { isQuitting = true; try { globalShortcut.unregisterAll(); } catch (e) {} try { control.stop(); } catch (e) {} try { serialControl.stop(); } catch (e) {} });
 
 // Keep running in the tray when the window is closed; quit only via the tray.
 app.on('window-all-closed', () => {
