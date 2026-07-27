@@ -13,6 +13,9 @@
   "dependencies": {
     "get-windows": "^9.1.0"
   },
+  "optionalDependencies": {
+    "serialport": "^12.0.0"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3"
@@ -23,6 +26,7 @@
     "files": [
       "main.js",
       "control.js",
+      "control-serial.js",
       "preload.js",
       "hud.html",
       "hud-preload.js",
@@ -37,7 +41,9 @@
       { "from": "../icons", "to": "app-web/icons" }
     ],
     "asarUnpack": [
-      "**/node_modules/get-windows/**"
+      "**/node_modules/get-windows/**",
+      "**/node_modules/@serialport/**",
+      "**/node_modules/serialport/**"
     ],
     "directories": {
       "buildResources": "build"

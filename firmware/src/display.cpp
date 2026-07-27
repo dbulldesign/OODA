@@ -21,8 +21,7 @@ namespace {
   void fmtToday(int64_t ms, char* buf, size_t n) {
     if (ms < 0) ms = 0;
     long totalMin = (long)(ms / 60000);
-    long h = totalMin / 60;
-    long m = totalMin % 60;
+    long h = totalMin / 60, m = totalMin % 60;
     if (h > 0) snprintf(buf, n, "Today %ldh %ldm", h, m);
     else       snprintf(buf, n, "Today %ldm", m);
   }
@@ -35,8 +34,10 @@ namespace {
       default:          return "";
     }
   }
+  const char* statusWord(LinkStatus s) {
+    switch (s) { case LINK_ONLINE: return "connected"; case LINK_SEARCHING: return "searching"; default: return "offline"; }
+  }
 
-  // Centered text at a given text size, at vertical position y.
   void centerText(const char* s, int size, int y) {
     oled.setTextSize(size);
     int16_t x1, y1; uint16_t w, h;
@@ -45,21 +46,21 @@ namespace {
     oled.print(s);
   }
 
-  // ── little phase icons (drawn at top-left, ~16×16) ───────────────────────────
-  void iconTomato(int x, int y) {          // 🍅 work
+  // ── phase icons (~16×16, top-left) ───────────────────────────────────────────
+  void iconTomato(int x, int y) {
     oled.fillCircle(x + 8, y + 10, 6, SSD1306_WHITE);
-    oled.drawLine(x + 8, y + 4, x + 8, y + 1, SSD1306_WHITE);   // stem
-    oled.drawLine(x + 5, y + 3, x + 11, y + 3, SSD1306_WHITE);  // leaves
+    oled.drawLine(x + 8, y + 4, x + 8, y + 1, SSD1306_WHITE);
+    oled.drawLine(x + 5, y + 3, x + 11, y + 3, SSD1306_WHITE);
   }
-  void iconCoffee(int x, int y) {          // ☕ break
-    oled.drawRect(x + 2, y + 5, 10, 8, SSD1306_WHITE);          // cup
-    oled.drawRect(x + 12, y + 6, 3, 4, SSD1306_WHITE);          // handle
-    oled.drawLine(x + 5, y + 1, x + 5, y + 3, SSD1306_WHITE);   // steam
+  void iconCoffee(int x, int y) {
+    oled.drawRect(x + 2, y + 5, 10, 8, SSD1306_WHITE);
+    oled.drawRect(x + 12, y + 6, 3, 4, SSD1306_WHITE);
+    oled.drawLine(x + 5, y + 1, x + 5, y + 3, SSD1306_WHITE);
     oled.drawLine(x + 8, y + 1, x + 8, y + 3, SSD1306_WHITE);
   }
-  void iconPalm(int x, int y) {            // 🌴 long break
-    oled.drawLine(x + 8, y + 15, x + 8, y + 6, SSD1306_WHITE);  // trunk
-    oled.drawLine(x + 8, y + 6, x + 3, y + 3, SSD1306_WHITE);   // fronds
+  void iconPalm(int x, int y) {
+    oled.drawLine(x + 8, y + 15, x + 8, y + 6, SSD1306_WHITE);
+    oled.drawLine(x + 8, y + 6, x + 3, y + 3, SSD1306_WHITE);
     oled.drawLine(x + 8, y + 6, x + 13, y + 3, SSD1306_WHITE);
     oled.drawLine(x + 8, y + 6, x + 2, y + 7, SSD1306_WHITE);
     oled.drawLine(x + 8, y + 6, x + 14, y + 7, SSD1306_WHITE);
@@ -73,51 +74,49 @@ namespace {
     }
   }
 
-  // Connection status glyph, top-right corner.
-  void statusGlyph(NetStatus net) {
-    int x = OLED_WIDTH - 10, y = 0;
-    switch (net) {
-      case NET_ONLINE:                                    // filled dot = live
-        oled.fillCircle(x + 3, y + 3, 3, SSD1306_WHITE);
+  // Top-right: link source label + status glyph.
+  void linkBadge(const char* source, LinkStatus st) {
+    int gx = OLED_WIDTH - 8, gy = 0;         // glyph box (6×6)
+    switch (st) {
+      case LINK_ONLINE:    oled.fillCircle(gx + 3, gy + 3, 3, SSD1306_WHITE); break;
+      case LINK_SEARCHING: oled.drawCircle(gx + 3, gy + 3, 3, SSD1306_WHITE); break;
+      default:
+        oled.drawLine(gx, gy, gx + 6, gy + 6, SSD1306_WHITE);
+        oled.drawLine(gx + 6, gy, gx, gy + 6, SSD1306_WHITE);
         break;
-      case NET_SEARCHING:                                 // hollow dot = looking
-        oled.drawCircle(x + 3, y + 3, 3, SSD1306_WHITE);
-        break;
-      default:                                            // "x" = down/offline
-        oled.drawLine(x, y, x + 6, y + 6, SSD1306_WHITE);
-        oled.drawLine(x + 6, y, x, y + 6, SSD1306_WHITE);
-        break;
+    }
+    if (source && source[0]) {               // small "USB"/"WiFi" left of the glyph
+      oled.setTextSize(1);
+      int16_t x1, y1; uint16_t w, h;
+      oled.getTextBounds(source, 0, 0, &x1, &y1, &w, &h);
+      oled.setCursor(gx - 3 - (int)w, 0);
+      oled.print(source);
     }
   }
 
   // ── screens ─────────────────────────────────────────────────────────────────
-  void renderIdle(const PomoState& st, NetStatus net, int previewMin) {
+  void renderIdle(const PomoState& st, int previewMin) {
     centerText("OODA", 1, 2);
-
     if (previewMin > 0) {
-      char buf[24];
-      snprintf(buf, sizeof(buf), "%d min", previewMin);
+      char buf[24]; snprintf(buf, sizeof(buf), "%d min", previewMin);
       centerText(buf, 3, 20);
       centerText("turn to set \x18\x19", 1, 46);
     } else {
       centerText("Press to focus", 1, 26);
     }
-
     char today[24];
     fmtToday(st.valid ? st.todayMs : 0, today, sizeof(today));
     centerText(today, 1, 55);
   }
 
-  void renderRunning(const PomoState& st, NetStatus net) {
+  void renderRunning(const PomoState& st) {
     phaseIcon(st.phase, 0, 0);
     oled.setTextSize(1);
     oled.setCursor(20, 4);
     oled.print(phaseLabel(st.phase));
-
     char mmss[8];
     fmtMMSS(st.remainingMs(), mmss, sizeof(mmss));
     centerText(mmss, 3, 22);
-
     char foot[24];
     if (st.phase == PHASE_WORK) snprintf(foot, sizeof(foot), "Round %d", st.round);
     else                        snprintf(foot, sizeof(foot), "after round %d", st.round);
@@ -128,7 +127,7 @@ namespace {
 namespace display {
 
 void begin() {
-  Wire.begin(PIN_OLED_SDA, PIN_OLED_SCL);
+  Wire.begin();                              // STEMMA QT default pins (OLED + encoder)
   gReady = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (!gReady) return;
   oled.setTextColor(SSD1306_WHITE);
@@ -145,23 +144,20 @@ void splash(const char* line1, const char* line2) {
   oled.display();
 }
 
-void render(const PomoState& st, NetStatus net, int previewMin) {
+void render(const PomoState& st, const char* source, LinkStatus status, int previewMin) {
   if (!gReady) return;
   oled.clearDisplay();
 
-  if (net == NET_WIFI_DOWN) {
+  if (!st.valid) {                           // no frame yet from either link
     centerText("OODA puck", 1, 6);
-    centerText("no wifi", 2, 26);
-  } else if (!st.valid && net != NET_ONLINE) {
-    centerText("OODA puck", 1, 6);
-    centerText(net::statusText(), 2, 26);
+    centerText(statusWord(status), 2, 26);
   } else if (st.hasPomo) {
-    renderRunning(st, net);
+    renderRunning(st);
   } else {
-    renderIdle(st, net, previewMin);
+    renderIdle(st, previewMin);
   }
 
-  statusGlyph(net);
+  linkBadge(source, status);
   oled.display();
 }
 

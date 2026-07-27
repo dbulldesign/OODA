@@ -5,42 +5,60 @@
  *     cp src/config.h.example src/config.h
  *
  * `config.h` is git-ignored (see firmware/.gitignore) so your WiFi password
- * and host token never get committed. Everything the firmware needs to reach
- * your OODA host lives here.
+ * and host token never get committed.
+ *
+ * Link model: the puck is always powered from USB-C and talks to the OODA host
+ * over that same cable (native USB-CDC serial) as the PRIMARY link. WiFi is a
+ * FALLBACK, used automatically only when the USB link goes quiet. Leave WIFI_SSID
+ * empty for a USB-only puck.
  */
 #pragma once
 
-// ── WiFi ────────────────────────────────────────────────────────────────────
-#define WIFI_SSID       "your-wifi-name"
-#define WIFI_PASSWORD   "your-wifi-password"
+// ── USB link (primary) ───────────────────────────────────────────────────────
+// On the ESP32-S3 with USB-CDC-on-boot, `Serial` IS the native USB port, so it
+// carries the host protocol. (Debug logging therefore goes to DEBUG_SERIAL, not
+// here — printing to Serial would corrupt the protocol stream.)
+#define HOST_SERIAL        Serial
+#define HOST_SERIAL_BAUD   115200      // ignored by native USB-CDC; used on a UART
+#define SERIAL_STALE_MS    6000        // no data for this long → USB link is down
+#define SERIAL_HELLO_MS    1000        // probe interval while hunting for the host
 
-// ── OODA host (Remote control → "On — allow LAN devices") ────────────────────
-// The IP of the machine running the OODA desktop app, and the control port.
-// Default port is 7420 (settings.json → controlPort).
+// ── WiFi link (fallback) ─────────────────────────────────────────────────────
+// Leave WIFI_SSID = "" to disable WiFi entirely (USB-only). Otherwise these are
+// used exactly as before: HTTP commands + an SSE state stream. The token comes
+// from the OODA tray menu (Remote control → On — allow LAN devices).
+#define WIFI_SSID       ""
+#define WIFI_PASSWORD   ""
 #define OODA_HOST       "192.168.1.50"
 #define OODA_PORT       7420
-
-// Shared token generated when you pick "On — allow LAN devices" in the tray
-// menu (the copied URL contains it as ?token=…). Loopback wouldn't need one,
-// but a puck talks over WiFi, so a token is required. Leave "" only if you are
-// somehow on loopback.
 #define OODA_TOKEN      "paste-your-token-here"
 
-// ── Behavior tuning (sensible defaults; change freely) ───────────────────────
-#define LONG_PRESS_MS   700     // hold time that counts as a long-press (→ skip)
-#define PREVIEW_MIN_LO  5       // idle knob preview: min minutes
-#define PREVIEW_MIN_HI  90      // idle knob preview: max minutes
-#define PREVIEW_MIN_DEF 25      // idle knob preview: default minutes
+// ── Debug logging ─────────────────────────────────────────────────────────────
+// The USB port is the host link, so logs can't go there. Set DEBUG_LOG to 1 to
+// emit logs on the UART broken out on the TX/RX pads (a USB-serial cable there),
+// or leave it 0 for a silent puck.
+#define DEBUG_LOG       0
+#define DEBUG_SERIAL    Serial1
+#define DEBUG_TX_PIN    5              // QT Py ESP32-S3 "TX" pad
+#define DEBUG_RX_PIN    16             // QT Py ESP32-S3 "RX" pad
 
-// ── Pinout (ESP32 devkit defaults from firmware/README.md) ───────────────────
-#define PIN_OLED_SDA    21
-#define PIN_OLED_SCL    22
-#define PIN_ENC_CLK     32      // encoder A
-#define PIN_ENC_DT      33      // encoder B
-#define PIN_ENC_SW      25      // encoder push switch
-#define PIN_BUZZER      26      // passive buzzer +
-
-// ── OLED ─────────────────────────────────────────────────────────────────────
+// ── I²C peripherals (STEMMA QT bus — no wiring pins needed) ───────────────────
+// The OLED and the rotary encoder both live on the QT Py's STEMMA QT connector,
+// so `Wire` uses the board default pins; just daisy-chain them with QT cables.
 #define OLED_WIDTH      128
 #define OLED_HEIGHT     64
-#define OLED_ADDR       0x3C    // common SSD1306 I²C address (0x3C or 0x3D)
+#define OLED_ADDR       0x3C           // Adafruit SSD1306 128×64 (#938 / #326)
+
+#define SEESAW_ADDR     0x36           // Adafruit I²C QT Rotary Encoder (#5880)
+#define SEESAW_SWITCH   24             // seesaw pin for the encoder push switch
+#define ENC_INVERT      0              // set 1 if turning feels backwards
+
+// ── Buzzer (one GPIO) ─────────────────────────────────────────────────────────
+// Adafruit passive piezo (#160): one leg to this pin, the other to GND.
+#define PIN_BUZZER      18             // "A0" on the QT Py ESP32-S3
+
+// ── Behavior tuning ───────────────────────────────────────────────────────────
+#define LONG_PRESS_MS   700            // hold time that counts as a long-press (→ skip)
+#define PREVIEW_MIN_LO  5              // idle knob preview: min minutes
+#define PREVIEW_MIN_HI  90             // idle knob preview: max minutes
+#define PREVIEW_MIN_DEF 25             // idle knob preview: default minutes

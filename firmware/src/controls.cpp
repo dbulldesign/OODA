@@ -1,62 +1,81 @@
 #include "controls.h"
 #include "config.h"
-#include <ESP32Encoder.h>
+#include "debug.h"
+#include <Adafruit_seesaw.h>
 
 namespace {
-  ESP32Encoder gEnc;
-  int64_t      gLastCount = 0;
+  Adafruit_seesaw ss;
+  bool     gReady    = false;
+  int32_t  gLastPos  = 0;
+  int      gRotAccum = 0;       // detents not yet taken
 
-  // Button debounce + short/long-press detection.
-  bool     gStable   = true;    // debounced level (HIGH = released, pull-up)
+  // Button debounce + short/long-press detection (seesaw switch is active-low).
+  bool     gStable   = true;    // debounced level (true = released)
   bool     gRaw      = true;
-  uint32_t gEdgeAt   = 0;       // last raw change time
-  uint32_t gDownAt   = 0;       // when the current press began
-  bool     gLongSent = false;   // long-press already emitted for this hold
+  uint32_t gEdgeAt   = 0;
+  uint32_t gDownAt   = 0;
+  bool     gLongSent = false;
   controls::Press gPending = controls::PRESS_NONE;
 
+  uint32_t gLastPoll = 0;
+  const uint32_t POLL_MS     = 5;    // I²C poll cadence
   const uint32_t DEBOUNCE_MS = 25;
 }
 
 namespace controls {
 
 void begin() {
-  ESP32Encoder::useInternalWeakPullResistors = puType::up;
-  gEnc.attachHalfQuad(PIN_ENC_CLK, PIN_ENC_DT);
-  gEnc.clearCount();
-  gLastCount = 0;
-
-  pinMode(PIN_ENC_SW, INPUT_PULLUP);
-  gStable = gRaw = digitalRead(PIN_ENC_SW);
+  // Wire is started by display::begin(); the encoder shares that STEMMA QT bus.
+  gReady = ss.begin(SEESAW_ADDR);
+  if (!gReady) { LOG("seesaw encoder not found at 0x%02X\n", SEESAW_ADDR); return; }
+  ss.pinMode(SEESAW_SWITCH, INPUT_PULLUP);
+  gLastPos = ss.getEncoderPosition();
+  gStable = gRaw = true;
 }
 
 void loop() {
-  // ── button ──────────────────────────────────────────────────────────────────
-  bool level = digitalRead(PIN_ENC_SW);
+  if (!gReady) return;
+  if (millis() - gLastPoll < POLL_MS) return;
+  gLastPoll = millis();
+
+  // ── rotation ────────────────────────────────────────────────────────────────
+  int32_t pos = ss.getEncoderPosition();
+  int32_t d = pos - gLastPos;
+  if (d != 0) {
+    gLastPos = pos;
+#if ENC_INVERT
+    d = -d;
+#endif
+    gRotAccum += (int)d;
+  }
+
+  // ── button (active-low through the seesaw) ───────────────────────────────────
+  bool level = ss.digitalRead(SEESAW_SWITCH);   // true = released, false = pressed
   if (level != gRaw) { gRaw = level; gEdgeAt = millis(); }
 
   if (level != gStable && (millis() - gEdgeAt) > DEBOUNCE_MS) {
     gStable = level;
-    if (gStable == LOW) {                 // pressed (active-low)
+    if (!gStable) {                    // pressed
       gDownAt = millis();
       gLongSent = false;
-    } else {                              // released
-      if (!gLongSent) gPending = PRESS_SHORT;   // long already fired on hold?
+    } else {                           // released
+      if (!gLongSent) gPending = PRESS_SHORT;
     }
   }
 
-  // Emit the long-press as soon as the hold threshold is crossed, so a held
-  // button feels responsive instead of waiting for release.
-  if (gStable == LOW && !gLongSent && (millis() - gDownAt) >= LONG_PRESS_MS) {
+  // Fire the long-press as soon as the hold threshold passes (responsive feel).
+  if (!gStable && !gLongSent && (millis() - gDownAt) >= LONG_PRESS_MS) {
     gLongSent = true;
     gPending  = PRESS_LONG;
   }
 }
 
+bool ready() { return gReady; }
+
 int takeRotation() {
-  int64_t c = gEnc.getCount() / 2;        // halfQuad → 2 counts per detent
-  int delta = (int)(c - gLastCount);
-  gLastCount = c;
-  return delta;
+  int d = gRotAccum;
+  gRotAccum = 0;
+  return d;
 }
 
 Press takePress() {

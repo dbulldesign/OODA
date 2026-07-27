@@ -1,102 +1,93 @@
 /* OODA Pomodoro puck — firmware entry point.
  *
- * OODA (on the desktop host) is the source of truth for the timer. This puck:
- *   1. joins WiFi and confirms the host with GET /ping,
- *   2. subscribes to GET /events (SSE) and mirrors each state frame,
- *   3. shows the phase + a big countdown derived from the host clock,
- *   4. sends GET /pomodoro/{start,stop,skip} on the button, and
- *   5. chimes when the host reports a phase change.
+ * OODA (on the desktop host) is the source of truth for the timer. This puck is
+ * a remote face for it:
+ *   1. talks to the host over USB-C (native USB-CDC serial) as the PRIMARY link,
+ *      and falls back to WiFi automatically when USB is quiet,
+ *   2. mirrors each state frame, deriving the countdown from the host clock,
+ *   3. sends start/stop/skip from the one knob, and
+ *   4. chimes when the host reports a phase change.
  *
- * See firmware/README.md for the wire protocol and firmware/src/config.h.example
- * for the settings you fill in. All timing math trusts the host, never the
- * puck's own clock (see PomoState::remainingMs / net.cpp offset handling).
+ * See firmware/README.md for the wire protocol, firmware/BUILD.md for the
+ * Adafruit parts + wiring, and firmware/src/config.h.example for the settings.
  */
 #include <Arduino.h>
 #include "config.h"
+#include "debug.h"
 #include "state.h"
-#include "net.h"
+#include "link.h"
 #include "display.h"
 #include "controls.h"
 #include "buzzer.h"
 
 namespace {
-  PomoState gState;
-
-  // Phase-change tracking for the chime.
   Phase gLastPhase = PHASE_NONE;
   bool  gHaveLast  = false;
 
-  // Idle knob "length preview" (stretch goal). OODA sets the real length in its
-  // settings; the host has no per-start length yet, so this is a local preview
-  // only — starting still just calls /pomodoro/start. Wire a host extension in
-  // later to send this value.
+  // Idle knob "length preview" (stretch goal). OODA sets the real length; there
+  // is no per-start length on the host yet, so this is a local preview only —
+  // starting still just sends "start". Send gPreviewMin along once the host and
+  // its serial/HTTP protocol gain a length parameter.
   int  gPreviewMin    = PREVIEW_MIN_DEF;
   bool gPreviewActive = false;
 
   uint32_t gLastDraw = 0;
 
   void handleFrame() {
-    Phase cur = gState.hasPomo ? gState.phase : PHASE_NONE;
-    if (gHaveLast && cur != gLastPhase && cur != PHASE_NONE) {
-      buzzer::chimePhase(cur);      // entered a new focus/break phase → chime
-    }
-    if (gState.hasPomo) gPreviewActive = false;   // running: drop the preview
+    const PomoState& st = link::state();
+    Phase cur = st.hasPomo ? st.phase : PHASE_NONE;
+    if (gHaveLast && cur != gLastPhase && cur != PHASE_NONE) buzzer::chimePhase(cur);
+    if (st.hasPomo) gPreviewActive = false;
     gLastPhase = cur;
     gHaveLast  = true;
   }
 
   void handleControls() {
-    // Rotation → adjust idle length preview.
     int delta = controls::takeRotation();
-    if (delta != 0 && !gState.hasPomo) {
+    if (delta != 0 && !link::state().hasPomo) {
       gPreviewActive = true;
       gPreviewMin += delta;
       if (gPreviewMin < PREVIEW_MIN_LO) gPreviewMin = PREVIEW_MIN_LO;
       if (gPreviewMin > PREVIEW_MIN_HI) gPreviewMin = PREVIEW_MIN_HI;
     }
 
-    // Button.
     switch (controls::takePress()) {
       case controls::PRESS_SHORT:
         buzzer::beep();
-        // We know the host's state, so map explicitly per the spec:
-        // idle → start, running → stop.
-        net::command(gState.hasPomo ? "stop" : "start");
+        link::command(link::state().hasPomo ? "stop" : "start");   // idle→start, running→stop
         break;
       case controls::PRESS_LONG:
         buzzer::beep();
-        net::command("skip");        // long-press → next phase (focus↔break)
+        link::command("skip");                                     // long-press → next phase
         break;
-      default:
-        break;
+      default: break;
     }
   }
 }
 
 void setup() {
-  Serial.begin(115200);
-  delay(50);
-  Serial.println("\nOODA Pomodoro puck booting…");
+  LOG_BEGIN();
+  LOG("\nOODA Pomodoro puck booting...\n");
 
-  display::begin();
+  display::begin();                 // starts the shared I²C bus
   display::splash("OODA", "puck");
   buzzer::begin();
-  controls::begin();
-  net::begin();
+  controls::begin();                // seesaw encoder shares that I²C bus
+  link::begin();                    // USB (primary) + WiFi (fallback)
 }
 
 void loop() {
-  // Pump each subsystem. Nothing here blocks.
-  bool gotFrame = net::loop(gState);
+  bool changed = link::loop();
   controls::loop();
   buzzer::loop();
 
-  if (gotFrame) handleFrame();
+  if (changed) handleFrame();
   handleControls();
 
-  // Redraw at ~10 Hz (so the local countdown ticks) or immediately on a frame.
-  if (gotFrame || millis() - gLastDraw >= 100) {
-    display::render(gState, net::status(), gPreviewActive ? gPreviewMin : 0);
+  // Redraw at ~10 Hz (so the local countdown ticks) or immediately on a change.
+  if (changed || millis() - gLastDraw >= 100) {
+    display::render(link::state(), link::sourceText(), link::status(),
+                    gPreviewActive ? gPreviewMin : 0);
     gLastDraw = millis();
   }
 }
