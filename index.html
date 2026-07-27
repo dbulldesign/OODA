@@ -665,6 +665,16 @@
   .focus-pomo .pomo-rd{font-size:12px;color:var(--ink-faint)}
   .focus-pomo .pomo-go,.focus-pomo .pomo-skip{border:1px solid var(--line-strong);background:var(--surface-2);color:var(--ink);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:var(--display)}
   .focus-pomo .pomo-go{border-color:var(--accent);color:var(--accent)}
+  .pomostrip{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;z-index:900;
+    display:flex;align-items:center;gap:10px;padding:8px 8px 8px 15px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--line-strong);box-shadow:0 8px 28px rgba(0,0,0,.22);font-size:13px}
+  .pomostrip.break{border-color:var(--now)}
+  .pomostrip .ps-ph{font-weight:600;color:var(--ink)}
+  .pomostrip .ps-time{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:15px;color:var(--accent)}
+  .pomostrip.break .ps-time{color:var(--now)}
+  .pomostrip button{border:0;background:transparent;color:var(--ink-soft);cursor:pointer;font-size:12px;padding:4px 8px;border-radius:999px;font-family:var(--display)}
+  .pomostrip button:hover{background:var(--surface-2);color:var(--ink)}
+  @media (min-width:900px){ .pomostrip{bottom:20px} }
   .focus-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   .focus-acts button{border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);border-radius:10px;
     padding:11px 20px;font-size:14px;cursor:pointer;font-family:var(--display)}
@@ -1595,6 +1605,7 @@
   <span class="ms-time" id="msTime"></span>
   <span class="ms-bar"><span class="ms-fill" id="msFill"></span></span>
 </div>
+<div class="pomostrip" id="pomoStrip" style="display:none"></div>
 
 <nav class="tabbar" id="tabbar" aria-label="Views">
   <button class="tb on" data-v="list"><span class="tb-ic">☰</span><span class="tb-l">List</span></button>
@@ -2181,14 +2192,14 @@
     </div>
     <div class="set-group">
       <div class="set-h">Pomodoro</div>
-      <label class="td-check" style="margin:0"><input type="checkbox" id="pomoOn"> Pomodoro work/break timer in Focus mode</label>
+      <label class="td-check" style="margin:0"><input type="checkbox" id="pomoOn"> Pomodoro focus/break timer</label>
       <div class="goal-set" id="pomoRow" style="display:none;margin-top:8px;flex-wrap:wrap">
         <span class="goal-unit">Focus</span><input id="pomoWork" type="number" min="5" max="90" step="5"> min
         <span class="goal-unit">Break</span><input id="pomoBreak" type="number" min="1" max="30" step="1"> min
         <span class="goal-unit">Long break</span><input id="pomoLong" type="number" min="5" max="45" step="5"> min
         <span class="goal-unit">every</span><input id="pomoRounds" type="number" min="2" max="8" step="1"> rounds
       </div>
-      <p class="td-hint">When on, Focus mode runs work/break cycles with a chime; long break after every few rounds.</p>
+      <p class="td-hint">Press <b>P</b> anywhere (or use the command palette) to start/stop a focus cycle — a countdown pill floats on screen, each focus block is logged to your activity timeline, and a connected desktop host shows the countdown on its HUD. Long break after every few rounds.</p>
     </div>
     <div class="set-group">
       <div class="set-h">Working hours</div>
@@ -2348,7 +2359,7 @@ let memFallback={}; let storeOk=true; let tick=null;
    localStorage so data (and the Todoist token) survives reloads on a
    plain web host. Falls back to memory only if both are unavailable. */
 const LS_PREFIX='ooda:';
-const APP_VERSION='1.13.0';   // bump on each release; sw.js CACHE should match
+const APP_VERSION='1.14.0';   // bump on each release; sw.js CACHE should match
 async function sget(k){
   if(window.storage){ try{ const r=await window.storage.get(k); return r?r.value:null; }catch(e){} }
   try{ const raw=localStorage.getItem(LS_PREFIX+k); if(raw!=null) return JSON.parse(raw); }catch(e){}
@@ -3711,20 +3722,52 @@ function commitPomo(){
   savePomo(); markPomo(); if(!pomo.on) pomoActive=false; if(focusOpen) renderFocus();
 }
 function pomoStartCycle(){ if(!pomo.on) return; pomoActive=true; pomoPhase='work'; pomoCount=0; pomoEnd=Date.now()+pomo.work*60000;
-  const t=focusTarget(); if(t&&!t.running) toggleRun(t.id); playSound('start'); renderFocus(); }
+  const t=focusTarget(); if(t&&!t.running) toggleRun(t.id); playSound('start'); pomoLogFocusStart(); renderFocus(); renderPomoStrip(); actReportToHost(); }
 function pomoAdvance(){
   if(pomoPhase==='work'){ pomoCount++; const long=(pomoCount%pomo.rounds===0);
     pomoPhase=long?'long':'break'; pomoEnd=Date.now()+(long?pomo.long:pomo.brk)*60000;
     const t=focusTarget(); if(t&&t.running) toggleRun(t.id);          // pause work during break
+    pomoCloseFocusSeg();                                              // stop logging focus during the break
     playSound('break'); haptic(20); toast((long?'Long break':'Break time')+' — '+(long?pomo.long:pomo.brk)+' min.');
   } else { pomoPhase='work'; pomoEnd=Date.now()+pomo.work*60000;
     const t=focusTarget(); if(t&&!t.running) toggleRun(t.id);          // resume work
+    pomoLogFocusStart();                                              // log the new focus block
     playSound('start'); haptic(20); toast('Back to focus — '+pomo.work+' min.');
   }
-  renderFocus();
+  renderFocus(); renderPomoStrip(); actReportToHost();
 }
 function pomoSkip(){ if(pomoActive) pomoAdvance(); }
+function pomoStop(){ if(!pomoActive) return; pomoActive=false; const t=focusTarget(); if(t&&t.running) toggleRun(t.id);
+  pomoCloseFocusSeg(); playSound('break'); haptic(20); toast('Pomodoro stopped.'); renderFocus(); renderPomoStrip(); actReportToHost(); }
 function pomoTick(){ if(pomoActive && pomo.on && Date.now()>=pomoEnd) pomoAdvance(); }
+// Press P / command palette: flip the Pomodoro on and off from anywhere.
+function pomoToggle(){
+  if(pomoActive){ pomoStop(); return; }
+  if(!pomo.on){ pomo.on=true; savePomo(); markPomo(); }   // first use turns the feature on
+  pomoStartCycle();
+  const t=focusTarget();
+  toast('🍅 Focus '+pomo.work+' min'+(t?(' · '+ (t.name||'this task')):'')+'. Press P to stop.');
+}
+// --- log each focus block into the activity timeline, so a Pomodoro produces
+// real tracked time (and feeds a desktop host's HUD). Skipped when a desktop
+// host is already auto-capturing the foreground app, to avoid double-logging. */
+function pomoLogging(){ return pomo.on && !actHostOn; }
+function pomoLogFocusStart(){ if(!pomoLogging()) return;
+  const t=focusTarget(); actPush(t?(t.name||'Focus'):'Focus', null, 'pomo'); }
+async function pomoCloseFocusSeg(){ if(!pomo.on) return;
+  try{ const list=await actGetTodayList(); const open=list.find(s=>s.end==null);
+    if(open && open.source==='pomo'){ open.end=Date.now(); await actSaveTodayList(list); actRenderDialog(); actReportToHost(); }
+  }catch(e){} }
+// floating countdown pill, visible in any view while a Pomodoro runs
+function renderPomoStrip(){
+  const el=document.getElementById('pomoStrip'); if(!el) return;
+  if(!(pomo.on&&pomoActive)){ el.style.display='none'; return; }
+  const rem=Math.max(0,Math.ceil((pomoEnd-Date.now())/1000)), mm=Math.floor(rem/60), ss=rem%60;
+  const label=pomoPhase==='work'?'🍅 Focus':(pomoPhase==='long'?'🌴 Long break':'☕ Break');
+  el.classList.toggle('break',pomoPhase!=='work'); el.style.display='flex';
+  el.innerHTML='<span class="ps-ph">'+label+'</span><span class="ps-time">'+mm+':'+String(ss).padStart(2,'0')+'</span>'+
+    '<button data-a="skip" title="Skip to the next phase">Skip ›</button><button data-a="stop" title="Stop the Pomodoro (P)">✕</button>';
+}
 function renderPomo(){
   const el=document.getElementById('focusPomo'); if(!el) return;
   if(!pomo.on){ el.style.display='none'; pomoActive=false; return; }
@@ -3771,7 +3814,8 @@ function renderPhase(){
 }
 function startTick(){ clearInterval(tick); tick=setInterval(()=>{
   if(state.tasks.some(t=>t.running)){ renderNow(); renderArc(); updateRunningRows(); updateRunningSchedule(); if(viewMode==='list'&&listLayout==='dashboard') dashLiveTick(); }
-  if(focusOpen){ if(pomo.on&&pomoActive) pomoTick(); renderFocus(); }   // keep Pomodoro counting through breaks
+  if(pomo.on&&pomoActive){ pomoTick(); renderPomoStrip(); }   // Pomodoro counts everywhere, not just in Focus mode
+  if(focusOpen) renderFocus();
   actTick();   // live activity timer
   if((state.activity||[]).some(s=>s.end==null)) actDayLiveUpdate();   // grow the running block + summary on the Day view
 },1000); }
@@ -5378,7 +5422,8 @@ function actReportToHost(){
     const arr=(state.activity||[]).filter(s=>s.start>=day0); const open=arr.find(s=>s.end==null);
     let today=0; arr.forEach(s=>{ today+=Math.max(0,(s.end||Date.now())-s.start); });
     const c=open?actCatById(open.cat):null;
-    h.report({ label:open?open.label:null, color:c?c.color:null, category:c?c.name:null, todayMs:today, startedAt:open?open.start:null });
+    const pomoState=(pomo&&pomo.on&&pomoActive)?{phase:pomoPhase,endsAt:pomoEnd,round:pomoCount+(pomoPhase==='work'?1:0)}:null;
+    h.report({ label:open?open.label:null, color:c?c.color:null, category:c?c.name:null, todayMs:today, startedAt:open?open.start:null, pomo:pomoState });
   }catch(e){}
 }
 /* ---- dialog ---- */
@@ -7125,6 +7170,7 @@ document.getElementById('goalValue').addEventListener('input',e=>setGoalValue(pa
 ['whOn','whLunchOn','whStart','whEnd','whLunchStart','whLunchEnd'].forEach(id=>document.getElementById(id).addEventListener('change',commitWorkHours));
 ['pomoOn','pomoWork','pomoBreak','pomoLong','pomoRounds'].forEach(id=>document.getElementById(id).addEventListener('change',commitPomo));
 document.getElementById('focusPomo').addEventListener('click',e=>{ if(e.target.closest('#pomoGo')) pomoStartCycle(); else if(e.target.closest('#pomoSkip')) pomoSkip(); });
+document.getElementById('pomoStrip').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; if(b.dataset.a==='skip') pomoSkip(); else if(b.dataset.a==='stop') pomoStop(); });
 document.getElementById('fillCancel').addEventListener('click',()=>document.getElementById('fillDialog').close());
 document.getElementById('fillGo').addEventListener('click',doFill);
 document.getElementById('dispSizes').addEventListener('click',e=>{ const b=e.target.closest('button[data-s]'); if(b) setScale(parseFloat(b.dataset.s)); });
@@ -7483,6 +7529,7 @@ function cmdkCommands(){ return [
   {label:'New task',hint:'add',run:()=>document.getElementById('addName').focus()},
   {label:'Start timer now',hint:'track',run:()=>startAdHocTimer()},
   {label:'Focus mode',hint:'focus',run:()=>openFocus()},
+  {label:'Start / stop Pomodoro',hint:'pomodoro focus timer · P',run:()=>pomoToggle()},
   {label:'Undo',hint:'⌘Z',run:()=>doUndo()},
   {label:'Redo',hint:'⌘⇧Z',run:()=>doRedo()},
   {label:'Reschedule selected…',hint:'when',run:()=>openResched()},
@@ -7612,7 +7659,7 @@ document.getElementById('syncMeta').style.cursor='pointer';
 document.getElementById('syncLogBtn').addEventListener('click',openSyncLog);
 document.addEventListener('keydown',e=>{
   const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable);
-  if(focusOpen){ if(e.key==='Escape'){ e.preventDefault(); closeFocus(); } else if(e.key===' '){ e.preventDefault(); focusStartStop(); } else if(e.key==='x'){ e.preventDefault(); focusComplete(); } return; }
+  if(focusOpen){ if(e.key==='Escape'){ e.preventDefault(); closeFocus(); } else if(e.key===' '){ e.preventDefault(); focusStartStop(); } else if(e.key==='x'){ e.preventDefault(); focusComplete(); } else if(e.key==='p'||e.key==='P'){ e.preventDefault(); pomoToggle(); } return; }
   if(e.key==='Escape'){ if(typing&&t.blur)t.blur(); return; }
   if(typing||e.metaKey||e.ctrlKey||e.altKey) return;
   if(document.querySelector('dialog[open]')) return;            // don't hijack keys inside modals
@@ -7632,6 +7679,7 @@ document.addEventListener('keydown',e=>{
     case '[': e.preventDefault(); navStep(-1); break;
     case ']': e.preventDefault(); navStep(1); break;
     case 't': e.preventDefault(); gotoDate(new Date()); break;
+    case 'p': e.preventDefault(); pomoToggle(); break;
     case '?': e.preventDefault(); openHelp(); break;
   }
 });

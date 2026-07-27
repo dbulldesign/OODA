@@ -56,7 +56,7 @@ let paused = false;         // tray "Pause capturing"
 let isQuitting = false;     // true only when the user chooses Quit
 let currentStatus = 'Starting…';   // what the tray/HUD shows we're capturing
 let segmentStart = Date.now();     // when the current activity started (for the HUD timer)
-let reported = { color: null, category: null, todayMs: 0 };   // fed back by the web app
+let reported = { color: null, category: null, todayMs: 0, pomo: null };   // fed back by the web app
 let hudExpanded = false, hudAnimating = false;
 let hudAnimTimer = null, hudCollapseTimer = null;   // guard/settle timers for the single window resize
 let hudRest = null;              // the collapsed resting bounds (tracks user drags)
@@ -232,6 +232,7 @@ function updateHud() {
       showTimer: settings.hudShowTimer, compact: settings.hudCompact, scale: settings.hudScale || 1,
       showCategory: settings.hudShowCategory, color: reported.color, category: reported.category, todayMs: reported.todayMs,
       theme: settings.hudTheme || 'dark',
+      pomo: reported.pomo,
       restW: hudRest ? hudRest.width : hudSize().w,
     });
   }
@@ -440,7 +441,7 @@ app.whenReady().then(() => {
   // the web app reports the current category, its color, and today's total back
   ipcMain.on('activity-report', (_e, d) => {
     if (!d) return;
-    reported = { color: d.color || null, category: d.category || null, todayMs: d.todayMs || 0 };
+    reported = { color: d.color || null, category: d.category || null, todayMs: d.todayMs || 0, pomo: d.pomo || null };
     updateHud();
   });
   ipcMain.handle('settings-get', () => settings);

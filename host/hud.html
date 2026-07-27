@@ -42,7 +42,7 @@
     <button class="btn" id="open" title="Open OODA">▢</button>
   </div>
   <script>
-    let start = Date.now(), paused = false, expanded = false, restW = 0;
+    let start = Date.now(), paused = false, expanded = false, restW = 0, pomo = null;
     const bar = document.getElementById('bar'), dot = document.getElementById('dot'),
           lbl = document.getElementById('lbl'), tEl = document.getElementById('t'),
           tot = document.getElementById('tot'), pauseBtn = document.getElementById('pause');
@@ -51,7 +51,12 @@
       return (h > 0 ? h + ':' + String(m).padStart(2, '0') : '' + m) + ':' + String(ss).padStart(2, '0'); }
     function fmtTot(ms) { const m = Math.round(ms / 60000);
       return m < 60 ? m + 'm' : (m / 60).toFixed(m % 60 ? 1 : 0).replace(/\.0$/, '') + 'h'; }
-    function tick() { if (paused) { tEl.textContent = ''; return; } tEl.textContent = fmt(Date.now() - start); }
+    function fmtDown(ms) { const s = Math.max(0, Math.ceil(ms / 1000)), m = Math.floor(s / 60), ss = s % 60;
+      return m + ':' + String(ss).padStart(2, '0'); }
+    function tick() {
+      // while a Pomodoro is running, the timer counts DOWN to the phase end
+      if (pomo) { tEl.style.display = ''; tEl.textContent = fmtDown(pomo.endsAt - Date.now()); return; }
+      if (paused) { tEl.textContent = ''; return; } tEl.textContent = fmt(Date.now() - start); }
     setInterval(tick, 1000);
     window.hud.onUpdate(d => {
       document.documentElement.style.setProperty('--s', d.scale || 1);
@@ -62,8 +67,12 @@
         : 'rgba(31,42,44,.96)';
       bar.classList.toggle('compact', !!d.compact);
       paused = !!d.paused;
-      lbl.textContent = paused ? 'Paused' : (d.label || 'Idle');
-      dot.classList.toggle('paused', paused);
+      pomo = d.pomo || null;
+      // a running Pomodoro takes over the label with its phase; the timer counts down
+      lbl.textContent = pomo
+        ? (pomo.phase === 'work' ? '🍅 Focus' : (pomo.phase === 'long' ? '🌴 Long break' : '☕ Break'))
+        : (paused ? 'Paused' : (d.label || 'Idle'));
+      dot.classList.toggle('paused', paused && !pomo);
       pauseBtn.textContent = paused ? '▶' : '⏸';
       tEl.style.display = (d.showTimer === false) ? 'none' : '';
       if (d.showCategory && d.todayMs > 0) { tot.textContent = '· ' + fmtTot(d.todayMs) + ' today'; tot.style.display = ''; }
