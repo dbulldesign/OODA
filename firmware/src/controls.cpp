@@ -1,6 +1,7 @@
 #include "controls.h"
 #include "config.h"
 #include "debug.h"
+#include <Wire.h>
 #include <Adafruit_seesaw.h>
 
 namespace {
@@ -25,7 +26,18 @@ namespace {
 namespace controls {
 
 void begin() {
-  // Wire is started by display::begin(); the encoder shares that STEMMA QT bus.
+  // The encoder owns the I²C bus now (the display moved to SPI). Enable the
+  // Feather's STEMMA QT power rail, then start Wire. Guarded so it compiles on
+  // boards without the power-pin macro.
+#if defined(NEOPIXEL_I2C_POWER)
+  pinMode(NEOPIXEL_I2C_POWER, OUTPUT); digitalWrite(NEOPIXEL_I2C_POWER, HIGH);
+#endif
+#if defined(PIN_I2C_POWER)
+  pinMode(PIN_I2C_POWER, OUTPUT); digitalWrite(PIN_I2C_POWER, HIGH);
+#endif
+  delay(10);
+  Wire.begin();
+
   gReady = ss.begin(SEESAW_ADDR);
   if (!gReady) { LOG("seesaw encoder not found at 0x%02X\n", SEESAW_ADDR); return; }
   ss.pinMode(SEESAW_SWITCH, INPUT_PULLUP);

@@ -10,6 +10,16 @@ bool parseStateFrame(const char* json, PomoState& out) {
   out.todayMs = doc["todayMs"].as<int64_t>();
   strlcpy(out.status, doc["status"] | "", sizeof(out.status));
 
+  // Category color, e.g. "#4C9A8E" → 0x4C9A8E (null/absent → no color).
+  const char* col = doc["color"] | "";
+  if (col[0] == '#' && strlen(col) >= 7) {
+    out.color = (uint32_t)strtol(col + 1, nullptr, 16);
+    out.hasColor = true;
+  } else {
+    out.hasColor = false;
+    out.color = 0;
+  }
+
   JsonObject pomo = doc["pomo"];
   if (pomo.isNull()) {
     out.hasPomo = false;

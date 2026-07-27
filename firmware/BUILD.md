@@ -5,52 +5,64 @@ Implementation of the contract in [`README.md`](./README.md). It's an ESP32
 primary link** and **WiFi as an automatic fallback**. No battery — the puck is
 always powered from the same USB‑C cable it communicates over.
 
-## Parts (Adafruit) — a no‑soldering build
+## Parts (Adafruit)
 
-Everything either plugs in (STEMMA QT) or screws down (a terminal‑block wing), so
-the whole device goes together **without an iron**:
+A big 3.5″ color display in a mostly plug‑together build:
 
 | Part | Adafruit | Notes |
 |---|---|---|
-| **ESP32 Feather V2 — with Headers** | [#5900](https://www.adafruit.com/product/5900) | Headers pre‑soldered, so it drops into the wing. WiFi + STEMMA QT; USB‑C via a CP2102 bridge. The brain + both links. |
-| **Terminal Block Breakout FeatherWing** (assembled) | [#2926](https://www.adafruit.com/product/2926) | Screw terminals for every Feather pin. The Feather seats on top; the buzzer + power clamp in. |
-| **128×64 monochrome OLED, STEMMA QT** | [#938](https://www.adafruit.com/product/938) (1.3″) or [#326](https://www.adafruit.com/product/326) (0.96″) | Both are **SSD1306** at I²C `0x3C`. |
+| **ESP32 Feather V2 — with Headers** | [#5900](https://www.adafruit.com/product/5900) | Headers pre‑soldered. WiFi + STEMMA QT; USB‑C via a CP2102 bridge. The brain + both links. |
+| **3.5″ 480×320 TFT FeatherWing** (V2) | [#3651](https://www.adafruit.com/product/3651) | Color HX8357 LCD; **stacks onto the Feather** over SPI. Resistive touch (unused — we keep the knob). |
 | **I²C QT Rotary Encoder** (seesaw) | [#5880](https://www.adafruit.com/product/5880) | Encoder + push‑switch on the I²C bus at `0x36`. The whole UI. |
-| **Active buzzer, 5V** | [#1536](https://www.adafruit.com/product/1536) | Self‑oscillating — a plain on/off buzz. Its two legs clamp into the A0 + GND screw terminals. |
-| **STEMMA QT cables ×2** | [#4210](https://www.adafruit.com/product/4210) | Feather → OLED → encoder. |
+| **Active buzzer, 5V** | [#1536](https://www.adafruit.com/product/1536) | Self‑oscillating — a plain on/off buzz. Two legs → the Feather's A0 + GND. |
+| **STEMMA QT cable** | [#4210](https://www.adafruit.com/product/4210) | Feather → encoder. |
 
-> **Why the Feather V2 and not an S3?** The V2 ships *with headers already
-> soldered*, which is what makes the wing solderless. Its USB is a serial bridge
-> rather than native USB — no difference to how the puck runs; the host just sees
-> a COM port either way.
+> **The stack tradeoff.** The 3.5″ TFT is a FeatherWing, so it takes the Feather's
+> stacking position — the same spot the earlier screw‑terminal wing (#2926) used.
+> With the screen on, the encoder still plugs into the Feather's STEMMA QT port
+> (no solder), but the **buzzer's two wires need a Feather pin** (A0 + GND). If you
+> want that connection solder‑free too, seat the Feather and the TFT wing
+> side‑by‑side on a [FeatherWing Doubler (#2890)](https://www.adafruit.com/product/2890),
+> which breaks the pins out to header holes.
 
-> Want a silent, tactile buzz instead of an audible one? Swap in the [vibrating
-> mini motor disc (#1201)](https://www.adafruit.com/product/1201) — same on/off
-> firmware, but a motor needs a driver transistor + flyback diode.
+> **Why the Feather V2 and not an S3?** It ships *with headers already soldered*,
+> so the wing just presses on. Its USB is a serial bridge rather than native USB —
+> no difference to how the puck runs; the host sees a COM port either way.
 
-> Prefer a plain EC11 encoder instead of the I²C one? Swap the body of
-> `src/controls.cpp` for a GPIO read (into three more screw terminals) — the rest
-> of the firmware is unchanged.
+> Want a silent, tactile buzz instead of audible? Swap in the [vibrating mini
+> motor disc (#1201)](https://www.adafruit.com/product/1201) — same firmware, but
+> a motor needs a driver transistor + flyback diode.
 
-## Assembly (no soldering)
+## Assembly
 
-1. Seat the **Feather V2** on the **Terminal Block Wing** (headers → socket).
-2. Daisy‑chain the I²C bus with STEMMA QT cables — nothing to solder:
+1. Press the **3.5″ TFT wing** onto the **Feather V2** (headers → wing socket).
+2. Plug the **encoder** into the Feather's STEMMA QT port with a QT cable:
 
    ```
-   Feather V2  ──QT──►  OLED (SSD1306, 0x3C)  ──QT──►  Rotary encoder (seesaw, 0x36)
+   Feather V2  ──QT──►  Rotary encoder (seesaw, 0x36)
+   TFT wing    ──stacked──►  Feather (SPI: CS=15, DC=33)
    ```
 
-3. Clamp the buzzer into the screw terminals:
+3. Run the **buzzer's** two legs to the Feather pins:
 
-| Signal | Feather V2 pin (screw terminal) |
+| Signal | Feather V2 pin |
 |---|---|
-| I²C SDA / SCL | STEMMA QT connector (the board's default `Wire`) |
+| Display | stacked TFT wing (SPI, fixed by the wing) |
+| Encoder SDA / SCL | STEMMA QT connector (the board's default `Wire`) |
 | Buzzer + | **A0** (GPIO 26) |
 | Buzzer − | GND |
-| (optional) debug UART | any free terminals — see `DEBUG_LOG` |
+| (optional) debug UART | any free pin — see `DEBUG_LOG` |
+
+> **TFT pins:** `TFT_CS 15` / `TFT_DC 33` are the ESP32 values from Adafruit's
+> 3.5″ TFT FeatherWing guide. If the screen stays blank, check the guide's V2
+> pinout for your board and update `src/config.h`.
 
 Change any of this in `src/config.h`.
+
+## Enclosures
+
+Parametric 3D‑print and laser‑cut designs live in [`enclosure/`](./enclosure/) —
+see that folder's README to render/print/cut and for the dimensions to verify.
 
 ## Configure
 
@@ -99,7 +111,8 @@ is available — nothing else changes.
 2. Top‑right badge shows the active link and state: **USB ●** once the host is
    streaming over the cable, or **WiFi ●** if it fell back; ○ searching, ✕ down.
 3. **Idle** → "Press to focus" + today's total. Turn the knob to preview a length.
-4. **Running** → phase icon (🍅 / ☕ / 🌴), a big `MM:SS`, and the round.
+4. **Running** → the phase label in its accent color (the category color the
+   host sends, when present), a large `MM:SS`, and the round.
 
 ## Controls
 

@@ -46,14 +46,20 @@
 #define DEBUG_TX_PIN    14             // any free Feather V2 GPIO
 #define DEBUG_RX_PIN    32             // any free Feather V2 GPIO
 
-// ── I²C peripherals (STEMMA QT bus — no wiring pins needed) ───────────────────
-// The OLED and the rotary encoder both live on the Feather's STEMMA QT connector,
-// so `Wire` uses the board default pins; daisy-chain them with QT cables. The
-// board's STEMMA QT power is enabled in firmware (NEOPIXEL_I2C_POWER).
-#define OLED_WIDTH      128
-#define OLED_HEIGHT     64
-#define OLED_ADDR       0x3C           // Adafruit SSD1306 128×64 (#938 / #326)
+// ── Display: 3.5" 480×320 color TFT FeatherWing (#3651, HX8357) ───────────────
+// The wing stacks on the Feather over SPI. These are the control pins for an
+// ESP32 Feather per Adafruit's 3.5" TFT FeatherWing guide — VERIFY against the
+// V2 pinout page for your exact board and change if the screen stays blank.
+// (The #3651 V2 has resistive touch over I²C; we don't use touch — the knob is
+// the interface — so no touch pins are needed.)
+#define TFT_CS          15
+#define TFT_DC          33
+#define TFT_RST         -1             // tied to the Feather reset on the wing
+#define TFT_ROTATION    1              // 1 or 3 → 480×320 landscape
 
+// ── I²C rotary encoder (STEMMA QT — no wiring pins needed) ────────────────────
+// The encoder plugs into the Feather's STEMMA QT connector; `Wire` uses the board
+// defaults. The board's STEMMA QT power is enabled in firmware (NEOPIXEL_I2C_POWER).
 #define SEESAW_ADDR     0x36           // Adafruit I²C QT Rotary Encoder (#5880)
 #define SEESAW_SWITCH   24             // seesaw pin for the encoder push switch
 #define ENC_INVERT      0              // set 1 if turning feels backwards

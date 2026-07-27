@@ -22,6 +22,8 @@ struct PomoState {
   // Activity / totals.
   int64_t todayMs  = 0;       // total tracked time today, ms
   char    status[40] = "";    // current activity/capture label
+  bool    hasColor = false;   // did the host send a category color?
+  uint32_t color   = 0;       // category color as 0xRRGGBB (when hasColor)
 
   // Clock-skew correction (README "Countdown math").
   //   offset       = now - millis()            (host clock vs. local, ms)
