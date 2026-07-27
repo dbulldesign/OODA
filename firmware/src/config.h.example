@@ -54,7 +54,9 @@
 #define ENC_INVERT      0              // set 1 if turning feels backwards
 
 // ── Buzzer (one GPIO) ─────────────────────────────────────────────────────────
-// Adafruit passive piezo (#160): one leg to this pin, the other to GND.
+// Driven with a plain on/off buzz — no tones. Use an ACTIVE buzzer (Adafruit
+// #1536, self-oscillating) wired straight to this pin and GND. A vibration motor
+// (#1201) also works but needs a driver transistor + flyback diode.
 #define PIN_BUZZER      18             // "A0" on the QT Py ESP32-S3
 
 // ── Behavior tuning ───────────────────────────────────────────────────────────

@@ -15,8 +15,13 @@ they daisy‑chain with two JST cables and nothing to solder but the buzzer.
 | **QT Py ESP32‑S3** (8 MB, no PSRAM) | [#5426](https://www.adafruit.com/product/5426) | Native USB‑C (real USB‑CDC), WiFi, STEMMA QT. The brain + both links. |
 | **128×64 monochrome OLED, STEMMA QT** | [#938](https://www.adafruit.com/product/938) (1.3″) or [#326](https://www.adafruit.com/product/326) (0.96″) | Both are **SSD1306** at I²C `0x3C`. |
 | **I²C QT Rotary Encoder** (seesaw) | [#5880](https://www.adafruit.com/product/5880) | Encoder + push‑switch on the I²C bus at `0x36`. The whole UI. |
-| **Piezo buzzer** | [#160](https://www.adafruit.com/product/160) | Passive; one leg to a GPIO, one to GND. |
+| **Active buzzer, 5V** | [#1536](https://www.adafruit.com/product/1536) | Self‑oscillating — driven with a plain on/off buzz. One leg to a GPIO, one to GND. |
 | **STEMMA QT cables ×2** | [#4210](https://www.adafruit.com/product/4210) | QT Py → OLED → encoder. |
+
+> Want a silent, tactile buzz instead of an audible one? Swap in the [vibrating
+> mini motor disc (#1201)](https://www.adafruit.com/product/1201) — same on/off
+> firmware, but a motor needs a driver transistor + flyback diode, not a direct
+> GPIO.
 
 > Prefer a plain EC11 encoder on GPIOs instead of the I²C one? Swap the body of
 > `src/controls.cpp` for a GPIO read — the rest of the firmware is unchanged.
@@ -97,7 +102,8 @@ is available — nothing else changes.
 | Long press (≥ `LONG_PRESS_MS`) | skip to the next phase |
 | Turn knob (idle) | preview a focus length (cosmetic — see note) |
 
-The buzzer chimes when the host reports a phase change.
+The buzzer buzzes when the host reports a phase change — two short buzzes
+entering focus, one long buzz entering a break.
 
 ## How it works
 

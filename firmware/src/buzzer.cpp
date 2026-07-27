@@ -2,28 +2,26 @@
 #include "config.h"
 
 namespace {
-  struct Note { uint16_t freq; uint16_t ms; };   // freq 0 = rest
+  struct Step { bool on; uint16_t ms; };     // a segment: buzzer on or off, for ms
 
-  const Note MELODY_WORK[]  = { {880,120},{0,40},{1175,180} };            // rising: back to focus
-  const Note MELODY_BREAK[] = { {988,140},{0,40},{784,140},{0,40},{659,220} }; // falling: relax
-  const Note MELODY_BLIP[]  = { {1568,35} };                             // button feedback
+  // Distinct buzz patterns so you can tell phases apart by feel/ear.
+  const Step PAT_WORK[]  = { {true,110},{false,90},{true,110} };  // two short buzzes → focus
+  const Step PAT_BREAK[] = { {true,340} };                        // one long buzz  → break
+  const Step PAT_BLIP[]  = { {true,25} };                         // tiny blip      → button
 
-  const Note* gSeq   = nullptr;
+  const Step* gSeq   = nullptr;
   uint8_t     gLen   = 0;
   uint8_t     gIdx   = 0;
-  uint32_t    gUntil = 0;      // when the current note ends
+  uint32_t    gUntil = 0;
   bool        gPlaying = false;
 
-  void startNote() {
-    const Note& n = gSeq[gIdx];
-    if (n.freq) tone(PIN_BUZZER, n.freq);
-    else        noTone(PIN_BUZZER);
-    gUntil = millis() + n.ms;
+  void applyStep() {
+    digitalWrite(PIN_BUZZER, gSeq[gIdx].on ? HIGH : LOW);
+    gUntil = millis() + gSeq[gIdx].ms;
   }
-
-  void play(const Note* seq, uint8_t len) {
+  void play(const Step* seq, uint8_t len) {
     gSeq = seq; gLen = len; gIdx = 0; gPlaying = true;
-    startNote();
+    applyStep();
   }
 }
 
@@ -31,22 +29,22 @@ namespace buzzer {
 
 void begin() {
   pinMode(PIN_BUZZER, OUTPUT);
-  noTone(PIN_BUZZER);
+  digitalWrite(PIN_BUZZER, LOW);
 }
 
 void loop() {
   if (!gPlaying) return;
-  if ((int32_t)(millis() - gUntil) < 0) return;   // current note still sounding
+  if ((int32_t)(millis() - gUntil) < 0) return;    // current segment still running
   gIdx++;
-  if (gIdx >= gLen) { noTone(PIN_BUZZER); gPlaying = false; return; }
-  startNote();
+  if (gIdx >= gLen) { digitalWrite(PIN_BUZZER, LOW); gPlaying = false; return; }
+  applyStep();
 }
 
 void chimePhase(Phase to) {
-  if (to == PHASE_WORK) play(MELODY_WORK, sizeof(MELODY_WORK) / sizeof(Note));
-  else                  play(MELODY_BREAK, sizeof(MELODY_BREAK) / sizeof(Note));
+  if (to == PHASE_WORK) play(PAT_WORK,  sizeof(PAT_WORK)  / sizeof(Step));
+  else                  play(PAT_BREAK, sizeof(PAT_BREAK) / sizeof(Step));
 }
 
-void beep() { play(MELODY_BLIP, sizeof(MELODY_BLIP) / sizeof(Note)); }
+void beep() { play(PAT_BLIP, sizeof(PAT_BLIP) / sizeof(Step)); }
 
 } // namespace buzzer
