@@ -329,6 +329,11 @@ function hudDoExpand() {
 function hudDoCollapse() {
   if (!hudExpanded) return;
   hudExpanded = false;
+  // Freeze the hover poll for the WHOLE collapse (CSS shrink + window pull-in).
+  // Until the window actually shrinks it is still expanded-width (mostly
+  // transparent), so an unguarded poll would see the cursor "inside" that large
+  // region and immediately re-expand — the classic expand/collapse jitter.
+  hudAnimating = true; clearTimeout(hudAnimTimer);
   const restW = hudRest ? hudRest.width : hudSize().w;
   try {
     hud.webContents.send('hud-expanded', {
@@ -339,8 +344,7 @@ function hudDoCollapse() {
   // let the pill finish its CSS shrink, then pull the window back in
   clearTimeout(hudCollapseTimer);
   hudCollapseTimer = setTimeout(() => {
-    if (!hud || hud.isDestroyed() || hudExpanded || !hudRest) return;
-    hudAnimating = true; clearTimeout(hudAnimTimer);
+    if (!hud || hud.isDestroyed() || hudExpanded || !hudRest) { hudAnimating = false; return; }
     try { hud.setBounds({ ...hudRest }); } catch (e) {}
     hudAnimTimer = setTimeout(() => { hudAnimating = false; }, 200);
   }, 230);
