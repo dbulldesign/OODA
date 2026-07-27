@@ -11,9 +11,12 @@
    Foreground app/title come from `get-windows` (a small native addon).
    Idle time comes from Electron's built-in powerMonitor — no extra
    native dependency, cross-platform. */
-const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, powerMonitor, ipcMain, screen, globalShortcut, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
+const { createControlServer } = require('./control');
 
 const POLL_MS = 4000;       // how often to sample the foreground window
 const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
@@ -34,6 +37,10 @@ const DEFAULTS = {
   hotkeys: false,            // enable global keyboard shortcuts
   idleMinutes: 1,            // mark "away" after this many minutes idle
   launchAtStartup: false,    // start the host at login
+  controlEnabled: false,     // local HTTP control endpoint (for a physical timer)
+  controlLan: false,         // bind to the LAN (0.0.0.0) instead of loopback only
+  controlPort: 7420,         // control endpoint port
+  controlToken: '',          // shared token required for non-loopback requests
 };
 let settings = { ...DEFAULTS };
 function settingsPath() { return path.join(app.getPath('userData'), 'settings.json'); }
@@ -155,6 +162,18 @@ function updateTray() {
     { label: 'Settings…', click: openSettingsWindow },
     { label: 'Show OODA', click: showWindow },
     { label: 'Update UI to latest', click: forceUpdateUI },
+    {
+      label: 'Remote control (physical timer)',
+      submenu: [
+        { label: settings.controlEnabled ? (settings.controlLan ? 'On — LAN devices' : 'On — this PC only') : 'Off', enabled: false },
+        { type: 'separator' },
+        { label: 'Off', type: 'radio', checked: !settings.controlEnabled, click: () => setControlMode('off') },
+        { label: 'On — this PC only', type: 'radio', checked: settings.controlEnabled && !settings.controlLan, click: () => setControlMode('local') },
+        { label: 'On — allow LAN devices', type: 'radio', checked: settings.controlEnabled && settings.controlLan, click: () => setControlMode('lan') },
+        { type: 'separator' },
+        { label: 'Copy address' + (settings.controlEnabled ? ' (' + controlAddress(false) + ')' : ''), enabled: settings.controlEnabled, click: copyControlAddress },
+      ],
+    },
     { type: 'separator' },
     { label: 'Quit OODA', click: () => { isQuitting = true; app.quit(); } },
   ]));
@@ -236,6 +255,9 @@ function updateHud() {
       restW: hudRest ? hudRest.width : hudSize().w,
     });
   }
+  // any HUD-worthy change (status, pause, pomo phase) is also pushed to any
+  // connected control-endpoint device
+  try { if (control && control.running()) control.broadcast(controlState()); } catch (e) {}
 }
 
 // Apply the current settings to the live HUD window (size, position, opacity, visibility).
@@ -340,6 +362,7 @@ function applySettings() {
   applyHud();
   try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtStartup }); } catch (e) {}
   registerHotkeys();
+  applyControl();
   updateTray();
 }
 
@@ -387,6 +410,69 @@ function togglePause() {
   updateHud();
   applyHudVisibility();
 }
+
+/* ---- local control endpoint: lets an external device (a DIY ESP32 puck,
+   Stream Deck, Flic button, a script) drive the Pomodoro and read its live
+   state. Off by default; see control.js for the wire protocol. ---- */
+const control = createControlServer({
+  version: app.getVersion(),
+  getState: controlState,
+  onCommand: controlCommand,
+  log: (m) => { try { console.log('[control] ' + m); } catch (e) {} },
+});
+function controlState() {
+  return {
+    version: app.getVersion(),
+    paused,
+    status: paused ? 'paused' : currentStatus,
+    category: reported.category, color: reported.color, todayMs: reported.todayMs,
+    startedAt: segmentStart,
+    pomo: reported.pomo,        // { phase, endsAt, round } or null
+    now: Date.now(),            // reference for a device to correct clock skew
+  };
+}
+function controlCommand(cmd) {
+  if (!win || win.isDestroyed()) return Promise.resolve();
+  // drive the web app's global Pomodoro functions inside the loaded page
+  const js = {
+    start:  "try{if(typeof pomoActive!=='undefined'&&!pomoActive&&typeof pomoToggle==='function')pomoToggle();}catch(e){}",
+    stop:   "try{if(typeof pomoActive!=='undefined'&&pomoActive&&typeof pomoStop==='function')pomoStop();}catch(e){}",
+    skip:   "try{if(typeof pomoSkip==='function')pomoSkip();}catch(e){}",
+    toggle: "try{if(typeof pomoToggle==='function')pomoToggle();}catch(e){}",
+  }[cmd];
+  if (!js) return Promise.resolve();
+  return win.webContents.executeJavaScript(js, true).catch(() => {});
+}
+function controlAddress(withToken) {
+  const port = settings.controlPort || 7420;
+  let ip = '127.0.0.1';
+  if (settings.controlLan) {
+    try {
+      for (const list of Object.values(os.networkInterfaces())) {
+        for (const ni of (list || [])) { if (ni.family === 'IPv4' && !ni.internal) { ip = ni.address; } }
+      }
+    } catch (e) {}
+  }
+  let u = 'http://' + ip + ':' + port + '/';
+  if (withToken && settings.controlLan && settings.controlToken) u += '?token=' + settings.controlToken;
+  return u;
+}
+function applyControl() {
+  if (settings.controlEnabled) {
+    if (settings.controlLan && !settings.controlToken) { settings.controlToken = crypto.randomBytes(12).toString('hex'); saveSettings(); }
+    control.start({ port: settings.controlPort || 7420, lan: !!settings.controlLan, token: settings.controlToken || '' });
+  } else {
+    control.stop();
+  }
+}
+function setControlMode(mode) {                 // 'off' | 'local' | 'lan'
+  settings.controlEnabled = (mode !== 'off');
+  settings.controlLan = (mode === 'lan');
+  if (settings.controlEnabled && settings.controlLan && !settings.controlToken) settings.controlToken = crypto.randomBytes(12).toString('hex');
+  saveSettings(); applySettings();
+  if (mode !== 'off') copyControlAddress();     // hand the user a ready-to-use URL
+}
+function copyControlAddress() { try { clipboard.writeText(controlAddress(true)); } catch (e) {} }
 
 async function poll() {
   if (paused || !win || win.isDestroyed()) return;
@@ -458,7 +544,7 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { isQuitting = true; try { globalShortcut.unregisterAll(); } catch (e) {} });
+app.on('before-quit', () => { isQuitting = true; try { globalShortcut.unregisterAll(); } catch (e) {} try { control.stop(); } catch (e) {} });
 
 // Keep running in the tray when the window is closed; quit only via the tray.
 app.on('window-all-closed', () => {
