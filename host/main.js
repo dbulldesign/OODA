@@ -16,7 +16,16 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { createControlServer } = require('./control');
+// The control endpoint is optional; if its module ever fails to load, fall
+// back to a no-op so it can never prevent the host from starting/capturing.
+let createControlServer;
+try { ({ createControlServer } = require('./control')); }
+catch (e) { createControlServer = () => ({ start() {}, stop() {}, running() { return false; }, broadcast() {} }); }
+
+// A stray error in any optional subsystem must never kill the process (which
+// would silently stop capture and remove the HUD).
+process.on('uncaughtException', (e) => { try { console.error('[ooda-host] uncaught', e); } catch (_) {} });
+process.on('unhandledRejection', (e) => { try { console.error('[ooda-host] unhandled', e); } catch (_) {} });
 
 const POLL_MS = 4000;       // how often to sample the foreground window
 const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
@@ -359,11 +368,13 @@ function registerHotkeys() {
 
 // Apply all settings (HUD + launch-at-startup + hotkeys) and refresh the tray.
 function applySettings() {
-  applyHud();
+  // each step isolated: a failure in one (e.g. the optional control endpoint)
+  // must not skip the others
+  try { applyHud(); } catch (e) {}
   try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtStartup }); } catch (e) {}
-  registerHotkeys();
-  applyControl();
-  updateTray();
+  try { registerHotkeys(); } catch (e) {}
+  try { applyControl(); } catch (e) {}
+  try { updateTray(); } catch (e) {}
 }
 
 function openSettingsWindow() {
@@ -414,12 +425,15 @@ function togglePause() {
 /* ---- local control endpoint: lets an external device (a DIY ESP32 puck,
    Stream Deck, Flic button, a script) drive the Pomodoro and read its live
    state. Off by default; see control.js for the wire protocol. ---- */
-const control = createControlServer({
-  version: app.getVersion(),
-  getState: controlState,
-  onCommand: controlCommand,
-  log: (m) => { try { console.log('[control] ' + m); } catch (e) {} },
-});
+let control;
+try {
+  control = createControlServer({
+    version: app.getVersion(),
+    getState: controlState,
+    onCommand: controlCommand,
+    log: (m) => { try { console.log('[control] ' + m); } catch (e) {} },
+  });
+} catch (e) { control = { start() {}, stop() {}, running() { return false; }, broadcast() {} }; }
 function controlState() {
   return {
     version: app.getVersion(),
@@ -507,24 +521,13 @@ async function poll() {
 }
 
 app.whenReady().then(() => {
-  loadSettings();
-  createWindow();
-  createTray();
-  createHud();
-  applySettings();
+  try { loadSettings(); } catch (e) {}
+  // Capture + core IPC are registered FIRST, so nothing optional (HUD, control
+  // endpoint, settings, hotkeys) can prevent time-tracking from starting.
+  setInterval(poll, POLL_MS);
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
   ipcMain.on('hud-overflow', (_e, b) => { hudCanExpand = !!b; });   // is the label actually truncated?
-  // detect hover over the HUD by cursor position (its drag region eats DOM mouse events)
-  setInterval(() => {
-    if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating || hudMoving) return;
-    let pt; try { pt = screen.getCursorScreenPoint(); } catch (e) { return; }
-    const b = hud.getBounds();
-    const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
-    if (inside && !hudExpanded && hudCanExpand) hudDoExpand();       // only expand if there's more text
-    else if (!inside && hudExpanded) hudDoCollapse();
-  }, 200);
-  // the web app reports the current category, its color, and today's total back
   ipcMain.on('activity-report', (_e, d) => {
     if (!d) return;
     reported = { color: d.color || null, category: d.category || null, todayMs: d.todayMs || 0, pomo: d.pomo || null };
@@ -537,7 +540,20 @@ app.whenReady().then(() => {
     applySettings();
   });
   ipcMain.on('settings-close', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close(); });
-  setInterval(poll, POLL_MS);
+  // Everything below is optional — isolate each so one failure can't cascade.
+  try { createWindow(); } catch (e) {}
+  try { createTray(); } catch (e) {}
+  try { createHud(); } catch (e) {}
+  try { applySettings(); } catch (e) {}
+  // detect hover over the HUD by cursor position (its drag region eats DOM mouse events)
+  setInterval(() => {
+    if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating || hudMoving) return;
+    let pt; try { pt = screen.getCursorScreenPoint(); } catch (e) { return; }
+    const b = hud.getBounds();
+    const inside = pt.x >= b.x && pt.x < b.x + b.width && pt.y >= b.y && pt.y < b.y + b.height;
+    if (inside && !hudExpanded && hudCanExpand) hudDoExpand();       // only expand if there's more text
+    else if (!inside && hudExpanded) hudDoCollapse();
+  }, 200);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
     else showWindow();
