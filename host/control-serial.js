@@ -24,8 +24,10 @@ let SerialPortMod = null;
 try { SerialPortMod = require('serialport'); } catch (e) { SerialPortMod = null; }
 
 const COMMANDS = { START: 'start', STOP: 'stop', SKIP: 'skip', TOGGLE: 'toggle' };
-// USB vendor IDs to auto-detect: Espressif (native-USB ESP32-S3) and Adafruit.
-const KNOWN_VIDS = ['303a', '239a'];
+// USB vendor IDs to auto-detect an ESP32 puck:
+//   303a Espressif (native USB, e.g. ESP32-S3)   239a Adafruit
+//   10c4 Silicon Labs CP210x (ESP32 Feather V2)  1a86 WCH CH340
+const KNOWN_VIDS = ['303a', '239a', '10c4', '1a86'];
 
 function createSerialControl({ getState, onCommand, version, log }) {
   let port = null;
@@ -88,6 +90,9 @@ function createSerialControl({ getState, onCommand, version, log }) {
       port.on('error', () => { try { if (port) port.close(); } catch (e) {} port = null; buf = ''; });
       port.open((err) => {
         if (err) { say('serial open failed: ' + (err.message || err)); port = null; return; }
+        // Deassert DTR/RTS so a board with an auto-reset circuit (CP2102 on the
+        // Feather V2) isn't held in reset/bootloader while we hold the port.
+        try { port.set({ dtr: false, rts: false }, () => {}); } catch (e) {}
         say('USB puck on ' + path);
         broadcast(safeState());
       });

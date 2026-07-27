@@ -127,6 +127,17 @@ namespace {
 namespace display {
 
 void begin() {
+  // Some Adafruit boards gate the STEMMA QT / I²C connector behind a power pin
+  // (ESP32 Feather V2 → NEOPIXEL_I2C_POWER). Drive it high so the OLED + encoder
+  // get power. Guarded so it compiles on boards without the macro.
+#if defined(NEOPIXEL_I2C_POWER)
+  pinMode(NEOPIXEL_I2C_POWER, OUTPUT); digitalWrite(NEOPIXEL_I2C_POWER, HIGH);
+#endif
+#if defined(PIN_I2C_POWER)
+  pinMode(PIN_I2C_POWER, OUTPUT); digitalWrite(PIN_I2C_POWER, HIGH);
+#endif
+  delay(10);
+
   Wire.begin();                              // STEMMA QT default pins (OLED + encoder)
   gReady = oled.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   if (!gReady) return;

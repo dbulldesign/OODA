@@ -8,25 +8,29 @@
  * and host token never get committed.
  *
  * Link model: the puck is always powered from USB-C and talks to the OODA host
- * over that same cable (native USB-CDC serial) as the PRIMARY link. WiFi is a
- * FALLBACK, used automatically only when the USB link goes quiet. Leave WIFI_SSID
- * empty for a USB-only puck.
+ * over that same cable (USB serial) as the PRIMARY link. WiFi is a FALLBACK,
+ * used automatically only when the USB link goes quiet. Leave WIFI_SSID empty
+ * for a USB-only puck.
+ *
+ * Board: Adafruit ESP32 Feather V2. USB here is a CP2102 USB-serial bridge, so
+ * `Serial` is both the flash/monitor port AND the host link — debug logging must
+ * go to a separate UART (see DEBUG_LOG).
  */
 #pragma once
 
 // ── USB link (primary) ───────────────────────────────────────────────────────
-// On the ESP32-S3 with USB-CDC-on-boot, `Serial` IS the native USB port, so it
-// carries the host protocol. (Debug logging therefore goes to DEBUG_SERIAL, not
-// here — printing to Serial would corrupt the protocol stream.)
+// `Serial` is the USB-C serial bridge; it carries the host protocol. The baud
+// here is a real UART rate and MUST match the host bridge (control-serial.js
+// opens at 115200).
 #define HOST_SERIAL        Serial
-#define HOST_SERIAL_BAUD   115200      // ignored by native USB-CDC; used on a UART
+#define HOST_SERIAL_BAUD   115200
 #define SERIAL_STALE_MS    6000        // no data for this long → USB link is down
 #define SERIAL_HELLO_MS    1000        // probe interval while hunting for the host
 
 // ── WiFi link (fallback) ─────────────────────────────────────────────────────
-// Leave WIFI_SSID = "" to disable WiFi entirely (USB-only). Otherwise these are
-// used exactly as before: HTTP commands + an SSE state stream. The token comes
-// from the OODA tray menu (Remote control → On — allow LAN devices).
+// Leave WIFI_SSID = "" to disable WiFi entirely (USB-only). Otherwise: HTTP
+// commands + an SSE state stream. The token comes from the OODA tray menu
+// (Remote control → On — allow LAN devices).
 #define WIFI_SSID       ""
 #define WIFI_PASSWORD   ""
 #define OODA_HOST       "192.168.1.50"
@@ -35,16 +39,17 @@
 
 // ── Debug logging ─────────────────────────────────────────────────────────────
 // The USB port is the host link, so logs can't go there. Set DEBUG_LOG to 1 to
-// emit logs on the UART broken out on the TX/RX pads (a USB-serial cable there),
-// or leave it 0 for a silent puck.
+// emit logs on a second UART (any free pins wired to a USB-serial adapter), or
+// leave it 0 for a silent puck.
 #define DEBUG_LOG       0
 #define DEBUG_SERIAL    Serial1
-#define DEBUG_TX_PIN    5              // QT Py ESP32-S3 "TX" pad
-#define DEBUG_RX_PIN    16             // QT Py ESP32-S3 "RX" pad
+#define DEBUG_TX_PIN    14             // any free Feather V2 GPIO
+#define DEBUG_RX_PIN    32             // any free Feather V2 GPIO
 
 // ── I²C peripherals (STEMMA QT bus — no wiring pins needed) ───────────────────
-// The OLED and the rotary encoder both live on the QT Py's STEMMA QT connector,
-// so `Wire` uses the board default pins; just daisy-chain them with QT cables.
+// The OLED and the rotary encoder both live on the Feather's STEMMA QT connector,
+// so `Wire` uses the board default pins; daisy-chain them with QT cables. The
+// board's STEMMA QT power is enabled in firmware (NEOPIXEL_I2C_POWER).
 #define OLED_WIDTH      128
 #define OLED_HEIGHT     64
 #define OLED_ADDR       0x3C           // Adafruit SSD1306 128×64 (#938 / #326)
@@ -53,11 +58,11 @@
 #define SEESAW_SWITCH   24             // seesaw pin for the encoder push switch
 #define ENC_INVERT      0              // set 1 if turning feels backwards
 
-// ── Buzzer (one GPIO) ─────────────────────────────────────────────────────────
+// ── Buzzer (one GPIO → a screw terminal) ──────────────────────────────────────
 // Driven with a plain on/off buzz — no tones. Use an ACTIVE buzzer (Adafruit
-// #1536, self-oscillating) wired straight to this pin and GND. A vibration motor
-// (#1201) also works but needs a driver transistor + flyback diode.
-#define PIN_BUZZER      18             // "A0" on the QT Py ESP32-S3
+// #1536, self-oscillating) with its two legs in the "A0" and "GND" screw
+// terminals. A vibration motor (#1201) also works but needs a driver transistor.
+#define PIN_BUZZER      26             // "A0" on the ESP32 Feather V2
 
 // ── Behavior tuning ───────────────────────────────────────────────────────────
 #define LONG_PRESS_MS   700            // hold time that counts as a long-press (→ skip)

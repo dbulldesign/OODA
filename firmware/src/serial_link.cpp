@@ -10,9 +10,11 @@ namespace {
   uint32_t  gLastHello = 0;     // last HELLO we sent while searching
   bool      gSeenHost = false;  // received a hello/state since the port opened
 
-  // Is a host program actually attached to the USB-CDC port? On the S3 the bool
-  // operator on the CDC Serial reflects DTR (a program has the port open). We
-  // also treat recent inbound bytes as "open", in case DTR flaps mid-session.
+  // Is the USB port usable? On a native USB-CDC chip the Serial bool reflects
+  // DTR (a program has the port open); on a USB-serial bridge (Feather V2) it's
+  // just "UART initialized" and is always true — which is fine, because on a
+  // bridge we judge the link by whether host frames are actually arriving (see
+  // status()), not by this flag. Recent inbound bytes also count as open.
   bool portOpen() { return (bool)HOST_SERIAL || (millis() - gLastRx < SERIAL_STALE_MS); }
 
   void handleLine(const String& line, bool& gotFrame) {
@@ -57,9 +59,10 @@ bool loop() {
     else gLine = "";                     // runaway line → drop
   }
 
-  // While we haven't heard from an OODA host yet, announce ourselves so the
-  // host's serial bridge can reply and start streaming state.
-  if (!gSeenHost && millis() - gLastHello > SERIAL_HELLO_MS) {
+  // Announce ourselves whenever we're not actively receiving — on first connect
+  // and again if the link drops — so the host's serial bridge replies and
+  // (re)starts streaming state.
+  if (status() != LINK_ONLINE && millis() - gLastHello > SERIAL_HELLO_MS) {
     HOST_SERIAL.print("HELLO\n");
     gLastHello = millis();
   }
