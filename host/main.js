@@ -22,10 +22,40 @@ let createControlServer;
 try { ({ createControlServer } = require('./control')); }
 catch (e) { createControlServer = () => ({ start() {}, stop() {}, running() { return false; }, broadcast() {} }); }
 
+// --- startup diagnostics -------------------------------------------------
+// A packaged Electron app has no visible console, so when the tray/HUD fail to
+// appear there's nothing to look at. Append a small timestamped log to a known
+// file (userData/ooda-host.log) so problems on a user's machine are diagnosable.
+function logPath() {
+  try { return path.join(app.getPath('userData'), 'ooda-host.log'); }
+  catch (e) { return path.join(os.tmpdir(), 'ooda-host.log'); }
+}
+function hlog(msg) {
+  try { fs.appendFileSync(logPath(), '[' + new Date().toISOString() + '] ' + msg + '\n'); } catch (e) {}
+}
+// keep the log from growing without bound across launches
+try { const p = logPath(); if (fs.existsSync(p) && fs.statSync(p).size > 256 * 1024) fs.writeFileSync(p, ''); } catch (e) {}
+hlog('--- main.js loaded (v' + (() => { try { return app.getVersion(); } catch (e) { return '?'; } })() + ', packaged=' + app.isPackaged + ') ---');
+
 // A stray error in any optional subsystem must never kill the process (which
 // would silently stop capture and remove the HUD).
-process.on('uncaughtException', (e) => { try { console.error('[ooda-host] uncaught', e); } catch (_) {} });
-process.on('unhandledRejection', (e) => { try { console.error('[ooda-host] unhandled', e); } catch (_) {} });
+process.on('uncaughtException', (e) => { hlog('uncaughtException: ' + (e && e.stack || e)); try { console.error('[ooda-host] uncaught', e); } catch (_) {} });
+process.on('unhandledRejection', (e) => { hlog('unhandledRejection: ' + (e && e.stack || e)); try { console.error('[ooda-host] unhandled', e); } catch (_) {} });
+
+// Only one instance should run — otherwise each Start-menu launch spawns a
+// duplicate process (duplicate tray icons + HUDs + double capture). If we don't
+// get the lock, a copy is already running; surface it in that copy and exit.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  hlog('another instance already owns the lock — exiting this one');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    hlog('second-instance launch → showing existing window + HUD');
+    try { showWindow(); } catch (e) {}
+    try { applyHudVisibility(); } catch (e) {}
+  });
+}
 
 const POLL_MS = 4000;       // how often to sample the foreground window
 const DEFAULT_URL = 'https://dbulldesign.github.io/OODA/';
@@ -149,12 +179,15 @@ async function forceUpdateUI() {
 
 function createTray() {
   try {
-    const img = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.ico'));
+    const iconPath = path.join(__dirname, 'build', 'icon.ico');
+    const img = nativeImage.createFromPath(iconPath);
+    if (img.isEmpty()) hlog('tray icon EMPTY at ' + iconPath + ' — using blank fallback (tray may be invisible)');
     tray = new Tray(img.isEmpty() ? nativeImage.createEmpty() : img);
     tray.on('click', showWindow);        // click the tray icon → open the window
     tray.on('double-click', showWindow);
     updateTray();
   } catch (e) {
+    hlog('createTray threw: ' + (e && e.stack || e));
     // Tray is a nicety; never let it stop the app from running.
   }
 }
@@ -231,7 +264,10 @@ function createHud() {
     hud.setAlwaysOnTop(true, 'screen-saver');
     hud.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     hud.setOpacity(settings.hudOpacity);
-    hud.loadFile(path.join(__dirname, 'hud.html'));
+    const hudFile = path.join(__dirname, 'hud.html');
+    hud.loadFile(hudFile).catch((e) => hlog('HUD loadFile failed for ' + hudFile + ': ' + (e && e.message || e)));
+    hud.webContents.on('did-fail-load', (_e, code, desc) => hlog('HUD did-fail-load ' + code + ' ' + desc));
+    hud.webContents.on('render-process-gone', (_e, d) => hlog('HUD render-process-gone: ' + JSON.stringify(d)));
     hud.webContents.on('did-finish-load', updateHud);
     hudRest = hud.getBounds();
     // a user drag (not our own tween) updates the resting position; skip our tweens
@@ -525,10 +561,13 @@ async function poll() {
 }
 
 app.whenReady().then(() => {
-  try { loadSettings(); } catch (e) {}
+  if (!gotSingleInstanceLock) return;   // a copy is already running; this one is quitting
+  hlog('app ready — beginning startup');
+  try { loadSettings(); hlog('settings loaded'); } catch (e) { hlog('loadSettings FAILED: ' + (e && e.stack || e)); }
   // Capture + core IPC are registered FIRST, so nothing optional (HUD, control
   // endpoint, settings, hotkeys) can prevent time-tracking from starting.
   setInterval(poll, POLL_MS);
+  hlog('capture poll registered');
   ipcMain.on('hud-show', showWindow);
   ipcMain.on('hud-pause', togglePause);
   ipcMain.on('hud-overflow', (_e, b) => { hudCanExpand = !!b; });   // is the label actually truncated?
@@ -545,10 +584,11 @@ app.whenReady().then(() => {
   });
   ipcMain.on('settings-close', () => { if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close(); });
   // Everything below is optional — isolate each so one failure can't cascade.
-  try { createWindow(); } catch (e) {}
-  try { createTray(); } catch (e) {}
-  try { createHud(); } catch (e) {}
-  try { applySettings(); } catch (e) {}
+  try { createWindow(); hlog('main window created'); } catch (e) { hlog('createWindow FAILED: ' + (e && e.stack || e)); }
+  try { createTray(); hlog('tray created (tray=' + !!tray + ')'); } catch (e) { hlog('createTray FAILED: ' + (e && e.stack || e)); }
+  try { createHud(); hlog('HUD created (hud=' + !!hud + ')'); } catch (e) { hlog('createHud FAILED: ' + (e && e.stack || e)); }
+  try { applySettings(); hlog('settings applied'); } catch (e) { hlog('applySettings FAILED: ' + (e && e.stack || e)); }
+  hlog('startup complete');
   // detect hover over the HUD by cursor position (its drag region eats DOM mouse events)
   setInterval(() => {
     if (!hud || hud.isDestroyed() || !settings.hudEnabled || hudAnimating || hudMoving) return;
