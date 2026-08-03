@@ -53,7 +53,6 @@ if (!gotSingleInstanceLock) {
   app.on('second-instance', () => {
     hlog('second-instance launch → showing existing window + HUD');
     try { showWindow(); } catch (e) {}
-    try { applyHudVisibility(); } catch (e) {}
   });
 }
 
@@ -125,6 +124,10 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // The window HIDES to the tray on close (capture keeps running). Chromium
+      // throttles timers on a hidden window, which would stall the web app's
+      // own tracking loop — so keep it running full-speed while hidden.
+      backgroundThrottling: false,
     },
   });
   // By default load the live deployed app, so the desktop window auto-updates
@@ -146,6 +149,13 @@ function createWindow() {
   // the loaded page's <title> overwrite it. This title shows on the taskbar
   // button, the title bar, and Alt-Tab.
   win.on('page-title-updated', (e) => { e.preventDefault(); });
+  // If the web app's renderer ever crashes, tracking (which the page performs)
+  // dies silently. Reload it so capture recovers on its own.
+  win.webContents.on('render-process-gone', (_e, d) => {
+    hlog('main renderer gone: ' + JSON.stringify(d) + ' — reloading');
+    try { win.webContents.reload(); } catch (e) { try { win.loadURL(DEFAULT_URL); } catch (e2) {} }
+  });
+  win.webContents.on('unresponsive', () => hlog('main renderer unresponsive'));
   // Closing the window hides it to the tray instead of quitting, so capture
   // keeps running in the background. Quit is available from the tray menu.
   win.on('close', (e) => {
@@ -162,11 +172,19 @@ function updateTitle() {
   win.setTitle(paused ? 'OODA — paused' : 'OODA ⏺ ' + s);
 }
 
+// Make sure the mini HUD is present when it should be. On reopen the HUD may
+// have been destroyed (or never survived a prior failure); recreate it rather
+// than leaving the user with no HUD until the next settings change.
+function ensureHud() {
+  if (!settings.hudEnabled) return;
+  if (!hud || hud.isDestroyed()) { hlog('ensureHud: HUD missing → recreating'); createHud(); }
+  else applyHudVisibility();
+}
+
 function showWindow() {
-  if (!win || win.isDestroyed()) { createWindow(); return; }
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
+  if (!win || win.isDestroyed()) createWindow();
+  else { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  ensureHud();
 }
 // Force the newest web build: drop the service-worker + cache (keeps localStorage
 // data) and hard-reload, so a stale cached UI updates immediately.
@@ -259,6 +277,7 @@ function createHud() {
       webPreferences: {
         preload: path.join(__dirname, 'hud-preload.js'),
         contextIsolation: true, nodeIntegration: false,
+        backgroundThrottling: false,   // keep the live timer ticking when unfocused
       },
     });
     hud.setAlwaysOnTop(true, 'screen-saver');
